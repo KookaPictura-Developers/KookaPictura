@@ -10,7 +10,7 @@ under GPL-3.0 or a commercial license). Kooka Pictura dynamically links
 system Qt; the corresponding source is offered upstream at
 https://code.qt.io/ . Required license texts are under LICENSES/.
 
-Rust dependencies in the resolved graph: 170
+Rust dependencies in the resolved graph: 176
 
 | Crate | Version | License |
 |---|---|---|
@@ -36,6 +36,9 @@ Rust dependencies in the resolved graph: 170
 | `convert_case` | 0.6.0 | MIT |
 | `core_maths` | 0.1.1 | MIT |
 | `crc32fast` | 1.5.2 | MIT OR Apache-2.0 |
+| `crossbeam-deque` | 0.8.8 | MIT OR Apache-2.0 |
+| `crossbeam-epoch` | 0.9.21 | MIT OR Apache-2.0 |
+| `crossbeam-utils` | 0.8.23 | MIT OR Apache-2.0 |
 | `crunchy` | 0.2.4 | MIT |
 | `cxx` | 1.0.202 | MIT OR Apache-2.0 |
 | `cxx-build` | 1.0.202 | MIT OR Apache-2.0 |
@@ -50,6 +53,7 @@ Rust dependencies in the resolved graph: 170
 | `dispatch2` | 0.3.1 | Zlib OR Apache-2.0 OR MIT |
 | `document-features` | 0.2.12 | MIT OR Apache-2.0 |
 | `dunce` | 1.0.5 | CC0-1.0 OR MIT-0 OR Apache-2.0 |
+| `either` | 1.18.0 | MIT OR Apache-2.0 |
 | `equivalent` | 1.0.2 | Apache-2.0 OR MIT |
 | `find-msvc-tools` | 0.1.12 | MIT OR Apache-2.0 |
 | `flate2` | 1.1.10 | MIT OR Apache-2.0 |
@@ -113,6 +117,8 @@ Rust dependencies in the resolved graph: 170
 | `rand_core` | 0.9.5 | MIT OR Apache-2.0 |
 | `raw-window-handle` | 0.6.2 | MIT OR Apache-2.0 OR Zlib |
 | `raw-window-metal` | 1.1.0 | MIT OR Apache-2.0 |
+| `rayon` | 1.12.0 | MIT OR Apache-2.0 |
+| `rayon-core` | 1.13.0 | MIT OR Apache-2.0 |
 | `read-fonts` | 0.41.0 | MIT OR Apache-2.0 |
 | `redox_syscall` | 0.5.18 | MIT |
 | `renderdoc-sys` | 1.1.0 | MIT OR Apache-2.0 |
@@ -184,6 +190,16 @@ Rust dependencies in the resolved graph: 170
 | `zerocopy-derive` | 0.8.57 | BSD-2-Clause OR Apache-2.0 OR MIT |
 | `zlib-rs` | 0.6.8 | Zlib |
 | `zmij` | 1.0.23 | MIT |
+
+Icon assets
+-----------
+
+The icons in assets/icons/ are derived from the Lucide icon set (vendored
+from lucide-static 1.50.0, https://lucide.dev) or are independently
+authored in the same style. Lucide is licensed under the ISC License,
+with a subset derived from the Feather project under the MIT License.
+Full text in LICENSES/Lucide.txt; per-icon provenance in
+docs/dev/icon-provenance.md.
 
 Full license texts for components that require reproduction are kept in
 LICENSES/. Regenerate this file with scripts/third-party-licenses.py; do

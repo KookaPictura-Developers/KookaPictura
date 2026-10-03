@@ -1,0 +1,857 @@
+{
+  "lucide": {
+    "version": "1.50.0",
+    "source": "https://github.com/lucide-icons/lucide/tree/v1.50.0/icons",
+    "license": "ISC (with an MIT subset derived from Feather)",
+    "style": "viewBox 0 0 24 24, fill=none, stroke=currentColor, stroke-width=2, round caps/joins; tinted at render time. Custom icons keep their named Lucide base at its original size and position; small added symbols use stroke-width=1."
+  },
+  "entries": {
+    "count.newGroup": {
+      "kind": "lucide",
+      "slug": "folder-plus",
+      "match": "good"
+    },
+    "edit.redo": {
+      "kind": "lucide",
+      "slug": "redo-2",
+      "match": "good"
+    },
+    "edit.stepBackward": {
+      "kind": "lucide",
+      "slug": "step-back",
+      "match": "good"
+    },
+    "edit.stepForward": {
+      "kind": "lucide",
+      "slug": "step-forward",
+      "match": "good"
+    },
+    "edit.undo": {
+      "kind": "lucide",
+      "slug": "undo-2",
+      "match": "good"
+    },
+    "file.close": {
+      "kind": "lucide",
+      "slug": "file-x",
+      "match": "approximate"
+    },
+    "file.closeAll": {
+      "kind": "lucide",
+      "slug": "files",
+      "match": "approximate"
+    },
+    "file.exit": {
+      "kind": "lucide",
+      "slug": "log-out",
+      "match": "good"
+    },
+    "file.new": {
+      "kind": "lucide",
+      "slug": "file-plus",
+      "match": "good"
+    },
+    "file.open": {
+      "kind": "lucide",
+      "slug": "folder-open",
+      "match": "good"
+    },
+    "file.revert": {
+      "kind": "lucide",
+      "slug": "file-clock",
+      "match": "good"
+    },
+    "file.save": {
+      "kind": "lucide",
+      "slug": "save",
+      "match": "exact"
+    },
+    "file.saveAs": {
+      "kind": "lucide",
+      "slug": "save-all",
+      "match": "approximate"
+    },
+    "help.about": {
+      "kind": "lucide",
+      "slug": "circle-question-mark",
+      "match": "good"
+    },
+    "history.snapshot": {
+      "kind": "lucide",
+      "slug": "camera",
+      "match": "good"
+    },
+    "image.crop": {
+      "kind": "lucide",
+      "slug": "crop",
+      "match": "exact"
+    },
+    "image.flipHorizontal": {
+      "kind": "lucide",
+      "slug": "triangles-centerline-dashed-vertical",
+      "match": "good",
+      "note": "shared with flipVertical"
+    },
+    "image.flipVertical": {
+      "kind": "lucide",
+      "slug": "triangles-centerline-dashed-vertical",
+      "match": "good",
+      "note": "shared with flipHorizontal"
+    },
+    "image.rotate180": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "rotate-cw-square with an added arrow in the bottom-right corner",
+      "base": "rotate-cw-square"
+    },
+    "image.rotate90ccw": {
+      "kind": "lucide",
+      "slug": "rotate-ccw-square",
+      "match": "good"
+    },
+    "image.rotate90cw": {
+      "kind": "lucide",
+      "slug": "rotate-cw-square",
+      "match": "good"
+    },
+    "info.bounds": {
+      "kind": "lucide",
+      "slug": "scan",
+      "match": "good"
+    },
+    "info.crosshair": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "same as the existing crosshair readout glyph"
+    },
+    "info.protractor": {
+      "kind": "lucide",
+      "slug": "angle",
+      "match": "good"
+    },
+    "layers.clipMask": {
+      "kind": "lucide",
+      "slug": "corner-left-down",
+      "match": "approximate"
+    },
+    "layers.delete": {
+      "kind": "lucide",
+      "slug": "trash",
+      "match": "exact"
+    },
+    "layers.disclosureDown": {
+      "kind": "lucide",
+      "slug": "chevron-down",
+      "match": "exact"
+    },
+    "layers.disclosureRight": {
+      "kind": "lucide",
+      "slug": "chevron-right",
+      "match": "exact"
+    },
+    "layers.eyeOff": {
+      "kind": "lucide",
+      "slug": "eye-off",
+      "match": "exact"
+    },
+    "layers.eyeOn": {
+      "kind": "lucide",
+      "slug": "eye",
+      "match": "exact"
+    },
+    "layers.fillAdjustment": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "mirror of layers.kindAdjustment, rotated 45 degrees"
+    },
+    "layers.filterOff": {
+      "kind": "lucide",
+      "slug": "toggle-left",
+      "match": "good"
+    },
+    "layers.filterOn": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "toggle with the knob filled (on state)",
+      "base": "toggle-right"
+    },
+    "layers.fx": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "lowercase letters \"fx\""
+    },
+    "layers.group": {
+      "kind": "lucide",
+      "slug": "folder",
+      "match": "good"
+    },
+    "layers.kindAdjustment": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "Lucide-style contrast glyph"
+    },
+    "layers.kindBackground": {
+      "kind": "note",
+      "note": "mis-spec/bug: this is not actually a background layer; follow-up needed"
+    },
+    "layers.kindGroup": {
+      "kind": "note",
+      "note": "there is no kindGroup concept; file kept as-is"
+    },
+    "layers.kindPixel": {
+      "kind": "lucide",
+      "slug": "image",
+      "match": "good"
+    },
+    "layers.kindShape": {
+      "kind": "lucide",
+      "slug": "vector-square",
+      "match": "good"
+    },
+    "layers.kindSmartObject": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "Lucide file with a filled square in the bottom-left",
+      "base": "file"
+    },
+    "layers.kindType": {
+      "kind": "lucide",
+      "slug": "type",
+      "match": "exact"
+    },
+    "layers.link": {
+      "kind": "lucide",
+      "slug": "link",
+      "match": "exact"
+    },
+    "layers.lockAll": {
+      "kind": "lucide",
+      "slug": "lock-keyhole",
+      "match": "good"
+    },
+    "layers.lockAlpha": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "Lucide-style checkerboard"
+    },
+    "layers.lockNesting": {
+      "kind": "note",
+      "note": "not used; file kept as-is"
+    },
+    "layers.lockPaint": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "brush with the top and bottom sections filled",
+      "base": "brush"
+    },
+    "layers.lockPosition": {
+      "kind": "lucide",
+      "slug": "move",
+      "match": "approximate"
+    },
+    "layers.mask": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "4:3 rectangle with a dashed circle inside"
+    },
+    "layers.newLayer": {
+      "kind": "lucide",
+      "slug": "square-plus",
+      "match": "good"
+    },
+    "layers.reset": {
+      "kind": "lucide",
+      "slug": "rotate-ccw",
+      "match": "good"
+    },
+    "layers.search": {
+      "kind": "lucide",
+      "slug": "search",
+      "match": "exact"
+    },
+    "panel.close": {
+      "kind": "lucide",
+      "slug": "x",
+      "match": "exact"
+    },
+    "panel.columnsOne": {
+      "kind": "lucide",
+      "slug": "chevrons-left",
+      "match": "good"
+    },
+    "panel.columnsTwo": {
+      "kind": "lucide",
+      "slug": "chevrons-right",
+      "match": "good"
+    },
+    "path.delete": {
+      "kind": "lucide",
+      "slug": "trash",
+      "match": "exact"
+    },
+    "path.fill": {
+      "kind": "lucide",
+      "slug": "paint-bucket",
+      "match": "good"
+    },
+    "path.loadSelection": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "dashed 4:3 rectangle"
+    },
+    "path.makeWorkPath": {
+      "kind": "lucide",
+      "slug": "workflow",
+      "match": "approximate"
+    },
+    "path.newPath": {
+      "kind": "lucide",
+      "slug": "pen-tool",
+      "match": "good"
+    },
+    "path.stroke": {
+      "kind": "lucide",
+      "slug": "pen-line",
+      "match": "good"
+    },
+    "path.thumbnail": {
+      "kind": "lucide",
+      "slug": "frame",
+      "match": "good"
+    },
+    "select.all": {
+      "kind": "lucide",
+      "slug": "square-dashed",
+      "match": "good"
+    },
+    "select.deselect": {
+      "kind": "lucide",
+      "slug": "square-dashed-x",
+      "match": "good"
+    },
+    "select.mode.add": {
+      "kind": "lucide",
+      "slug": "squares-unite",
+      "match": "good"
+    },
+    "select.mode.intersect": {
+      "kind": "lucide",
+      "slug": "squares-intersect",
+      "match": "good"
+    },
+    "select.mode.new": {
+      "kind": "lucide",
+      "slug": "square",
+      "match": "good"
+    },
+    "select.mode.subtract": {
+      "kind": "lucide",
+      "slug": "squares-subtract",
+      "match": "good"
+    },
+    "tool.addanchorpoint": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "pen-tool rotated 90 ccw with a plus symbol in the top-left",
+      "base": "pen-tool"
+    },
+    "tool.arthistorybrush": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "brush with a squiggle line behind it",
+      "base": "brush"
+    },
+    "tool.backgrounderaser": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "eraser with a scissor symbol in the top-left",
+      "base": "eraser"
+    },
+    "tool.blur": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "filled droplet",
+      "base": "droplet"
+    },
+    "tool.brush": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "brush with all except the middle section filled",
+      "base": "brush"
+    },
+    "tool.burn": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "pinching hand pointing left",
+      "base": "hand-helping"
+    },
+    "tool.camerapan": {
+      "kind": "out-of-scope",
+      "note": "3D camera tool, non-scope; file unchanged"
+    },
+    "tool.cameraroll": {
+      "kind": "out-of-scope",
+      "note": "3D camera tool, non-scope; file unchanged"
+    },
+    "tool.camerarotate": {
+      "kind": "out-of-scope",
+      "note": "3D camera tool, non-scope; file unchanged"
+    },
+    "tool.camerawalk": {
+      "kind": "out-of-scope",
+      "note": "3D camera tool, non-scope; file unchanged"
+    },
+    "tool.camerazoom": {
+      "kind": "out-of-scope",
+      "note": "3D camera tool, non-scope; file unchanged"
+    },
+    "tool.clonestamp": {
+      "kind": "lucide",
+      "slug": "stamp",
+      "match": "good"
+    },
+    "tool.colorreplacement": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "brush with a square and a bidirectional corner arrow in the top-left",
+      "base": "brush"
+    },
+    "tool.colorsampler": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "pipette base, top bulb filled, crosshair in the top-left",
+      "base": "pipette"
+    },
+    "tool.contentawaremove": {
+      "kind": "lucide",
+      "slug": "shuffle",
+      "match": "good"
+    },
+    "tool.convertpoint": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "an angle from the top-left opening 30 degrees to the right"
+    },
+    "tool.count": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "the numerals \"123\", playfully placed"
+    },
+    "tool.crop": {
+      "kind": "lucide",
+      "slug": "crop",
+      "match": "exact"
+    },
+    "tool.customshape": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "soft 5-pointed star"
+    },
+    "tool.deleteanchorpoint": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "pen-tool rotated 90 ccw with a minus symbol",
+      "base": "pen-tool"
+    },
+    "tool.directselection": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "filled mouse pointer, left edge vertical, right edge 45 degrees"
+    },
+    "tool.dodge": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "circle with a line leaving it, pointing to the bottom-left at 45 degrees"
+    },
+    "tool.ellipse": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "ellipse with a 50% alpha fill"
+    },
+    "tool.ellipticalmarquee": {
+      "kind": "lucide",
+      "slug": "circle-dashed",
+      "match": "good"
+    },
+    "tool.eraser": {
+      "kind": "lucide",
+      "slug": "eraser",
+      "match": "exact"
+    },
+    "tool.eyedropper": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "pipette base with the top bulb fully filled",
+      "base": "pipette"
+    },
+    "tool.freeformpen": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "pen-tool rotated 90 ccw with a short dashed line to the top-right",
+      "base": "pen-tool"
+    },
+    "tool.gradient": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "4:3 rectangle with an alpha-gradient fill"
+    },
+    "tool.hand": {
+      "kind": "lucide",
+      "slug": "hand",
+      "match": "exact"
+    },
+    "tool.healingbrush": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "bandage rotated 45 ccw",
+      "base": "bandage"
+    },
+    "tool.historybrush": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "brush with an undo glyph behind it",
+      "base": "brush"
+    },
+    "tool.horizontaltype": {
+      "kind": "lucide",
+      "slug": "type",
+      "match": "exact"
+    },
+    "tool.horizontaltypemask": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "dashed type",
+      "base": "type"
+    },
+    "tool.lasso": {
+      "kind": "lucide",
+      "slug": "lasso",
+      "match": "exact"
+    },
+    "tool.line": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "45-degree line from bottom-left to top-right"
+    },
+    "tool.magiceraser": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "eraser with small plus symbols around it"
+    },
+    "tool.magicwand": {
+      "kind": "lucide",
+      "slug": "wand-sparkles",
+      "match": "good"
+    },
+    "tool.magneticlasso": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "sharp-angled lasso with a magnet on the right",
+      "base": "lasso"
+    },
+    "tool.marquee": {
+      "kind": "lucide",
+      "slug": "square-dashed",
+      "match": "good"
+    },
+    "tool.mixerbrush": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "brush with a drop in the top-left",
+      "base": "brush"
+    },
+    "tool.move": {
+      "kind": "lucide",
+      "slug": "move",
+      "match": "exact"
+    },
+    "tool.note": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "sticky-note with horizontal lines inside"
+    },
+    "tool.objectpan": {
+      "kind": "out-of-scope",
+      "note": "3D object tool, non-scope; file unchanged"
+    },
+    "tool.objectroll": {
+      "kind": "out-of-scope",
+      "note": "3D object tool, non-scope; file unchanged"
+    },
+    "tool.objectrotate": {
+      "kind": "out-of-scope",
+      "note": "3D object tool, non-scope; file unchanged"
+    },
+    "tool.objectscale": {
+      "kind": "out-of-scope",
+      "note": "3D object tool, non-scope; file unchanged"
+    },
+    "tool.objectslide": {
+      "kind": "out-of-scope",
+      "note": "3D object tool, non-scope; file unchanged"
+    },
+    "tool.paintbucket": {
+      "kind": "lucide",
+      "slug": "paint-bucket",
+      "match": "exact"
+    },
+    "tool.patch": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "rectangle with three lines leaving it on each edge"
+    },
+    "tool.pathselection": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "like direct selection but without the fill"
+    },
+    "tool.patternstamp": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "stamp with a 3x3 checker icon in the top-left",
+      "base": "stamp"
+    },
+    "tool.pen": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "pen-tool rotated 90 ccw",
+      "base": "pen-tool"
+    },
+    "tool.pencil": {
+      "kind": "lucide",
+      "slug": "pencil",
+      "match": "exact"
+    },
+    "tool.perspectivecrop": {
+      "kind": "lucide",
+      "slug": "vector-polygon",
+      "match": "good"
+    },
+    "tool.polygon": {
+      "kind": "lucide",
+      "slug": "pentagon",
+      "match": "good"
+    },
+    "tool.polygonallasso": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "sharp pacman lasso (bottom-left corner kept)",
+      "base": "lasso"
+    },
+    "tool.quickselection": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "zoomed-in brush with a dashed area on the left",
+      "base": "brush"
+    },
+    "tool.rectangle": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "4:3 rectangle with a 50% fill"
+    },
+    "tool.redeye": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "eye with a plus in the top-left"
+    },
+    "tool.rotateview": {
+      "kind": "lucide",
+      "slug": "repeat-2",
+      "match": "good"
+    },
+    "tool.roundedrectangle": {
+      "kind": "lucide",
+      "slug": "squircle",
+      "match": "good"
+    },
+    "tool.ruler": {
+      "kind": "lucide",
+      "slug": "ruler",
+      "match": "exact"
+    },
+    "tool.sharpen": {
+      "kind": "lucide",
+      "slug": "triangle",
+      "match": "approximate"
+    },
+    "tool.slice": {
+      "kind": "lucide",
+      "slug": "slice",
+      "match": "exact"
+    },
+    "tool.sliceselect": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "slice with a plus in the bottom-right"
+    },
+    "tool.smudge": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "finger pointing to the bottom-left at about 90 degrees",
+      "base": "pointer"
+    },
+    "tool.sponge": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "sponge glyph (no Lucide equivalent)"
+    },
+    "tool.spothealingbrush": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "bandage with a dashed circle behind it",
+      "base": "bandage"
+    },
+    "tool.verticaltype": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "type glyph with a thin down arrow on its left",
+      "base": "type"
+    },
+    "tool.verticaltypemask": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "dashed type glyph with a thin down arrow on its left",
+      "base": "type"
+    },
+    "tool.zoom": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "search glyph with a 50% fill",
+      "base": "search"
+    },
+    "view.actualPixels": {
+      "kind": "lucide",
+      "slug": "scan",
+      "match": "approximate",
+      "note": "shared with info.bounds"
+    },
+    "view.fitOnScreen": {
+      "kind": "lucide",
+      "slug": "fullscreen",
+      "match": "good"
+    },
+    "view.options": {
+      "kind": "lucide",
+      "slug": "sliders-horizontal",
+      "match": "good"
+    },
+    "view.screenMode.full": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "4:3 rectangle with small corner arrows"
+    },
+    "view.screenMode.fullWithMenuBar": {
+      "kind": "lucide",
+      "slug": "panel-top",
+      "match": "approximate"
+    },
+    "view.screenMode.standard": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "two stacked panel-tops",
+      "base": "panel-top"
+    },
+    "view.zoomIn": {
+      "kind": "lucide",
+      "slug": "zoom-in",
+      "match": "exact"
+    },
+    "view.zoomOut": {
+      "kind": "lucide",
+      "slug": "zoom-out",
+      "match": "exact"
+    },
+    "window.panels.actions": {
+      "kind": "lucide",
+      "slug": "play",
+      "match": "good"
+    },
+    "window.panels.adjustments": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "typical contrast glyph rotated 45 degrees"
+    },
+    "window.panels.brushes": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "brush",
+      "base": "brush"
+    },
+    "window.panels.channels": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "three evenly overlapping circles with varying fill"
+    },
+    "window.panels.cloneSource": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "stamp with a small list in the top-left",
+      "base": "stamp"
+    },
+    "window.panels.color": {
+      "kind": "lucide",
+      "slug": "palette",
+      "match": "good"
+    },
+    "window.panels.gradients": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "4:3 rectangle with an alpha-gradient fill"
+    },
+    "window.panels.histogram": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "audio-lines, bottom-aligned"
+    },
+    "window.panels.history": {
+      "kind": "lucide",
+      "slug": "rotate-ccw-clock",
+      "match": "good"
+    },
+    "window.panels.info": {
+      "kind": "lucide",
+      "slug": "info",
+      "match": "exact"
+    },
+    "window.panels.layers": {
+      "kind": "lucide",
+      "slug": "layers",
+      "match": "exact"
+    },
+    "window.panels.navigator": {
+      "kind": "lucide",
+      "slug": "ship-wheel",
+      "match": "good"
+    },
+    "window.panels.notes": {
+      "kind": "custom",
+      "match": "custom",
+      "note": "same custom sticky-note as tool.note"
+    },
+    "window.panels.paths": {
+      "kind": "lucide",
+      "slug": "spline",
+      "match": "good"
+    },
+    "window.panels.patterns": {
+      "kind": "lucide",
+      "slug": "grid-3x3",
+      "match": "approximate"
+    },
+    "window.panels.properties": {
+      "kind": "lucide",
+      "slug": "settings-2",
+      "match": "approximate"
+    },
+    "window.panels.swatches": {
+      "kind": "lucide",
+      "slug": "swatch-book",
+      "match": "exact"
+    },
+    "window.panels.tools": {
+      "kind": "lucide",
+      "slug": "wrench",
+      "match": "good"
+    }
+  }
+}

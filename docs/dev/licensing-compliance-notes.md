@@ -183,9 +183,14 @@ Rebrand these to neutral labels. Keep Adobe/Photoshop references nominative
 
 ## 8. Asset provenance
 
-`assets/` is 212 SVGs (icons + cursors) with no attribution strings and no
-fonts/ICC/`.8bf` files. Confirm they are self-authored or from a permissive set,
-not traced from CS6 artwork or a third-party icon pack.
+`assets/icons/` is a Lucide-derived and Lucide-style custom icon set (see
+`docs/dev/icon-provenance.md` and `assets/icons/lucide-map.json`): 106 icons are
+vendored from `lucide-static` 1.50.0 and 57 are independently authored in the
+same 24×24 line style. Lucide is licensed under ISC, with a subset derived from
+Feather under MIT; the text ships in `LICENSES/Lucide.txt` and is referenced
+from `NOTICE.md` and `THIRD-PARTY-LICENSES`. No icon is traced from CS6 artwork.
+`assets/cursors/` (77 SVGs) remains self-authored and is not yet migrated; a
+follow-up issue covers it. There are no fonts, ICC profiles, or `.8bf` files.
 
 ## 9. Reproduction commands
 
