@@ -1,13 +1,18 @@
 # icon-assets Specification
 
 ## Purpose
-The original SVG icon set covering the app, tools, and menus, bundled through Qt resources and resolved by id.
+A Lucide-derived, render-time-tinted SVG icon set covering the app, tools, and
+menus, bundled through Qt resources and resolved by id.
 
 ## Requirements
 
 ### Requirement: Icon set coverage
-The system SHALL provide an original SVG icon for the application, for each
-implemented tool, and for each command that has a registered handler. Icon files
+The system SHALL provide an SVG icon for the application, for each implemented
+tool, and for each command that has a registered handler. Every shipped icon
+SHALL be either a Lucide-derived asset (vendored from a pinned Lucide release)
+or a Lucide-style custom asset, and every custom asset SHALL use the 24×24
+viewBox, `fill="none"`, `stroke="currentColor"`, `stroke-width="2"`, and round
+caps and joins, expressing any internal shading as an alpha gradient. Icon files
 SHALL live under `assets/icons/` and SHALL be named exactly by their icon id
 (the command id verbatim, or `tool.<tool>` for tools; the application icon is
 `app`).
@@ -20,14 +25,25 @@ SHALL live under `assets/icons/` and SHALL be named exactly by their icon id
 - **WHEN** the tool set is enumerated
 - **THEN** an SVG file exists for each `tool.<tool>` id
 
+#### Scenario: Every icon is Lucide or Lucide-style
+- **WHEN** each bundled SVG is inspected
+- **THEN** it declares `viewBox="0 0 24 24"`, `fill="none"`, and
+  `stroke="currentColor"` with `stroke-width="2"`
+
 ### Requirement: Resource-bundled icon loading
 The system SHALL bundle the SVG icons into the executable through a Qt resource
 and SHALL expose `QIcon icon(const QString& id)` that resolves the id to a
-non-null icon.
+non-null icon, plus `QIcon icon(const QString& id, const QColor& color)` that
+resolves it in an explicit colour. The system SHALL NOT alter the icon id set
+when changing icon artwork, so the bundled resource list is unaffected.
 
 #### Scenario: A known id resolves
 - **WHEN** `icon(id)` is called for a bundled id
 - **THEN** it returns a non-null `QIcon`
+
+#### Scenario: An explicit colour is honoured
+- **WHEN** `icon(id, color)` is called and its pixmap is sampled
+- **THEN** the rendered opaque pixels use `color`, not the theme foreground
 
 #### Scenario: An unknown id is null
 - **WHEN** `icon(id)` is called for an id with no asset
@@ -67,10 +83,10 @@ The system SHALL provide standalone SVG assets for the Layers-panel glyphs
 `layers.search`, `layers.kindShape`, `layers.kindSmartObject`, and
 `layers.reset`, and for the Paths-panel glyphs `path.thumbnail`, `path.fill`,
 `path.stroke`, `path.loadSelection`, `path.makeWorkPath`, `path.newPath`, and
-`path.delete`. Each asset SHALL use the 24×24 grid, SHALL be pre-tinted so it
-needs no render-time colour substitution, SHALL be registered in the Qt
-resource `assets/pictura.qrc`, and SHALL resolve through `icon(id)` like every
-other bundled icon.
+`path.delete`. Each asset SHALL use the 24×24 grid, SHALL use
+`stroke="currentColor"` so it is tinted at render time and needs no baked
+colour, SHALL be registered in the Qt resource `assets/pictura.qrc`, and SHALL
+resolve through `icon(id)` like every other bundled icon.
 
 #### Scenario: The new Layers glyphs resolve [plg_layers_resolve]
 - **WHEN** `icon(id)` is called for each of `layers.search`,
@@ -86,3 +102,44 @@ other bundled icon.
 #### Scenario: An unknown id stays null [plg_unknown_null]
 - **WHEN** `icon(id)` is called for an id with no bundled asset
 - **THEN** it returns a null icon without crashing
+
+### Requirement: Icons follow the active theme
+
+The system SHALL render each icon in the active theme's foreground colour at
+render time, SHALL render a disabled icon in the palette's disabled colour, and
+SHALL produce updated pixmaps when the theme brightness changes so no stale
+colour survives.
+
+#### Scenario: Theme foreground is applied [lia_foreground]
+- **WHEN** an icon is rendered with the default call
+- **THEN** its opaque pixels use the palette's foreground colour
+
+#### Scenario: Disabled mode differs [lia_disabled]
+- **WHEN** `icon(id).pixmap(size, QIcon::Disabled)` is rendered
+- **THEN** it differs from the `QIcon::Normal` pixmap
+
+#### Scenario: Brightness change updates icons [lia_theme_change]
+- **WHEN** the brightness level is changed and the same icon rendered again
+- **THEN** the second pixmap differs from the first
+
+### Requirement: Icon provenance and licensing
+
+The system SHALL ship the Lucide license text under `LICENSES/Lucide.txt`
+(covering the ISC license and the Feather-derived MIT subset), SHALL reference
+the icon assets from `NOTICE.md` and the generated `THIRD-PARTY-LICENSES`, and
+SHALL record every bundled icon's provenance (Lucide slug or custom) in
+`assets/icons/lucide-map.json` and `docs/dev/icon-provenance.md`. A mechanical
+guard SHALL fail when an icon file under `assets/icons/` is absent from the map.
+
+#### Scenario: License text is present [lia_license]
+- **WHEN** the repository is inspected
+- **THEN** `LICENSES/Lucide.txt` exists and names the ISC license and the
+  Feather-derived MIT subset
+
+#### Scenario: Every icon is mapped [lia_mapped]
+- **WHEN** the guard compares `assets/icons/*.svg` with `assets/icons/lucide-map.json`
+- **THEN** every file has an entry and every entry has a file
+
+#### Scenario: An unmapped icon fails the guard [lia_guard]
+- **WHEN** a new SVG is added under `assets/icons/` without a map entry
+- **THEN** the provenance guard exits non-zero

@@ -23,6 +23,10 @@ public:
     // CS6-style chrome QSS for `level`.
     static QString styleSheet(int level);
 
+    // Monotonic counter bumped on every apply(); icon engines fold it into
+    // their cache key so QIcon re-renders after a brightness change.
+    static quint64 paletteGeneration();
+
     // Apply the Fusion style and the palette for `level`. Call once after the
     // QApplication exists, and again whenever the level changes.
     static void apply(int level);

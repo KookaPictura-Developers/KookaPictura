@@ -24,6 +24,21 @@ Snapshot for resuming after a context break. Update after each milestone.
   The C++ self-test reports **480 passed, 0 failed, 0 skipped** standalone; the
   unified report (`scripts/verify-fast.sh`, which reruns both plus the workspace
   probes) reports **2344 passed, 13 skipped, 0 failed**.
+- **Lucide icon set** (archived `lucide-icon-set`, spec `ui/icon-assets`): all 165
+  `assets/icons/` SVGs are now Lucide-derived (91, vendored verbatim from
+  `lucide-static` 1.50.0) or Lucide-style custom (61), with 3 flagged notes and
+  10 out-of-scope 3D tool glyphs left as-is. Eleven orphaned glyphs (the reserved
+  `window.panels.3d|character|libraries|masks|measurementLog|paragraph|smartObjects|timeline|toolPresets|typeStyles`
+  ids and `panel.closeChevron`) were removed from disk and the qrc. Ids for the
+  live icons are unchanged. `pictura::icon(id)` renders through the new `SvgIconEngine`
+  (`svg_icon_engine.{h,cpp}`), tinting by alpha with the palette foreground (or
+  an explicit `icon(id, QColor)`), disabled-aware, and re-rendering after a
+  brightness change (theme generation folded into the engine key +
+  `QPixmapCache::clear()` in `Theme::apply`). Attribution: `LICENSES/Lucide.txt`
+  (ISC + Feather MIT), a `NOTICE.md` section, and an icon-assets block in the
+  generated `THIRD-PARTY-LICENSES`; provenance in `docs/dev/icon-provenance.md`
+  + `assets/icons/lucide-map.json`, reproduced by `scripts/sync-lucide-icons.py`
+  and enforced by `scripts/check-icon-provenance.py`. Cursors are a follow-up.
 - OpenSpec **1.13.2** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,

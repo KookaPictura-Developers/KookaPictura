@@ -3,12 +3,15 @@
 #include <QtCore/QString>
 #include <QtGui/QColor>
 #include <QtGui/QPalette>
+#include <QtGui/QPixmapCache>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QStyleFactory>
 
 namespace pictura {
 
 namespace {
+
+quint64 g_paletteGeneration = 0;
 
 struct Ramp {
     QColor window;
@@ -294,9 +297,16 @@ QString Theme::styleSheet(int level)
     return styleSheetFor(kRamps[clampLevel(level)]);
 }
 
+quint64 Theme::paletteGeneration()
+{
+    return g_paletteGeneration;
+}
+
 void Theme::apply(int level)
 {
     const int clamped = clampLevel(level);
+    ++g_paletteGeneration;
+    QPixmapCache::clear();
     QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
     qApp->setPalette(paletteFor(clamped));
     qApp->setStyleSheet(styleSheet(clamped));

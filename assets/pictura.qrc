@@ -54,7 +54,6 @@
     <file>icons/layers.reset.svg</file>
     <file>icons/layers.search.svg</file>
     <file>icons/panel.close.svg</file>
-    <file>icons/panel.closeChevron.svg</file>
     <file>icons/panel.columnsOne.svg</file>
     <file>icons/panel.columnsTwo.svg</file>
     <file>icons/path.delete.svg</file>
@@ -149,12 +148,10 @@
     <file>icons/view.screenMode.standard.svg</file>
     <file>icons/view.zoomIn.svg</file>
     <file>icons/view.zoomOut.svg</file>
-    <file>icons/window.panels.3d.svg</file>
     <file>icons/window.panels.actions.svg</file>
     <file>icons/window.panels.adjustments.svg</file>
     <file>icons/window.panels.brushes.svg</file>
     <file>icons/window.panels.channels.svg</file>
-    <file>icons/window.panels.character.svg</file>
     <file>icons/window.panels.cloneSource.svg</file>
     <file>icons/window.panels.color.svg</file>
     <file>icons/window.panels.gradients.svg</file>
@@ -162,21 +159,13 @@
     <file>icons/window.panels.history.svg</file>
     <file>icons/window.panels.info.svg</file>
     <file>icons/window.panels.layers.svg</file>
-    <file>icons/window.panels.libraries.svg</file>
-    <file>icons/window.panels.masks.svg</file>
-    <file>icons/window.panels.measurementLog.svg</file>
     <file>icons/window.panels.navigator.svg</file>
     <file>icons/window.panels.notes.svg</file>
-    <file>icons/window.panels.paragraph.svg</file>
     <file>icons/window.panels.paths.svg</file>
     <file>icons/window.panels.patterns.svg</file>
     <file>icons/window.panels.properties.svg</file>
-    <file>icons/window.panels.smartObjects.svg</file>
     <file>icons/window.panels.swatches.svg</file>
-    <file>icons/window.panels.timeline.svg</file>
-    <file>icons/window.panels.toolPresets.svg</file>
     <file>icons/window.panels.tools.svg</file>
-    <file>icons/window.panels.typeStyles.svg</file>
     <file>cursors/cursor.moveSelection.svg</file>
     <file>cursors/tool.addanchorpoint.svg</file>
     <file>cursors/tool.arthistorybrush.svg</file>

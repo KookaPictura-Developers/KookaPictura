@@ -1,10 +1,13 @@
 #include <QtTest/QtTest>
 
 #include <QtCore/QStringList>
+#include <QtGui/QColor>
 #include <QtGui/QIcon>
+#include <QtGui/QImage>
 #include <QtGui/QPixmap>
 
 #include "icons.h"
+#include "theme.h"
 
 class IconAssetsTest : public QObject {
     Q_OBJECT
@@ -14,6 +17,10 @@ private slots:
     void pathGlyphsResolve();
     void infoGlyphsResolve();
     void unknownIdIsNull();
+    void explicitColour();
+    void disabledDiffers();
+    void hidpiRenders();
+    void themeChangeRerenders();
 };
 
 void IconAssetsTest::panelGlyphsResolve()
@@ -69,6 +76,64 @@ void IconAssetsTest::infoGlyphsResolve()
 void IconAssetsTest::unknownIdIsNull()
 {
     QVERIFY(pictura::icon(QStringLiteral("no.such.icon")).isNull());
+}
+
+void IconAssetsTest::explicitColour()
+{
+    const QImage img = pictura::icon(QStringLiteral("tool.brush"), QColor(255, 0, 0))
+                           .pixmap(48, 48)
+                           .toImage()
+                           .convertToFormat(QImage::Format_ARGB32);
+    QVERIFY(!img.isNull());
+
+    int maxAlpha = 0;
+    QRgb strongest = 0;
+    for (int y = 0; y < img.height(); ++y) {
+        const QRgb* line = reinterpret_cast<const QRgb*>(img.constScanLine(y));
+        for (int x = 0; x < img.width(); ++x) {
+            if (qAlpha(line[x]) > maxAlpha) {
+                maxAlpha = qAlpha(line[x]);
+                strongest = line[x];
+            }
+        }
+    }
+    QVERIFY2(maxAlpha > 0, "icon rendered fully transparent");
+    QVERIFY2(qRed(strongest) > 240 && qGreen(strongest) < 16 && qBlue(strongest) < 16,
+             "opaque pixel is not the requested colour");
+}
+
+void IconAssetsTest::disabledDiffers()
+{
+    const QIcon ic = pictura::icon(QStringLiteral("tool.brush"));
+    const QImage normal = ic.pixmap(32, 32, QIcon::Normal)
+                              .toImage()
+                              .convertToFormat(QImage::Format_ARGB32);
+    const QImage disabled = ic.pixmap(32, 32, QIcon::Disabled)
+                                .toImage()
+                                .convertToFormat(QImage::Format_ARGB32);
+    QVERIFY(!normal.isNull());
+    QVERIFY2(normal != disabled, "disabled icon did not change colour");
+}
+
+void IconAssetsTest::hidpiRenders()
+{
+    const QPixmap pm = pictura::icon(QStringLiteral("tool.brush")).pixmap(QSize(16, 16), 2.0);
+    QVERIFY(!pm.isNull());
+    QCOMPARE(pm.width(), 32);
+    QCOMPARE(pm.devicePixelRatio(), 2.0);
+}
+
+void IconAssetsTest::themeChangeRerenders()
+{
+    // The same QIcon instance must re-render after a brightness change (no
+    // stale cached pixmap survives).
+    QIcon ic = pictura::icon(QStringLiteral("tool.brush"));
+    pictura::Theme::apply(0);
+    const QImage dark = ic.pixmap(16, 16).toImage().convertToFormat(QImage::Format_ARGB32);
+    pictura::Theme::apply(3);
+    const QImage light = ic.pixmap(16, 16).toImage().convertToFormat(QImage::Format_ARGB32);
+    pictura::Theme::apply(pictura::Theme::kDefaultLevel);
+    QVERIFY2(dark != light, "cached icon did not re-render after a theme change");
 }
 
 QTEST_MAIN(IconAssetsTest)
