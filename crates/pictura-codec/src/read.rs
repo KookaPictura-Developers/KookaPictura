@@ -152,6 +152,7 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
             slices: Vec::new(),
             annotations: Default::default(),
             work_path: Default::default(),
+            text_styles: Default::default(),
         };
         return Ok(crate::icc::apply_icc_policy(
             normalize(doc, mode, depth, palette.as_ref()),
@@ -240,6 +241,7 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
         slices: Vec::new(),
         annotations: Default::default(),
         work_path: Default::default(),
+        text_styles: Default::default(),
     };
     Ok(crate::icc::apply_icc_policy(
         normalize(doc, mode, depth, palette.as_ref()),
@@ -906,6 +908,9 @@ fn read_layer_record(r: &mut Reader, is_psb: bool) -> Result<RawLayer, PsdError>
             smart_object: None,
             vector_mask: None,
             type_tool: None,
+            applied_character_style: None,
+            applied_paragraph_style: None,
+            type_overrides: Default::default(),
             source_channels: None,
         },
         channel_ids,

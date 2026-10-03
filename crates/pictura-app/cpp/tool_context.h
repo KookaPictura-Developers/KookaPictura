@@ -201,13 +201,13 @@ struct ShapeOptions {
 };
 
 // The Type tools' options bar, shared by all four (the tool is the
-// orientation): the font family, its size in pixels, Anti-alias (Sharp or
-// None), and the alignment 0 left / top, 1 right / bottom, 2 centre. The text
-// colour is the foreground colour.
+// orientation): the font family, its size in pixels, Anti-alias (None / Sharp /
+// Crisp / Strong / Smooth, as the combo index), and the alignment 0 left / top,
+// 1 right / bottom, 2 centre. The text colour is the foreground colour.
 struct TypeOptions {
     QString family = QStringLiteral("Liberation Sans");
     double size = 24.0;
-    bool antialias = true;
+    int antialias = 1;
     int justification = 0;
     // The text colour: the foreground colour, or a reopened layer's colour.
     QColor color = Qt::black;

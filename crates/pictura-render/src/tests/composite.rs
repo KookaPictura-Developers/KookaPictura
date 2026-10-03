@@ -1,5 +1,5 @@
 use super::*;
-use pictura_core::{BlendIf, Knockout, TextStyle, TypeTool};
+use pictura_core::{BlendIf, CharacterAttrs, Knockout, ParagraphAttrs, TextStyle, TypeTool};
 
 // --- compositing pipeline ----------------------------------------------
 
@@ -660,10 +660,13 @@ fn blend_if_source_gate_changes_composite_output() {
 fn type_style() -> TextStyle {
     TextStyle {
         font: Some("Arial".into()),
-        font_size: 48.0,
-        fill_color: [1.0, 0.0, 0.0, 0.0],
-        tracking: 0.0,
-        justification: 0,
+        character: CharacterAttrs {
+            size: 48.0,
+            fill_color: [1.0, 0.0, 0.0, 0.0],
+            ..CharacterAttrs::default()
+        },
+        paragraph: ParagraphAttrs::default(),
+        ..TextStyle::default()
     }
 }
 

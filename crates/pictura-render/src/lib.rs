@@ -140,8 +140,8 @@ mod type_caret;
 pub use type_caret::type_caret_stops;
 mod type_layer;
 pub use type_layer::{
-    add_type_layer, render_type, replace_type_layer, type_layer_at, type_layer_spec, type_mask,
-    type_placement, TypePlacement,
+    add_type_layer, apply_type_style, render_type, replace_type_layer, type_layer_at,
+    type_layer_spec, type_mask, type_placement, TypePlacement,
 };
 
 pub use pictura_ops::{Anchor, Resample};

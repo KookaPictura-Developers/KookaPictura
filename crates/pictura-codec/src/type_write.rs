@@ -9,16 +9,33 @@
 //! font set — or it falls back to the pixels. Not written: warping (the warp
 //! descriptor says none), kinsoku / mojikumi sets (empty), and the `Rendered`
 //! cache Photoshop rebuilds. Ported from photorust's `core/src/psd/text_write.rs`.
+//!
+//! When the layer already has a text descriptor, its EngineData is parsed and
+//! the modelled keys of the single style run, paragraph sheet, and text are
+//! overwritten in place; every other key survives. A block with more than one
+//! style run collapses to the single modelled run (`ponytail:` ceiling named
+//! below). With no parseable block, the from-scratch skeleton is emitted.
 
-use pictura_core::{TypeSpec, TypeTool};
+use pictura_core::{Composer, KerningMode, Leading, TypeSpec, TypeTool};
 
-use crate::descriptor::{write_descriptor, DescValue};
-use crate::type_tool::decode_type_tool;
+use crate::descriptor::{get_object_item, write_descriptor, DescValue};
+use crate::encode_engine_data;
+use crate::engine_data::{as_str, get, parse_engine_data, EngineValue};
+use crate::type_tool::{ant_alias_spelling, decode_type_tool, engine_data_payload};
 
 /// The `TySh` view for `spec`, decoded back from the bytes it encodes to so the
 /// fonts and style match what a reopened file reports. `bounds` is the text box
-/// relative to the origin: left, top, right, bottom.
-pub fn author_type_tool(spec: &TypeSpec, bounds: [f64; 4]) -> TypeTool {
+/// relative to the origin: left, top, right, bottom. `existing` is the layer's
+/// current text descriptor bytes, whose EngineData is merged over.
+/// `font_name` is the face's PostScript name when the caller read one (a
+/// reopened layer's `TextStyle::font`), so its `/FontSet` entry is matched
+/// rather than duplicated.
+pub fn author_type_tool(
+    spec: &TypeSpec,
+    bounds: [f64; 4],
+    existing: Option<&[u8]>,
+    font_name: Option<&str>,
+) -> TypeTool {
     let mut tool = TypeTool {
         transform: [
             spec.matrix[0],
@@ -32,7 +49,7 @@ pub fn author_type_tool(spec: &TypeSpec, bounds: [f64; 4]) -> TypeTool {
         // ponytail: the trailing four integers are written as the rounded text
         // box; photorust writes zeros. Settle against a CS6-authored corpus.
         bounds: bounds.map(|v| v.round() as i32),
-        text_desc: text_descriptor(spec, bounds),
+        text_desc: text_descriptor(spec, bounds, existing, font_name),
         warp_desc: warp_descriptor(),
         fonts: Vec::new(),
         style: None,
@@ -81,8 +98,13 @@ fn bounds_object(class: &str, bounds: [f64; 4]) -> DescValue {
     object(class, items)
 }
 
-fn text_descriptor(spec: &TypeSpec, bounds: [f64; 4]) -> Vec<u8> {
-    let engine = engine_data(spec);
+fn text_descriptor(
+    spec: &TypeSpec,
+    bounds: [f64; 4],
+    existing: Option<&[u8]>,
+    font_name: Option<&str>,
+) -> Vec<u8> {
+    let engine = engine_data(spec, existing, font_name);
     let mut raw = b"tdta".to_vec();
     raw.extend_from_slice(&(engine.len() as u32).to_be_bytes());
     raw.extend_from_slice(&engine);
@@ -98,16 +120,12 @@ fn text_descriptor(spec: &TypeSpec, bounds: [f64; 4]) -> Vec<u8> {
                 key("Ornt"),
                 enumerated("Ornt", if spec.vertical { "Vrtc" } else { "Hrzn" }),
             ),
+            // ponytail: the Crisp/Strong/Smooth `AntA` spellings are inferred;
+            // validated against a CS6-authored PSD in the type-style-model
+            // follow-up.
             (
                 key("AntA"),
-                enumerated(
-                    "Annt",
-                    if spec.antialias {
-                        "antiAliasSharp"
-                    } else {
-                        "antiAliasNone"
-                    },
-                ),
+                enumerated("Annt", ant_alias_spelling(spec.character.anti_alias)),
             ),
             // Point text without a warp occupies exactly its own box.
             (key("bounds"), bounds_object("bounds", bounds)),
@@ -147,7 +165,388 @@ fn engine_body(text: &str) -> String {
     body
 }
 
-/// Assembles the dump as raw bytes: string values are binary UTF-16.
+/// The EngineData for a re-set layer: merge over the existing tree when one
+/// parses, else the complete skeleton.
+fn engine_data(spec: &TypeSpec, existing: Option<&[u8]>, font_name: Option<&str>) -> Vec<u8> {
+    if let Some(root) = existing.and_then(existing_engine_tree) {
+        let mut root = root;
+        merge_engine_data(&mut root, spec, font_name);
+        // A parsed tree is bounded by the parser's depth cap, so encoding it
+        // cannot exceed the encoder's cap; fall back to the skeleton only if a
+        // programmatic tree ever did.
+        if let Ok(bytes) = encode_engine_data(&root) {
+            return bytes;
+        }
+    }
+    skeleton_engine_data(spec, font_name)
+}
+
+/// The parsed EngineData of a text descriptor, or `None` when the descriptor or
+/// its EngineData is missing or unparseable.
+fn existing_engine_tree(text_desc: &[u8]) -> Option<EngineValue> {
+    let mut reader = crate::common::Reader::new(text_desc);
+    let value = crate::descriptor::read_descriptor(&mut reader).ok()?;
+    let DescValue::Object { items, .. } = value else {
+        return None;
+    };
+    let DescValue::Raw(raw) = get_object_item(&items, b"EngineData")? else {
+        return None;
+    };
+    parse_engine_data(engine_data_payload(raw)).ok()
+}
+
+/// Overwrite the modelled keys of the parsed tree, preserving every unmodeled
+/// one; collapse style runs to one and rebuild the paragraph runs to match the
+/// text.
+fn merge_engine_data(root: &mut EngineValue, spec: &TypeSpec, font_name: Option<&str>) {
+    let font = font_name
+        .map(str::to_owned)
+        .unwrap_or_else(|| postscript_name(&spec.character.font_family));
+    let font_index = ensure_font(
+        root,
+        &font,
+        &spec.character.font_family,
+        &spec.character.font_style,
+    );
+    let body = engine_body(&spec.text);
+    let style_total = body.encode_utf16().count() as i64;
+    let para_lengths: Vec<i64> = paragraph_lengths(&body)
+        .into_iter()
+        .map(|n| n as i64)
+        .collect();
+
+    let engine = child(root, "EngineDict");
+    set_child(
+        child(engine, "Editor"),
+        "Text",
+        EngineValue::String(body.clone()),
+    );
+    set_child(
+        engine,
+        "AntiAlias",
+        EngineValue::Int(spec.character.anti_alias.index() as i64),
+    );
+    set_child(
+        engine,
+        "UseFractionalGlyphWidths",
+        EngineValue::Bool(spec.character.fractional_widths),
+    );
+
+    let style_run = child(engine, "StyleRun");
+    let style_template = {
+        let entry = first_entry(style_run);
+        merge_character(style_data_of(entry), spec, font_index);
+        entry.clone()
+    };
+    if let Some(default) = dict_get_mut(style_run, "DefaultRunData") {
+        merge_character(style_data_of(default), spec, font_index);
+    }
+    set_child(
+        style_run,
+        "RunArray",
+        EngineValue::List(vec![style_template]),
+    );
+    set_child(
+        style_run,
+        "RunLengthArray",
+        EngineValue::List(vec![EngineValue::Int(style_total)]),
+    );
+
+    let para_run = child(engine, "ParagraphRun");
+    let para_template = {
+        let entry = first_entry(para_run);
+        merge_paragraph(paragraph_props_of(entry), spec);
+        entry.clone()
+    };
+    if let Some(default) = dict_get_mut(para_run, "DefaultRunData") {
+        merge_paragraph(paragraph_props_of(default), spec);
+    }
+    let count = para_lengths.len().max(1);
+    set_child(
+        para_run,
+        "RunArray",
+        EngineValue::List(vec![para_template; count]),
+    );
+    set_child(
+        para_run,
+        "RunLengthArray",
+        EngineValue::List(para_lengths.iter().map(|n| EngineValue::Int(*n)).collect()),
+    );
+
+    for container in ["ResourceDict", "DocumentResources"] {
+        let Some(res) = dict_get_mut(root, container) else {
+            continue;
+        };
+        if let Some(data) = set_style_data(res, "StyleSheetSet") {
+            merge_character(data, spec, font_index);
+        }
+        if let Some(props) = set_paragraph_props(res, "ParagraphSheetSet") {
+            merge_paragraph(props, spec);
+        }
+    }
+}
+
+/// Overwrite the modelled character keys of one `StyleSheetData`, preserving
+/// the rest.
+fn merge_character(data: &mut EngineValue, spec: &TypeSpec, font_index: i64) {
+    let c = &spec.character;
+    set_child(data, "Font", EngineValue::Int(font_index));
+    set_child(data, "FontSize", EngineValue::Double(c.size));
+    match c.leading {
+        Leading::Auto => {
+            set_child(data, "AutoLeading", EngineValue::Bool(true));
+            set_child(data, "Leading", EngineValue::Double(c.size * 1.2));
+        }
+        Leading::Fixed(value) => {
+            set_child(data, "AutoLeading", EngineValue::Bool(false));
+            set_child(data, "Leading", EngineValue::Double(value));
+        }
+    }
+    // Tracking is 1/1000 em, an integer in EngineData (psd-tools `tracking`).
+    set_child(
+        data,
+        "Tracking",
+        EngineValue::Int(c.tracking.round() as i64),
+    );
+    let (auto_kerning, kerning) = match c.kerning {
+        KerningMode::Manual(value) => (false, value),
+        KerningMode::Metrics => (true, 0),
+    };
+    set_child(data, "Kerning", EngineValue::Int(kerning as i64));
+    set_child(data, "AutoKerning", EngineValue::Bool(auto_kerning));
+    set_child(
+        data,
+        "HorizontalScale",
+        EngineValue::Double(c.horizontal_scale / 100.0),
+    );
+    set_child(
+        data,
+        "VerticalScale",
+        EngineValue::Double(c.vertical_scale / 100.0),
+    );
+    set_child(data, "BaselineShift", EngineValue::Double(c.baseline_shift));
+    set_child(data, "FontCaps", EngineValue::Int(font_caps(c)));
+    set_child(data, "FontBaseline", EngineValue::Int(font_baseline(c)));
+    set_child(data, "Underline", EngineValue::Bool(c.underline));
+    set_child(data, "Strikethrough", EngineValue::Bool(c.strikethrough));
+    let mut fill = EngineValue::Dict(Vec::new());
+    set_child(&mut fill, "Type", EngineValue::Int(1));
+    set_child(
+        &mut fill,
+        "Values",
+        EngineValue::List(
+            c.fill_color
+                .iter()
+                .map(|v| EngineValue::Double(*v))
+                .collect(),
+        ),
+    );
+    set_child(data, "FillColor", fill);
+}
+
+/// Overwrite the modelled paragraph keys of one `Properties`, preserving the
+/// rest.
+fn merge_paragraph(props: &mut EngineValue, spec: &TypeSpec) {
+    let p = &spec.paragraph;
+    set_child(
+        props,
+        "Justification",
+        EngineValue::Int(p.justify.index() as i64),
+    );
+    set_child(
+        props,
+        "FirstLineIndent",
+        EngineValue::Double(p.first_line_indent),
+    );
+    set_child(props, "StartIndent", EngineValue::Double(p.start_indent));
+    set_child(props, "EndIndent", EngineValue::Double(p.end_indent));
+    set_child(props, "SpaceBefore", EngineValue::Double(p.space_before));
+    set_child(props, "SpaceAfter", EngineValue::Double(p.space_after));
+    set_child(props, "AutoHyphenate", EngineValue::Bool(p.hyphenate));
+    set_child(props, "Hanging", EngineValue::Bool(p.hanging));
+    for (key, values) in [
+        ("WordSpacing", p.word_spacing),
+        ("LetterSpacing", p.letter_spacing),
+        ("GlyphSpacing", p.glyph_spacing),
+    ] {
+        set_child(
+            props,
+            key,
+            EngineValue::List(values.iter().map(|v| EngineValue::Double(*v)).collect()),
+        );
+    }
+    // `/LeadingType` has no model field: a merge must preserve the existing
+    // value. The from-scratch skeleton writes the constant 0.
+    set_child(
+        props,
+        "EveryLineComposer",
+        EngineValue::Bool(p.composer == Composer::EveryLine),
+    );
+}
+
+fn font_caps(c: &pictura_core::CharacterAttrs) -> i64 {
+    if c.all_caps {
+        2
+    } else if c.small_caps {
+        1
+    } else {
+        0
+    }
+}
+
+fn font_baseline(c: &pictura_core::CharacterAttrs) -> i64 {
+    if c.superscript {
+        1
+    } else if c.subscript {
+        2
+    } else {
+        0
+    }
+}
+
+/// The `FontSet` the reader resolves `/Font` against: the first of
+/// `ResourceDict`, then `DocumentResources`, that carries one; created under
+/// `ResourceDict` when neither does. `extract_fonts` makes the same choice, so
+/// an index into this list names the face the reader sees.
+fn reader_font_set(root: &mut EngineValue) -> &mut EngineValue {
+    let container = ["ResourceDict", "DocumentResources"]
+        .into_iter()
+        .find(|name| get(root, name).and_then(|c| get(c, "FontSet")).is_some())
+        .unwrap_or("ResourceDict");
+    let set = child(child(root, container), "FontSet");
+    if !matches!(set, EngineValue::List(_)) {
+        *set = EngineValue::List(Vec::new());
+    }
+    set
+}
+
+/// The index of the face in the reader's `FontSet`, appending a new entry when
+/// it is absent so the run can always name its font. An entry matches on either
+/// its `/Name` (the PostScript name) or its `/FontFamily`, so a reopened
+/// `Name=ArialMT / FontFamily=Arial` set is reused for family `Arial` rather
+/// than duplicated.
+fn ensure_font(root: &mut EngineValue, name: &str, family: &str, style: &str) -> i64 {
+    let set = reader_font_set(root);
+    let EngineValue::List(items) = set else {
+        unreachable!()
+    };
+    let matches = |entry: &EngineValue| {
+        get(entry, "Name").and_then(as_str) == Some(name)
+            || (!family.is_empty() && get(entry, "FontFamily").and_then(as_str) == Some(family))
+    };
+    if let Some(index) = items.iter().position(matches) {
+        return index as i64;
+    }
+    let mut entry = EngineValue::Dict(Vec::new());
+    set_child(&mut entry, "Name", EngineValue::String(name.to_string()));
+    if !family.is_empty() {
+        set_child(
+            &mut entry,
+            "FontFamily",
+            EngineValue::String(family.to_string()),
+        );
+    }
+    if !style.is_empty() {
+        set_child(
+            &mut entry,
+            "FontStyle",
+            EngineValue::String(style.to_string()),
+        );
+    }
+    set_child(&mut entry, "Script", EngineValue::Int(0));
+    set_child(&mut entry, "FontType", EngineValue::Int(1));
+    set_child(&mut entry, "Synthetic", EngineValue::Int(0));
+    let index = items.len() as i64;
+    items.push(entry);
+    index
+}
+
+fn dict_get_mut<'a>(value: &'a mut EngineValue, key: &str) -> Option<&'a mut EngineValue> {
+    match value {
+        EngineValue::Dict(items) => items
+            .iter_mut()
+            .find(|(k, _)| k == key)
+            .map(|(_, value)| value),
+        _ => None,
+    }
+}
+
+/// Get `parent[key]`, creating a dict entry when it is absent.
+fn child<'a>(parent: &'a mut EngineValue, key: &str) -> &'a mut EngineValue {
+    if !matches!(parent, EngineValue::Dict(_)) {
+        *parent = EngineValue::Dict(Vec::new());
+    }
+    if dict_get_mut(parent, key).is_none() {
+        if let EngineValue::Dict(items) = parent {
+            items.push((key.to_string(), EngineValue::Dict(Vec::new())));
+        }
+    }
+    dict_get_mut(parent, key).unwrap()
+}
+
+fn set_child(parent: &mut EngineValue, key: &str, value: EngineValue) {
+    if let EngineValue::Dict(items) = parent {
+        match items.iter_mut().find(|(k, _)| k == key) {
+            Some((_, slot)) => *slot = value,
+            None => items.push((key.to_string(), value)),
+        }
+    }
+}
+
+/// The first `RunArray` entry, creating the run when the array is absent.
+fn first_entry(run: &mut EngineValue) -> &mut EngineValue {
+    let list = child(run, "RunArray");
+    if !matches!(list, EngineValue::List(_)) {
+        *list = EngineValue::List(Vec::new());
+    }
+    let EngineValue::List(items) = list else {
+        unreachable!()
+    };
+    if items.is_empty() {
+        items.push(EngineValue::Dict(Vec::new()));
+    }
+    &mut items[0]
+}
+
+fn style_data_of(entry: &mut EngineValue) -> &mut EngineValue {
+    child(child(entry, "StyleSheet"), "StyleSheetData")
+}
+
+fn paragraph_props_of(entry: &mut EngineValue) -> &mut EngineValue {
+    child(child(entry, "ParagraphSheet"), "Properties")
+}
+
+fn first_existing<'a>(res: &'a mut EngineValue, key: &str) -> Option<&'a mut EngineValue> {
+    match dict_get_mut(res, key) {
+        Some(EngineValue::List(items)) => items.first_mut(),
+        _ => None,
+    }
+}
+
+/// The `StyleSheetData` of a `StyleSheetSet` entry, `None` when absent. The
+/// entry either holds `/StyleSheetData` directly or nests it under
+/// `/StyleSheet`.
+fn set_style_data<'a>(res: &'a mut EngineValue, key: &str) -> Option<&'a mut EngineValue> {
+    let entry = first_existing(res, key)?;
+    if get(entry, "StyleSheetData").is_some() {
+        return dict_get_mut(entry, "StyleSheetData");
+    }
+    dict_get_mut(entry, "StyleSheet").and_then(|sheet| dict_get_mut(sheet, "StyleSheetData"))
+}
+
+/// The `Properties` of a `ParagraphSheetSet` entry, `None` when absent; the
+/// entry either holds `/Properties` directly or nests it under
+/// `/ParagraphSheet`.
+fn set_paragraph_props<'a>(res: &'a mut EngineValue, key: &str) -> Option<&'a mut EngineValue> {
+    let entry = first_existing(res, key)?;
+    if get(entry, "Properties").is_some() {
+        return dict_get_mut(entry, "Properties");
+    }
+    dict_get_mut(entry, "ParagraphSheet").and_then(|sheet| dict_get_mut(sheet, "Properties"))
+}
+
+/// Assembles the from-scratch dump as raw bytes: string values are binary
+/// UTF-16.
 struct Dump {
     out: Vec<u8>,
 }
@@ -185,9 +584,11 @@ impl Dump {
     }
 }
 
-fn engine_data(spec: &TypeSpec) -> Vec<u8> {
+fn skeleton_engine_data(spec: &TypeSpec, font_name: Option<&str>) -> Vec<u8> {
     let body = engine_body(&spec.text);
-    let font = postscript_name(&spec.font);
+    let font = font_name
+        .map(str::to_owned)
+        .unwrap_or_else(|| postscript_name(&spec.character.font_family));
     let mut d = Dump {
         out: b"\n\n".to_vec(),
     };
@@ -199,9 +600,17 @@ fn engine_data(spec: &TypeSpec) -> Vec<u8> {
     paragraph_run(&mut d, spec, &body);
     style_run(&mut d, spec, &body);
     grid_info(&mut d);
-    // 0 is None; 1 is Sharp, the setting the tool's anti-aliasing means.
-    d.line(2, &format!("/AntiAlias {}", u8::from(spec.antialias)));
-    d.line(2, "/UseFractionalGlyphWidths true");
+    d.line(
+        2,
+        &format!("/AntiAlias {}", spec.character.anti_alias.index()),
+    );
+    d.line(
+        2,
+        &format!(
+            "/UseFractionalGlyphWidths {}",
+            spec.character.fractional_widths
+        ),
+    );
     d.close(1);
     // `ResourceDict` is what this layer uses, `DocumentResources` what the
     // document offers; identical is right for a lone text layer.
@@ -221,13 +630,13 @@ fn engine_data(spec: &TypeSpec) -> Vec<u8> {
 fn paragraph_run(d: &mut Dump, spec: &TypeSpec, body: &str) {
     d.open(2, "/ParagraphRun");
     d.open(3, "/DefaultRunData");
-    paragraph_sheet(d, 4, spec.justification);
+    paragraph_sheet(d, 4, spec);
     d.close(3);
     let lengths = paragraph_lengths(body);
     d.line(3, "/RunArray [");
     for _ in &lengths {
         d.line(4, "<<");
-        paragraph_sheet(d, 5, spec.justification);
+        paragraph_sheet(d, 5, spec);
         d.line(4, ">>");
     }
     d.line(3, "]");
@@ -236,32 +645,34 @@ fn paragraph_run(d: &mut Dump, spec: &TypeSpec, body: &str) {
     d.close(2);
 }
 
-fn paragraph_sheet(d: &mut Dump, depth: usize, justification: u8) {
+fn paragraph_sheet(d: &mut Dump, depth: usize, spec: &TypeSpec) {
+    let p = &spec.paragraph;
+    let triplet = |v: [f64; 3]| format!("[ {} {} {} ]", number(v[0]), number(v[1]), number(v[2]));
     d.open(depth, "/ParagraphSheet");
     d.line(depth + 1, "/DefaultStyleSheet 0");
     d.open(depth + 1, "/Properties");
     for line in [
-        format!("/Justification {justification}"),
-        "/FirstLineIndent 0.0".into(),
-        "/StartIndent 0.0".into(),
-        "/EndIndent 0.0".into(),
-        "/SpaceBefore 0.0".into(),
-        "/SpaceAfter 0.0".into(),
-        "/AutoHyphenate true".into(),
+        format!("/Justification {}", p.justify.index()),
+        format!("/FirstLineIndent {}", number(p.first_line_indent)),
+        format!("/StartIndent {}", number(p.start_indent)),
+        format!("/EndIndent {}", number(p.end_indent)),
+        format!("/SpaceBefore {}", number(p.space_before)),
+        format!("/SpaceAfter {}", number(p.space_after)),
+        format!("/AutoHyphenate {}", p.hyphenate),
         "/HyphenatedWordSize 6".into(),
         "/PreHyphen 2".into(),
         "/PostHyphen 3".into(),
         "/ConsecutiveHyphens 8".into(),
         "/Zone 36.0".into(),
-        "/WordSpacing [ .8 1.0 1.33 ]".into(),
-        "/LetterSpacing [ 0.0 0.0 0.0 ]".into(),
-        "/GlyphSpacing [ 1.0 1.0 1.0 ]".into(),
+        format!("/WordSpacing {}", triplet(p.word_spacing)),
+        format!("/LetterSpacing {}", triplet(p.letter_spacing)),
+        format!("/GlyphSpacing {}", triplet(p.glyph_spacing)),
         "/AutoLeading 1.2".into(),
         "/LeadingType 0".into(),
-        "/Hanging false".into(),
+        format!("/Hanging {}", p.hanging),
         "/Burasagari false".into(),
         "/KinsokuOrder 0".into(),
-        "/EveryLineComposer false".into(),
+        format!("/EveryLineComposer {}", p.composer == Composer::EveryLine),
     ] {
         d.line(depth + 2, &line);
     }
@@ -276,11 +687,11 @@ fn paragraph_sheet(d: &mut Dump, depth: usize, justification: u8) {
 fn style_run(d: &mut Dump, spec: &TypeSpec, body: &str) {
     d.open(2, "/StyleRun");
     d.open(3, "/DefaultRunData");
-    style_sheet(d, 4, spec);
+    style_sheet(d, 4, spec, 0);
     d.close(3);
     d.line(3, "/RunArray [");
     d.line(4, "<<");
-    style_sheet(d, 5, spec);
+    style_sheet(d, 5, spec, 0);
     d.line(4, ">>");
     d.line(3, "]");
     d.line(
@@ -292,34 +703,54 @@ fn style_run(d: &mut Dump, spec: &TypeSpec, body: &str) {
 }
 
 /// One style sheet; the font set holds the spec's single font, so `/Font` is 0.
-fn style_sheet(d: &mut Dump, depth: usize, spec: &TypeSpec) {
+fn style_sheet(d: &mut Dump, depth: usize, spec: &TypeSpec, font_index: usize) {
+    let c = &spec.character;
+    let (auto_kerning, kerning) = match c.kerning {
+        KerningMode::Manual(value) => (false, value),
+        KerningMode::Metrics => (true, 0),
+    };
+    let mut lines = vec![
+        format!("/Font {font_index}"),
+        format!("/FontSize {}", number(c.size)),
+    ];
+    match c.leading {
+        Leading::Auto => {
+            lines.push("/AutoLeading true".into());
+            lines.push(format!("/Leading {}", number(c.size * 1.2)));
+        }
+        Leading::Fixed(value) => {
+            lines.push("/AutoLeading false".into());
+            lines.push(format!("/Leading {}", number(value)));
+        }
+    }
+    lines.push(format!(
+        "/HorizontalScale {}",
+        number(c.horizontal_scale / 100.0)
+    ));
+    lines.push(format!(
+        "/VerticalScale {}",
+        number(c.vertical_scale / 100.0)
+    ));
+    lines.push(format!("/Tracking {}", c.tracking.round() as i64));
+    lines.push(format!("/BaselineShift {}", number(c.baseline_shift)));
+    lines.push(format!("/AutoKerning {auto_kerning}"));
+    lines.push(format!("/Kerning {kerning}"));
+    lines.push(format!("/FontCaps {}", font_caps(c)));
+    lines.push(format!("/FontBaseline {}", font_baseline(c)));
+    lines.push(format!("/Underline {}", c.underline));
+    lines.push(format!("/Strikethrough {}", c.strikethrough));
+    lines.push("/Ligatures true".into());
+    lines.push("/StyleRunAlignment 2".into());
+    lines.push("/NoBreak false".into());
     d.open(depth, "/StyleSheet");
     d.open(depth + 1, "/StyleSheetData");
-    for line in [
-        "/Font 0".to_string(),
-        format!("/FontSize {}", number(spec.size)),
-        "/AutoLeading true".into(),
-        format!("/Leading {}", number(spec.size * 1.2)),
-        "/HorizontalScale 1.0".into(),
-        "/VerticalScale 1.0".into(),
-        "/Tracking 0".into(),
-        "/BaselineShift 0.0".into(),
-        "/AutoKerning true".into(),
-        "/Kerning 0".into(),
-        "/FontCaps 0".into(),
-        "/FontBaseline 0".into(),
-        "/Underline false".into(),
-        "/Strikethrough false".into(),
-        "/Ligatures true".into(),
-        "/StyleRunAlignment 2".into(),
-        "/NoBreak false".into(),
-    ] {
+    for line in lines {
         d.line(depth + 2, &line);
     }
     d.open(depth + 2, "/FillColor");
     // Type 1 is RGB; the values run alpha first, as fractions.
     d.line(depth + 3, "/Type 1");
-    let [r, g, b, a] = spec.color.map(|v| number(f64::from(v) / 255.0));
+    let [a, r, g, b] = c.fill_color.map(number);
     d.line(depth + 3, &format!("/Values [ {a} {r} {g} {b} ]"));
     d.close(depth + 2);
     d.line(depth + 2, "/FillFlag true");
@@ -357,18 +788,20 @@ fn resources(d: &mut Dump, spec: &TypeSpec, font: &str) {
     d.line(3, "<<");
     d.string(4, "/Name", "Normal RGB");
     d.line(4, "/DefaultStyleSheet 0");
-    paragraph_sheet(d, 4, spec.justification);
+    paragraph_sheet(d, 4, spec);
     d.line(3, ">>");
     d.line(2, "]");
     d.line(2, "/StyleSheetSet [");
     d.line(3, "<<");
     d.string(4, "/Name", "Normal RGB");
-    style_sheet(d, 4, spec);
+    style_sheet(d, 4, spec, 0);
     d.line(3, ">>");
     d.line(2, "]");
     d.line(2, "/FontSet [");
     d.line(3, "<<");
     d.string(4, "/Name", font);
+    d.string(4, "/FontFamily", &spec.character.font_family);
+    d.string(4, "/FontStyle", &spec.character.font_style);
     d.line(4, "/Script 0");
     d.line(4, "/FontType 1");
     d.line(4, "/Synthetic 0");
@@ -434,57 +867,5 @@ fn number(value: f64) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::engine_data::parse_engine_data;
-
-    fn spec(text: &str, vertical: bool) -> TypeSpec {
-        TypeSpec {
-            text: text.into(),
-            font: "Liberation Sans".into(),
-            size: 36.0,
-            color: [255, 0, 0, 255],
-            justification: 2,
-            vertical,
-            antialias: true,
-            origin: (40.0, 60.0),
-            matrix: TypeSpec::IDENTITY,
-        }
-    }
-
-    #[test]
-    fn authored_type_tool_reads_back_as_written() {
-        let tool = author_type_tool(&spec("Hi (there)\rtwo", false), [-50.0, -30.0, 50.0, 40.0]);
-        let back = decode_type_tool(&crate::encode_type_tool(&tool)).expect("decodes");
-        assert_eq!(back, tool);
-        assert_eq!(back.text, "Hi (there)\rtwo");
-        assert_eq!(back.transform, [1.0, 0.0, 0.0, 1.0, 40.0, 60.0]);
-        assert_eq!(back.bounds, [-50, -30, 50, 40]);
-        assert!(!back.vertical);
-        assert_eq!(back.fonts, ["LiberationSans"]);
-        let style = back.style.expect("style");
-        assert_eq!(style.font.as_deref(), Some("LiberationSans"));
-        assert_eq!(style.font_size, 36.0);
-        assert_eq!(style.rgba(), [255, 0, 0, 255]);
-        assert_eq!(style.justification, 2);
-    }
-
-    #[test]
-    fn vertical_orientation_round_trips() {
-        let tool = author_type_tool(&spec("V", true), [0.0, 0.0, 10.0, 10.0]);
-        assert!(tool.vertical);
-        let back = decode_type_tool(&crate::encode_type_tool(&tool)).expect("decodes");
-        assert!(back.vertical);
-    }
-
-    #[test]
-    fn run_lengths_cover_the_engine_text() {
-        let engine = engine_data(&spec("ab\rcd", false));
-        assert_eq!(engine.len() % 2, 0);
-        let root = parse_engine_data(&engine).expect("parses");
-        let text = format!("{root:?}");
-        assert!(text.contains("String(\"ab\\rcd\\r\")"), "{text}");
-        assert!(text.contains("(\"RunLengthArray\", List([Int(3), Int(3)]))"));
-        assert!(text.contains("(\"RunLengthArray\", List([Int(6)]))"));
-    }
-}
+#[path = "type_write/tests.rs"]
+mod tests;

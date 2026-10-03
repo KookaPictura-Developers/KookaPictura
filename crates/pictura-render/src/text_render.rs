@@ -8,8 +8,9 @@
 //! `ttf-parser` answers the metrics (glyph count, lookup, ascent).
 
 use pictura_core::{
-    layout_lines, Channel, Document, GlyphMask, Layer, LayoutParams, PixelBuffer, PsdRect,
-    RasterRequest, Rasterizer, ShapedGlyph, TextAlign, TextLayout, TextProvenance, TypeTool,
+    layout_lines, Channel, Document, GlyphMask, KerningMode, Layer, LayoutParams, PixelBuffer,
+    PsdRect, RasterRequest, Rasterizer, ShapedGlyph, TextAlign, TextLayout, TextProvenance,
+    TypeTool,
 };
 use rustybuzz::ttf_parser;
 use swash::scale::{Render, ScaleContext, Source};
@@ -312,16 +313,29 @@ pub(crate) fn render_text_buffer(
     if width <= 0 || height <= 0 {
         return None;
     }
-    let font_size = style.font_size as f32;
+    let font_size = style.character.size as f32;
     let color = style.rgba().map(|c| f64::from(c) / 255.0);
     let bundled = crate::fonts::face_for(style.font.as_deref().unwrap_or_default())?;
     let layout = layout_type(bundled, type_tool, width, height)?;
-    paint_layout(bundled, &layout, width, height, font_size, color)
+    let scale = [
+        (style.character.horizontal_scale / 100.0) as f32,
+        (style.character.vertical_scale / 100.0) as f32,
+    ];
+    paint_layout_scaled(bundled, &layout, width, height, font_size, color, scale)
 }
 
 /// Lay a type tool's text out in a `width × height` box (horizontal lines
 /// aligned across it, or vertical columns); glyph `y` is the baseline less the
 /// ascent, as [`paint_layout`] expects. `None` without a style or any glyph.
+///
+/// Renders the character attributes: auto/fixed leading, tracking, manual
+/// kerning, horizontal/vertical scale, and baseline shift; and the left /
+/// centre / right alignment.
+///
+/// ponytail: paragraph indents, space before/after, hanging punctuation,
+/// hyphenation, word/letter/glyph spacing, the composer, and the full
+/// justification variants 3-6 are authored to the engine data but not laid out;
+/// render them when a paragraph-layout engine exists.
 pub(crate) fn layout_type(
     bundled: &BundledText,
     type_tool: &TypeTool,
@@ -329,34 +343,65 @@ pub(crate) fn layout_type(
     height: i32,
 ) -> Option<TextLayout> {
     let style = type_tool.style.as_ref()?;
-    let font_size = style.font_size as f32;
+    let c = &style.character;
+    let font_size = c.size as f32;
+    let h = (c.horizontal_scale / 100.0) as f32;
+    let v = (c.vertical_scale / 100.0) as f32;
+    let leading = crate::type_layer::leading_px(font_size, c.leading);
+    let extra = match c.kerning {
+        KerningMode::Manual(value) => value as f32,
+        KerningMode::Metrics => 0.0,
+    };
+    let tracking = c.tracking as f32 + extra;
+    let shift = c.baseline_shift as f32;
     let lines = crate::type_layer::type_lines(&type_tool.text);
     let layout = if type_tool.vertical {
         crate::type_layer::vertical_layout(
             bundled,
             &lines,
             font_size,
-            style.justification,
+            style.paragraph.justify.index(),
             width as f32,
             height as f32,
+            leading,
+            h,
+            v,
+            shift,
         )
     } else {
-        let tracking = style.tracking as f32;
         let shaped: Vec<Vec<ShapedGlyph>> = lines
             .iter()
-            .map(|line| bundled.shape_line(line, font_size, tracking))
+            .map(|line| {
+                bundled
+                    .shape_line(line, font_size, 0.0)
+                    .into_iter()
+                    .map(|mut g| {
+                        g.advance *= h;
+                        g.x_offset *= h;
+                        g.y_offset *= v;
+                        g
+                    })
+                    .collect()
+            })
             .collect();
-        layout_lines(
+        let mut layout = layout_lines(
             &shaped,
             &LayoutParams {
                 font_size,
                 units_per_em: font_size,
                 tracking,
-                leading: font_size * 1.2,
-                align: TextAlign::from_justification(style.justification),
+                leading,
+                align: TextAlign::from_justification(style.paragraph.justify.index()),
                 wrap_width: Some(width as f32),
             },
-        )
+        );
+        // Baseline shift moves the run off its baseline (positive is up).
+        for line in &mut layout.lines {
+            for glyph in &mut line.glyphs {
+                glyph.y -= shift;
+            }
+        }
+        layout
     };
     if layout.lines.iter().all(|line| line.glyphs.is_empty()) {
         return None;
@@ -366,6 +411,7 @@ pub(crate) fn layout_type(
 
 /// Paint a laid-out run into a `width × height` buffer: each glyph's baseline
 /// is its own (offset-adjusted) `y`, so GPOS marks land on the right row.
+#[cfg(test)]
 pub(crate) fn paint_layout(
     bundled: &BundledText,
     layout: &TextLayout,
@@ -373,6 +419,21 @@ pub(crate) fn paint_layout(
     height: i32,
     font_size: f32,
     color: [f64; 4],
+) -> Option<PixelBuffer> {
+    paint_layout_scaled(bundled, layout, width, height, font_size, color, [1.0, 1.0])
+}
+
+/// [`paint_layout`] with the character H/V scale applied to each glyph outline
+/// (`[1.0, 1.0]` is identity).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn paint_layout_scaled(
+    bundled: &BundledText,
+    layout: &TextLayout,
+    width: i32,
+    height: i32,
+    font_size: f32,
+    color: [f64; 4],
+    scale: [f32; 2],
 ) -> Option<PixelBuffer> {
     let mut out = PixelBuffer::new(width as u32, height as u32, 4);
     let rasterizer = bundled.rasterizer();
@@ -384,14 +445,20 @@ pub(crate) fn paint_layout(
             let px = fx.floor();
             let fy = glyph.y + baseline_shift;
             let py = fy.floor();
-            let Some(mask) = rasterizer.rasterize(&RasterRequest {
+            let request = RasterRequest {
                 glyph: glyph.id,
                 px_size: font_size,
                 subpixel_x: fx - px,
                 // swash offsets the outline in its y-up frame, so a baseline
                 // `frac` below `py` needs the opposite-signed offset.
                 subpixel_y: py - fy,
-            }) else {
+            };
+            let mask = if scale == [1.0, 1.0] {
+                rasterizer.rasterize(&request)
+            } else {
+                rasterizer.rasterize_mapped(&request, [scale[0], 0.0, 0.0, scale[1]])
+            };
+            let Some(mask) = mask else {
                 continue;
             };
             painted |= blit_glyph(&mut out, &mask, px as i32, py as i32, color);
@@ -508,8 +575,8 @@ fn tint(coverage: u8, channel: f64) -> u8 {
 mod tests {
     use super::*;
     use pictura_core::{
-        BitDepth, ColorMode, Layer, LayerBlock, LayoutLine, PlacedGlyph, PsdRect, TextStyle,
-        TypeTool,
+        BitDepth, CharacterAttrs, ColorMode, Layer, LayerBlock, LayoutLine, ParagraphAttrs,
+        PlacedGlyph, PsdRect, TextStyle, TypeTool,
     };
 
     fn bundled() -> BundledText {
@@ -546,10 +613,13 @@ mod tests {
     fn style() -> TextStyle {
         TextStyle {
             font: Some("Arial".into()),
-            font_size: 48.0,
-            fill_color: [1.0, 0.0, 0.0, 0.0],
-            tracking: 0.0,
-            justification: 0,
+            character: CharacterAttrs {
+                size: 48.0,
+                fill_color: [1.0, 0.0, 0.0, 0.0],
+                ..CharacterAttrs::default()
+            },
+            paragraph: ParagraphAttrs::default(),
+            ..TextStyle::default()
         }
     }
 

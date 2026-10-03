@@ -7,7 +7,9 @@
 //! otherwise). Malformed input returns [`PsdError::Invalid`]; the caller keeps
 //! the document readable.
 
-use pictura_core::TextStyle;
+use pictura_core::{
+    AntiAlias, CharacterAttrs, Composer, Justify, KerningMode, Leading, ParagraphAttrs, TextStyle,
+};
 
 use crate::error::PsdError;
 
@@ -55,38 +57,92 @@ pub fn extract_fonts(root: &EngineValue) -> Vec<String> {
         .collect()
 }
 
-/// First style run's effective values, resolved against the style-sheet and
-/// paragraph defaults.
+/// First style run's effective character attributes and first paragraph run's
+/// effective paragraph attributes, resolved against the style-sheet and
+/// paragraph-sheet defaults.
 pub fn extract_style(root: &EngineValue, fonts: &[String]) -> TextStyle {
     let run = path(root, &["EngineDict", "StyleRun", "RunArray"])
         .map(as_list)
         .and_then(|list| list.first())
         .and_then(|entry| path(entry, &["StyleSheet", "StyleSheetData"]))
         .filter(|v| is_dict(v));
-    let default =
+    let char_default =
         style_sheet(root, "ResourceDict").or_else(|| style_sheet(root, "DocumentResources"));
+    let paragraph = path(root, &["EngineDict", "ParagraphRun", "RunArray"])
+        .map(as_list)
+        .and_then(|list| list.first())
+        .and_then(|entry| path(entry, &["ParagraphSheet", "Properties"]))
+        .filter(|v| is_dict(v));
+    let paragraph_default = paragraph_sheet(root, "ResourceDict")
+        .or_else(|| paragraph_sheet(root, "DocumentResources"))
+        .or_else(|| {
+            path(
+                root,
+                &[
+                    "EngineDict",
+                    "ParagraphRun",
+                    "DefaultRunData",
+                    "ParagraphSheet",
+                    "Properties",
+                ],
+            )
+            .filter(|v| is_dict(v))
+        });
 
     let pick_int = |key: &str| {
         run.and_then(|v| get(v, key))
             .and_then(as_i64)
-            .or_else(|| default.and_then(|v| get(v, key)).and_then(as_i64))
+            .or_else(|| char_default.and_then(|v| get(v, key)).and_then(as_i64))
     };
     let pick_num = |key: &str| {
         run.and_then(|v| get(v, key))
             .and_then(as_f64)
-            .or_else(|| default.and_then(|v| get(v, key)).and_then(as_f64))
+            .or_else(|| char_default.and_then(|v| get(v, key)).and_then(as_f64))
+    };
+    let pick_bool = |key: &str| {
+        run.and_then(|v| get(v, key))
+            .and_then(as_bool)
+            .or_else(|| char_default.and_then(|v| get(v, key)).and_then(as_bool))
     };
 
-    let font = pick_int("Font")
-        .filter(|index| *index >= 0)
-        .and_then(|index| fonts.get(index as usize).cloned());
-    let font_size = pick_num("FontSize").unwrap_or(0.0);
-    let tracking = pick_num("Tracking").unwrap_or(0.0);
+    let font_index = pick_int("Font").filter(|index| *index >= 0);
+    let font = font_index.and_then(|index| fonts.get(index as usize).cloned());
+    let font_entry = font_index.and_then(|index| font_set_entry(root, index as usize));
+    let font_family = font_entry
+        .and_then(|entry| get(entry, "FontFamily"))
+        .and_then(as_str)
+        .map(str::to_owned)
+        .or_else(|| font.clone())
+        .unwrap_or_default();
+    let font_style = font_entry
+        .and_then(|entry| get(entry, "FontStyle"))
+        .and_then(as_str)
+        .unwrap_or_default()
+        .to_string();
+
+    let leading = if pick_bool("AutoLeading").unwrap_or(true) {
+        Leading::Auto
+    } else {
+        Leading::Fixed(pick_num("Leading").unwrap_or(0.0))
+    };
+    let kerning = {
+        let auto = pick_bool("AutoKerning")
+            .or_else(|| pick_bool("AutoKern"))
+            .unwrap_or(true);
+        let manual = pick_int("Kerning").unwrap_or(0);
+        if !auto && manual != 0 {
+            KerningMode::Manual(manual as i32)
+        } else {
+            KerningMode::Metrics
+        }
+    };
+    let font_caps = pick_int("FontCaps").unwrap_or(0);
+    let font_baseline = pick_int("FontBaseline").unwrap_or(0);
     let fill_color = run
         .and_then(|v| get(v, "FillColor"))
         .and_then(|v| get(v, "Values"))
         .or_else(|| {
-            default
+            char_default
                 .and_then(|v| get(v, "FillColor"))
                 .and_then(|v| get(v, "Values"))
         })
@@ -101,20 +157,116 @@ pub fn extract_style(root: &EngineValue, fonts: &[String]) -> TextStyle {
             ]
         })
         .unwrap_or([0.0, 0.0, 0.0, 1.0]);
-    let justification = path(root, &["EngineDict", "ParagraphRun", "RunArray"])
-        .map(as_list)
-        .and_then(|list| list.first())
-        .and_then(|entry| path(entry, &["ParagraphSheet", "Properties", "Justification"]))
-        .and_then(as_i64)
-        .unwrap_or(0) as u8;
+    let anti_alias = path(root, &["EngineDict", "AntiAlias"])
+        .and_then(as_bool)
+        .map(|enabled| {
+            if enabled {
+                AntiAlias::Sharp
+            } else {
+                AntiAlias::None
+            }
+        })
+        .unwrap_or_default();
+    let fractional_widths = path(root, &["EngineDict", "UseFractionalGlyphWidths"])
+        .and_then(as_bool)
+        .unwrap_or(true);
+
+    let character = CharacterAttrs {
+        font_family,
+        font_style,
+        size: pick_num("FontSize").unwrap_or(0.0),
+        leading,
+        kerning,
+        tracking: pick_num("Tracking").unwrap_or(0.0),
+        horizontal_scale: pick_num("HorizontalScale").unwrap_or(1.0) * 100.0,
+        vertical_scale: pick_num("VerticalScale").unwrap_or(1.0) * 100.0,
+        baseline_shift: pick_num("BaselineShift").unwrap_or(0.0),
+        anti_alias,
+        fill_color,
+        all_caps: font_caps == 2,
+        small_caps: font_caps == 1,
+        superscript: font_baseline == 1,
+        subscript: font_baseline == 2,
+        underline: pick_bool("Underline").unwrap_or(false),
+        strikethrough: pick_bool("Strikethrough").unwrap_or(false),
+        fractional_widths,
+    };
+
+    let p_int = |key: &str| {
+        paragraph
+            .and_then(|v| get(v, key))
+            .and_then(as_i64)
+            .or_else(|| paragraph_default.and_then(|v| get(v, key)).and_then(as_i64))
+    };
+    let p_num = |key: &str| {
+        paragraph
+            .and_then(|v| get(v, key))
+            .and_then(as_f64)
+            .or_else(|| paragraph_default.and_then(|v| get(v, key)).and_then(as_f64))
+    };
+    let p_bool = |key: &str| {
+        paragraph
+            .and_then(|v| get(v, key))
+            .and_then(as_bool)
+            .or_else(|| {
+                paragraph_default
+                    .and_then(|v| get(v, key))
+                    .and_then(as_bool)
+            })
+    };
+    let p_triplet = |key: &str, default: [f64; 3]| {
+        paragraph
+            .and_then(|v| get(v, key))
+            .or_else(|| paragraph_default.and_then(|v| get(v, key)))
+            .map(as_list)
+            .filter(|values| values.len() >= 3)
+            .map(|values| {
+                [
+                    as_f64(&values[0]).unwrap_or(default[0]),
+                    as_f64(&values[1]).unwrap_or(default[1]),
+                    as_f64(&values[2]).unwrap_or(default[2]),
+                ]
+            })
+            .unwrap_or(default)
+    };
+
+    let paragraph = ParagraphAttrs {
+        justify: Justify::from_index(p_int("Justification").unwrap_or(0) as u8).unwrap_or_default(),
+        word_spacing: p_triplet("WordSpacing", [0.8, 1.0, 1.33]),
+        letter_spacing: p_triplet("LetterSpacing", [0.0, 0.0, 0.0]),
+        glyph_spacing: p_triplet("GlyphSpacing", [1.0, 1.0, 1.0]),
+        start_indent: p_num("StartIndent").unwrap_or(0.0),
+        end_indent: p_num("EndIndent").unwrap_or(0.0),
+        first_line_indent: p_num("FirstLineIndent").unwrap_or(0.0),
+        space_before: p_num("SpaceBefore").unwrap_or(0.0),
+        space_after: p_num("SpaceAfter").unwrap_or(0.0),
+        hanging: p_bool("Hanging").unwrap_or(false),
+        hyphenate: p_bool("AutoHyphenate").unwrap_or(false),
+        composer: if p_bool("EveryLineComposer").unwrap_or(false) {
+            Composer::EveryLine
+        } else {
+            Composer::SingleLine
+        },
+    };
 
     TextStyle {
         font,
-        font_size,
-        fill_color,
-        tracking,
-        justification,
+        character,
+        paragraph,
+        applied_character_style: None,
+        applied_paragraph_style: None,
     }
+}
+
+/// The `FontSet` entry at `index`, from `ResourceDict` else `DocumentResources`.
+fn font_set_entry(root: &EngineValue, index: usize) -> Option<&EngineValue> {
+    ["ResourceDict", "DocumentResources"]
+        .iter()
+        .find_map(|container| {
+            get(root, container)
+                .and_then(|c| get(c, "FontSet"))
+                .and_then(|set| as_list(set).get(index))
+        })
 }
 
 fn style_sheet<'a>(root: &'a EngineValue, container: &str) -> Option<&'a EngineValue> {
@@ -122,7 +274,20 @@ fn style_sheet<'a>(root: &'a EngineValue, container: &str) -> Option<&'a EngineV
         .and_then(|c| get(c, "StyleSheetSet"))
         .map(as_list)
         .and_then(|list| list.first())
-        .and_then(|entry| get(entry, "StyleSheetData"))
+        .and_then(|entry| {
+            get(entry, "StyleSheetData").or_else(|| path(entry, &["StyleSheet", "StyleSheetData"]))
+        })
+        .filter(|v| is_dict(v))
+}
+
+fn paragraph_sheet<'a>(root: &'a EngineValue, container: &str) -> Option<&'a EngineValue> {
+    get(root, container)
+        .and_then(|c| get(c, "ParagraphSheetSet"))
+        .map(as_list)
+        .and_then(|list| list.first())
+        .and_then(|entry| {
+            get(entry, "Properties").or_else(|| path(entry, &["ParagraphSheet", "Properties"]))
+        })
         .filter(|v| is_dict(v))
 }
 
@@ -134,14 +299,14 @@ fn is_dict(value: &EngineValue) -> bool {
     matches!(value, EngineValue::Dict(_))
 }
 
-fn get<'a>(value: &'a EngineValue, key: &str) -> Option<&'a EngineValue> {
+pub(crate) fn get<'a>(value: &'a EngineValue, key: &str) -> Option<&'a EngineValue> {
     match value {
         EngineValue::Dict(items) => items.iter().find(|(k, _)| k == key).map(|(_, v)| v),
         _ => None,
     }
 }
 
-fn path<'a>(value: &'a EngineValue, keys: &[&str]) -> Option<&'a EngineValue> {
+pub(crate) fn path<'a>(value: &'a EngineValue, keys: &[&str]) -> Option<&'a EngineValue> {
     keys.iter()
         .try_fold(value, |current, key| get(current, key))
 }
@@ -158,16 +323,24 @@ fn find_key<'a>(value: &'a EngineValue, key: &str) -> Option<&'a EngineValue> {
     }
 }
 
-fn as_list(value: &EngineValue) -> &[EngineValue] {
+pub(crate) fn as_list(value: &EngineValue) -> &[EngineValue] {
     match value {
         EngineValue::List(items) => items,
         _ => &[],
     }
 }
 
-fn as_str(value: &EngineValue) -> Option<&str> {
+pub(crate) fn as_str(value: &EngineValue) -> Option<&str> {
     match value {
         EngineValue::String(s) => Some(s),
+        _ => None,
+    }
+}
+
+fn as_bool(value: &EngineValue) -> Option<bool> {
+    match value {
+        EngineValue::Bool(b) => Some(*b),
+        EngineValue::Int(i) => Some(*i != 0),
         _ => None,
     }
 }
@@ -503,10 +676,48 @@ mod tests {
         assert_eq!(fonts, ["Invis", "Myriad"]);
         let style = extract_style(&root, &fonts);
         assert_eq!(style.font.as_deref(), Some("Myriad"));
-        assert_eq!(style.font_size, 150.0);
-        assert_eq!(style.fill_color, [1.0, 1.0, 1.0, 1.0]);
-        assert_eq!(style.tracking, 0.25);
-        assert_eq!(style.justification, 0);
+        assert_eq!(style.character.size, 150.0);
+        assert_eq!(style.character.fill_color, [1.0, 1.0, 1.0, 1.0]);
+        assert_eq!(style.character.tracking, 0.25);
+        assert_eq!(style.paragraph.justify, Justify::Left);
+    }
+
+    #[test]
+    fn run_omissions_resolve_to_sheet_and_paragraph_defaults() {
+        let root = parse_engine_data(
+            b"<< /EngineDict << >> /ResourceDict << \
+              /StyleSheetSet [ << /StyleSheetData << /Tracking 40 >> >> ] \
+              /ParagraphSheetSet [ << /Properties << /SpaceAfter 12.0 /FirstLineIndent 24.0 >> >> ] >> >>",
+        )
+        .expect("parses");
+        let style = extract_style(&root, &[]);
+        assert_eq!(style.character.tracking, 40.0);
+        assert_eq!(style.paragraph.space_after, 12.0);
+        assert_eq!(style.paragraph.first_line_indent, 24.0);
+    }
+
+    #[test]
+    fn anti_alias_flag_is_the_fallback() {
+        let root = parse_engine_data(b"<< /EngineDict << /AntiAlias 1 >> >>").expect("parses");
+        assert_eq!(
+            extract_style(&root, &[]).character.anti_alias,
+            AntiAlias::Sharp
+        );
+        let root = parse_engine_data(b"<< /EngineDict << /AntiAlias 0 >> >>").expect("parses");
+        assert_eq!(
+            extract_style(&root, &[]).character.anti_alias,
+            AntiAlias::None
+        );
+        let root = parse_engine_data(b"<< /EngineDict << /AntiAlias false >> >>").expect("parses");
+        assert_eq!(
+            extract_style(&root, &[]).character.anti_alias,
+            AntiAlias::None
+        );
+        let root = parse_engine_data(b"<< /EngineDict << /AntiAlias true >> >>").expect("parses");
+        assert_eq!(
+            extract_style(&root, &[]).character.anti_alias,
+            AntiAlias::Sharp
+        );
     }
 
     #[test]
@@ -515,10 +726,32 @@ mod tests {
         assert!(extract_fonts(&root).is_empty());
         let style = extract_style(&root, &[]);
         assert_eq!(style.font, None);
-        assert_eq!(style.font_size, 0.0);
-        assert_eq!(style.fill_color, [0.0, 0.0, 0.0, 1.0]);
-        assert_eq!(style.tracking, 0.0);
-        assert_eq!(style.justification, 0);
+        assert_eq!(style.character.size, 0.0);
+        assert_eq!(style.character.fill_color, [0.0, 0.0, 0.0, 1.0]);
+        assert_eq!(style.character.tracking, 0.0);
+        assert_eq!(style.paragraph.justify, Justify::Left);
+        assert_eq!(style.paragraph.word_spacing, [0.8, 1.0, 1.33]);
+    }
+
+    #[test]
+    fn paragraph_justification_reads_every_modelled_index() {
+        for (index, expected) in [
+            (0, Justify::Left),
+            (1, Justify::Right),
+            (2, Justify::Center),
+            (3, Justify::JustifyLastLeft),
+            (4, Justify::JustifyLastRight),
+            (5, Justify::JustifyLastCenter),
+            (6, Justify::JustifyAll),
+            (7, Justify::Left),
+        ] {
+            let source = format!(
+                "<< /EngineDict << /ParagraphRun << /RunArray [ << /ParagraphSheet << \
+                 /Properties << /Justification {index} >> >> >> ] >> >> >>"
+            );
+            let root = parse_engine_data(source.as_bytes()).expect("parses");
+            assert_eq!(extract_style(&root, &[]).paragraph.justify, expected);
+        }
     }
 
     #[test]

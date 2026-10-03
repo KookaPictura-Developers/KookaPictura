@@ -17,19 +17,19 @@ use crate::type_layer::{align_factor, flat_rect, map, text_box_any, type_lines};
 /// above the boundary's cell. Empty for a non-positive size or missing face.
 pub fn type_caret_stops(spec: &TypeSpec) -> Vec<[f64; 4]> {
     let (Some(bundled), Some((left, top, width, height))) =
-        (face_for(&spec.font), text_box_any(spec))
+        (face_for(&spec.character.font_family), text_box_any(spec))
     else {
         return Vec::new();
     };
     let rect = flat_rect(left, top, width, height);
     let (rl, rt) = (rect.left as f32, rect.top as f32);
     let (rw, rh) = (rect.width() as f32, rect.height() as f32);
-    let size = spec.size as f32;
+    let size = spec.character.size as f32;
     let ascent = bundled.ascent(size);
     let descent = bundled.descent(size);
     let leading = size * 1.2;
     let cell = ascent + descent;
-    let factor = align_factor(spec.justification);
+    let factor = align_factor(spec.justification());
     let mut stops = Vec::new();
     let mut push = |c: Option<char>, a: (f32, f32), b: (f32, f32)| {
         let (ox, oy) = (spec.origin.0, spec.origin.1);
@@ -75,17 +75,12 @@ mod tests {
     use super::*;
 
     fn spec(text: &str, vertical: bool, justification: u8) -> TypeSpec {
-        TypeSpec {
-            text: text.into(),
-            font: "Liberation Sans".into(),
-            size: 32.0,
-            color: [0, 0, 0, 255],
-            justification,
-            vertical,
-            antialias: true,
-            origin: (100.0, 80.0),
-            matrix: TypeSpec::IDENTITY,
-        }
+        let mut spec = TypeSpec::new(text, "Liberation Sans", 32.0);
+        spec.vertical = vertical;
+        spec.origin = (100.0, 80.0);
+        spec.paragraph.justify =
+            pictura_core::Justify::from_index(justification).unwrap_or_default();
+        spec
     }
 
     #[test]

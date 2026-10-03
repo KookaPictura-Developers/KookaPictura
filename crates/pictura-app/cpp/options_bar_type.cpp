@@ -99,11 +99,12 @@ QIcon typeSwatchIcon(const QColor& color)
 }
 
 // Toggle Text Orientation, font family, size (px; a scrolling list or any typed
-// value), anti-aliasing (None / Sharp), alignment (left / centre / right; top /
-// centre / bottom for vertical type), the text colour swatch, then Cancel and
+// value), anti-aliasing (None / Sharp / Crisp / Strong / Smooth), alignment
+// (left / centre / right; top / centre / bottom for vertical type), the text
+// colour swatch, the Character / Paragraph panels toggle, then Cancel and
 // Commit while text is being typed. The four tools share one TypeOptions, so
 // each page re-reads it when shown.
-// ponytail: no font style, Crisp / Strong / Smooth, or Warp Text.
+// ponytail: no font style or Warp Text.
 QWidget* OptionsBar::buildTypePage(ToolId id)
 {
     auto* page = new QWidget(stack_);
@@ -142,7 +143,8 @@ QWidget* OptionsBar::buildTypePage(ToolId id)
     auto* antialias = new QComboBox(page);
     antialias->setObjectName(QStringLiteral("optionsTypeAntialias"));
     antialias->setToolTip(QStringLiteral("Anti-aliasing method"));
-    antialias->addItems({QStringLiteral("None"), QStringLiteral("Sharp")});
+    antialias->addItems({QStringLiteral("None"), QStringLiteral("Sharp"), QStringLiteral("Crisp"),
+                         QStringLiteral("Strong"), QStringLiteral("Smooth")});
     layout->addWidget(antialias);
 
     auto* align = new QButtonGroup(page);
@@ -208,7 +210,7 @@ QWidget* OptionsBar::buildTypePage(ToolId id)
         family->setCurrentFont(QFont(o.family));
         size->setEditText(sizeText(o.size));
         color->setIcon(typeSwatchIcon(o.color));
-        antialias->setCurrentIndex(o.antialias ? 1 : 0);
+        antialias->setCurrentIndex(o.antialias);
         if (QAbstractButton* button = align->button(o.justification)) {
             button->setChecked(true);
         }
@@ -260,7 +262,7 @@ QWidget* OptionsBar::buildTypePage(ToolId id)
         }
     });
     connect(antialias, &QComboBox::currentIndexChanged, this,
-            [update](int i) { update([i](TypeOptions& o) { o.antialias = i == 1; }); });
+            [update](int i) { update([i](TypeOptions& o) { o.antialias = i; }); });
     connect(align, &QButtonGroup::idClicked, this,
             [update](int j) { update([j](TypeOptions& o) { o.justification = j; }); });
     connect(cancel, &QToolButton::clicked, this, [this]() { controller_->cancelText(); });
