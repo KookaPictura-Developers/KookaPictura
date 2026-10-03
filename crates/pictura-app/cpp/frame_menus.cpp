@@ -424,6 +424,7 @@ void PicturaMainWindow::registerHandlers()
     registerSelectHandlers();
     registerEditHandlers();
     wireFilterMenu();
+    wireAlignMenu();
 
     // M37: layer creation and grouping. Layer…/Group… open the modal dialog,
     // whose accept step places the node above the selection; Group from Layers…

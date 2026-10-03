@@ -886,6 +886,7 @@ void PicturaMainWindow::refresh()
         pictura::ScopedTimer registryTimer("cxx_registry_refresh");
         registry_->refresh();
     }
+    updateAlignControls();
     updateTabTitle(index);
     updateWindowTitle();
     refreshSelectionOverlay();

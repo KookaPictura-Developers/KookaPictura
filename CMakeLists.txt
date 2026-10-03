@@ -109,6 +109,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/frame_menus_select.cpp
     crates/pictura-app/cpp/frame_menus_edit.cpp
     crates/pictura-app/cpp/frame_menus_filter.cpp
+    crates/pictura-app/cpp/frame_menus_align.cpp
     crates/pictura-app/cpp/frame_recent.cpp
     crates/pictura-app/cpp/frame_test.cpp
     crates/pictura-app/cpp/frame_build.cpp
@@ -200,6 +201,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/options_bar_retouch.cpp
     crates/pictura-app/cpp/options_bar_pen.cpp
     crates/pictura-app/cpp/options_bar_shape.cpp
+    crates/pictura-app/cpp/options_bar_move.cpp
     crates/pictura-app/cpp/options_bar_rotate.cpp
     crates/pictura-app/cpp/options_bar_type.cpp
     crates/pictura-app/cpp/tool_hint_bar.cpp

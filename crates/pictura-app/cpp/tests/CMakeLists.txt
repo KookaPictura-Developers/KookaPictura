@@ -3,6 +3,7 @@ set(PICTURA_QT_TESTS
     tst_smoke
     tst_edit_clipboard
     tst_layers_panel
+    tst_align_distribute
     tst_command_tree
     tst_fill_tools
     tst_retouch_tools

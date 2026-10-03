@@ -168,6 +168,7 @@ void PicturaMainWindow::buildPanels()
         if (propertiesPanel_) {
             propertiesPanel_->refresh();
         }
+        updateAlignControls();
     });
 }
 
@@ -320,6 +321,10 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
     optionsBar_->setObjectName(QStringLiteral("optionsBar"));
     addToolBar(optionsBar_);
     connect(optionsBar_, &OptionsBar::panelToggleRequested, this, &PicturaMainWindow::togglePanel);
+    connect(optionsBar_, &OptionsBar::alignRequested, this,
+            [this](int edge) { alignSelectedLayers(edge, true); });
+    connect(optionsBar_, &OptionsBar::distributeRequested, this,
+            &PicturaMainWindow::distributeSelectedLayers);
     brushPanel_->setController(tools_);
     cloneSourcePanel_->setController(tools_);
 

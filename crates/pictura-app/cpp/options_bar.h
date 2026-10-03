@@ -28,11 +28,17 @@ public:
     explicit OptionsBar(ToolController* controller, QWidget* parent = nullptr);
 
     void showTool(ToolId id);
+    // Enable the Move tool's Align and Distribute buttons (the frame decides
+    // from the selected layers and the selection).
+    void setAlignEnabled(bool align, bool distribute);
 
 signals:
     // A panel toggle (Toggle the Brush panel, Toggle the Clone Source panel)
     // asks the frame to show or hide the panel with this object name.
     void panelToggleRequested(const QString& panel);
+    // The Move tool's Align / Distribute buttons; `edge` is 0 Top ... 5 Right.
+    void alignRequested(int edge);
+    void distributeRequested(int edge);
 
 public:
     // Self-test hook: the controller the size field is wired to.
@@ -81,6 +87,8 @@ private:
     using ShapeSyncs = std::vector<std::function<void(const ShapeOptions&)>>;
     QWidget* buildShapePage(ToolId id);
     QWidget* buildRotateViewPage(ToolId id);
+    // options_bar_move.cpp: the Move tool's Align and Distribute buttons.
+    QWidget* buildMovePage(ToolId id);
     void buildShapeAppearance(QWidget* page, QHBoxLayout* layout, const ShapeUpdate& update,
                               ShapeSyncs& syncs);
     QToolButton* buildShapeGeometryButton(ToolId id, QWidget* page, const ShapeUpdate& update,
@@ -104,6 +112,8 @@ private:
     ToolController* controller_ = nullptr;
     QStackedWidget* stack_ = nullptr;
     BrushPresetPicker* brushPicker_ = nullptr;
+    std::vector<QToolButton*> alignButtons_;
+    std::vector<QToolButton*> distributeButtons_;
 };
 
 // Built-in pattern `index` as an icon, for the pattern pickers.

@@ -275,6 +275,12 @@ private:
     // Surface why a filter was refused (status bar + stderr) instead of a
     // silent no-op.
     void reportFilterRefusal(PictureView* view);
+    // frame_menus_align.cpp: Layer > Align / Align Layers To Selection /
+    // Distribute, and the Move tool's buttons, over the selected layers.
+    void wireAlignMenu();
+    void alignSelectedLayers(int edge, bool toSelection);
+    void distributeSelectedLayers(int edge);
+    void updateAlignControls();
     void exportClipboard();
     void importSystemClipboard();
     void applyPanelSession(const SessionState& state);

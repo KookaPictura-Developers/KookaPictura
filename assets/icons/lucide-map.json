@@ -129,6 +129,66 @@
       "slug": "angle",
       "match": "good"
     },
+    "layer.alignBottom": {
+      "kind": "lucide",
+      "slug": "align-end-horizontal",
+      "match": "good"
+    },
+    "layer.alignHorizontalCenter": {
+      "kind": "lucide",
+      "slug": "align-center-vertical",
+      "match": "good"
+    },
+    "layer.alignLeft": {
+      "kind": "lucide",
+      "slug": "align-start-vertical",
+      "match": "good"
+    },
+    "layer.alignRight": {
+      "kind": "lucide",
+      "slug": "align-end-vertical",
+      "match": "good"
+    },
+    "layer.alignTop": {
+      "kind": "lucide",
+      "slug": "align-start-horizontal",
+      "match": "good"
+    },
+    "layer.alignVerticalCenter": {
+      "kind": "lucide",
+      "slug": "align-center-horizontal",
+      "match": "good"
+    },
+    "layer.distributeBottom": {
+      "kind": "lucide",
+      "slug": "align-vertical-distribute-end",
+      "match": "good"
+    },
+    "layer.distributeHorizontalCenter": {
+      "kind": "lucide",
+      "slug": "align-horizontal-distribute-center",
+      "match": "good"
+    },
+    "layer.distributeLeft": {
+      "kind": "lucide",
+      "slug": "align-horizontal-distribute-start",
+      "match": "good"
+    },
+    "layer.distributeRight": {
+      "kind": "lucide",
+      "slug": "align-horizontal-distribute-end",
+      "match": "good"
+    },
+    "layer.distributeTop": {
+      "kind": "lucide",
+      "slug": "align-vertical-distribute-start",
+      "match": "good"
+    },
+    "layer.distributeVerticalCenter": {
+      "kind": "lucide",
+      "slug": "align-vertical-distribute-center",
+      "match": "good"
+    },
     "layers.clipMask": {
       "kind": "lucide",
       "slug": "corner-left-down",
