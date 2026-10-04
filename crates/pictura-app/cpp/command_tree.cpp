@@ -363,9 +363,6 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Layer", "New Adjustment Layer", "Gradient Map"}, QStringLiteral("Gradient Map"));
     leaf(registry, {"Layer", "New Adjustment Layer", "Selective Color"},
          QStringLiteral("Selective Color"));
-    leaf(registry, {"Layer", "New Adjustment Layer", "Shadows/Highlights"},
-         QStringLiteral("Shadows/Highlights"));
-    leaf(registry, {"Layer", "New Adjustment Layer", "HDR Toning"}, QStringLiteral("HDR Toning"));
     leaf(registry, {"Layer", "Layer Content Options…"}, QStringLiteral("Layer Content Options…"));
     leaf(registry, {"Layer", "Layer Mask", "Reveal All"}, QStringLiteral("Reveal All"));
     leaf(registry, {"Layer", "Layer Mask", "Hide All"}, QStringLiteral("Hide All"));
@@ -579,8 +576,9 @@ void addDefaultCommands(CommandRegistry& registry) {
     registry.add(command_ids::FilterLastFilterSettings, {"Filter", "Last Filter Settings…"},
                  QStringLiteral("Last Filter Settings…"),
                  QKeySequence(QStringLiteral("Ctrl+Alt+F")), true);
-    leaf(registry, {"Filter", "Convert for Smart Filters"},
-         QStringLiteral("Convert for Smart Filters"));
+    registry.add(command_ids::FilterConvertForSmartFilters,
+                 {"Filter", "Convert for Smart Filters"},
+                 QStringLiteral("Convert for Smart Filters"), QKeySequence(), true);
     registry.addSeparator({"Filter"});
     leaf(registry, {"Filter", "Filter Gallery…"}, QStringLiteral("Filter Gallery…"));
     leaf(registry, {"Filter", "Adaptive Wide Angle…"}, QStringLiteral("Adaptive Wide Angle…"));
@@ -592,6 +590,21 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Filter", "Vanishing Point…"}, QStringLiteral("Vanishing Point…"),
          QStringLiteral("Alt+Ctrl+V"));
     registry.addSeparator({"Filter"});
+    leaf(registry, {"Filter", "Artistic", "Colored Pencil"}, QStringLiteral("Colored Pencil"));
+    leaf(registry, {"Filter", "Artistic", "Cutout"}, QStringLiteral("Cutout"));
+    leaf(registry, {"Filter", "Artistic", "Dry Brush"}, QStringLiteral("Dry Brush"));
+    leaf(registry, {"Filter", "Artistic", "Film Grain"}, QStringLiteral("Film Grain"));
+    leaf(registry, {"Filter", "Artistic", "Fresco"}, QStringLiteral("Fresco"));
+    leaf(registry, {"Filter", "Artistic", "Neon Glow"}, QStringLiteral("Neon Glow"));
+    leaf(registry, {"Filter", "Artistic", "Paint Daubs"}, QStringLiteral("Paint Daubs"));
+    leaf(registry, {"Filter", "Artistic", "Palette Knife"}, QStringLiteral("Palette Knife"));
+    leaf(registry, {"Filter", "Artistic", "Plastic Wrap"}, QStringLiteral("Plastic Wrap"));
+    leaf(registry, {"Filter", "Artistic", "Poster Edges"}, QStringLiteral("Poster Edges"));
+    leaf(registry, {"Filter", "Artistic", "Rough Pastels"}, QStringLiteral("Rough Pastels"));
+    leaf(registry, {"Filter", "Artistic", "Smudge Stick"}, QStringLiteral("Smudge Stick"));
+    leaf(registry, {"Filter", "Artistic", "Sponge"}, QStringLiteral("Sponge"));
+    leaf(registry, {"Filter", "Artistic", "Underpainting"}, QStringLiteral("Underpainting"));
+    leaf(registry, {"Filter", "Artistic", "Watercolor"}, QStringLiteral("Watercolor"));
     leaf(registry, {"Filter", "Blur", "Field Blur"}, QStringLiteral("Field Blur"));
     leaf(registry, {"Filter", "Blur", "Iris Blur"}, QStringLiteral("Iris Blur"));
     leaf(registry, {"Filter", "Blur", "Tilt-Shift"}, QStringLiteral("Tilt-Shift"));

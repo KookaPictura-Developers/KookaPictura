@@ -75,9 +75,9 @@ pub use shape_style::{
 };
 pub use smart_object::{
     can_convert_to_smart_object, can_edit_smart_object_contents, can_rasterize_smart_object,
-    can_replace_smart_object_contents, convert_to_smart_object, open_as_smart_object,
-    place_smart_object, rasterize_smart_object, replace_smart_object_contents,
-    smart_object_source_bytes,
+    can_replace_smart_object_contents, convert_for_smart_filters, convert_to_smart_object,
+    open_as_smart_object, place_smart_object, rasterize_smart_object,
+    replace_smart_object_contents, smart_object_source_bytes,
 };
 pub use transform::{transform_layer, transform_layer_quad, LayerTransform};
 pub use via::{layer_via_copy, layer_via_cut};

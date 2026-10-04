@@ -8,12 +8,16 @@
 #include "adjustment_dialog.h"
 #include "commands.h"
 #include "frame.h"
+#include "hdr_toning_dialog.h"
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/image_adjust.cxxqt.h"
 
 #include <QtCore/QTemporaryDir>
 #include <QtGui/QAction>
+#include <QtWidgets/QComboBox>
+#include <QtWidgets/QDoubleSpinBox>
 #include <QtWidgets/QSlider>
+#include <QtWidgets/QSpinBox>
 
 #include "qt_test_support.h"
 
@@ -36,6 +40,9 @@ private slots:
     void cleanup();
     void menuIsLiveOnAnOpenedImage();
     void dialogPreviewsCancelsAndApplies();
+    void colorLookupPresetRebuildsTheLook();
+    void hdrToningPresetsPopulateControls();
+    void hdrToningRefusedApplyDoesNotAccept();
     void directCommandsRespectTheSelection();
 
 private:
@@ -94,8 +101,9 @@ void ImageAdjustmentsTest::menuIsLiveOnAnOpenedImage()
     for (const char* name :
          {"Brightness/Contrast", "Levels", "Curves", "Exposure", "Vibrance", "Hue/Saturation",
           "Color Balance", "Black & White", "Photo Filter", "Channel Mixer", "Invert",
-          "Posterize", "Threshold", "Gradient Map", "Selective Color", "Desaturate", "Equalize",
-          "Auto Tone", "Auto Contrast", "Auto Color"}) {
+          "Posterize", "Threshold", "Gradient Map", "Selective Color", "Shadows/Highlights",
+          "Color Lookup", "Desaturate", "Equalize", "Auto Tone", "Auto Contrast", "Auto Color",
+          "HDR Toning"}) {
         QAction* action = leaf(QString::fromUtf8(name));
         QVERIFY2(action && action->isEnabled(), name);
     }
@@ -133,6 +141,56 @@ void ImageAdjustmentsTest::dialogPreviewsCancelsAndApplies()
     QCOMPARE(view_->history_label(view_->history_index()), QStringLiteral("Hue/Saturation"));
     QVERIFY(view_->undo());
     QCOMPARE(view_->composite_argb(5, 5), before);
+}
+
+void ImageAdjustmentsTest::colorLookupPresetRebuildsTheLook()
+{
+    QVERIFY(openImage(QColor(100, 150, 200)));
+    const QRgb before = view_->composite_argb(5, 5);
+    {
+        pictura::AdjustmentDialog dialog(view_, block("color-lookup"), QRect());
+        auto* preset = qobject_cast<QComboBox*>(dialog.controlForTest(QStringLiteral("preset")));
+        QVERIFY(preset);
+        QCOMPARE(preset->count(), 7);
+        preset->setCurrentIndex(1); // Warm Contrast, not the identity
+        QVERIFY(view_->composite_argb(5, 5) != before);
+        dialog.reject();
+    }
+    QCOMPARE(view_->composite_argb(5, 5), before);
+}
+
+void ImageAdjustmentsTest::hdrToningPresetsPopulateControls()
+{
+    QVERIFY(openImage(QColor(100, 150, 200)));
+    pictura::HdrToningDialog dialog(view_, QRect());
+    auto* preset = qobject_cast<QComboBox*>(dialog.controlForTest(QStringLiteral("hdrPreset")));
+    auto* radius = qobject_cast<QSpinBox*>(dialog.controlForTest(QStringLiteral("hdrRadius")));
+    auto* strength = qobject_cast<QDoubleSpinBox*>(dialog.controlForTest(QStringLiteral("hdrStrength")));
+    auto* detail = qobject_cast<QSpinBox*>(dialog.controlForTest(QStringLiteral("hdrDetail")));
+    auto* saturation = qobject_cast<QSpinBox*>(dialog.controlForTest(QStringLiteral("hdrSaturation")));
+    QVERIFY(preset && radius && strength && detail && saturation);
+    // The 17 presets plus Custom, opening on the control defaults (preset 0).
+    QCOMPARE(dialog.presetCount(), 18);
+    QCOMPARE(preset->currentText(), QStringLiteral("Default"));
+
+    preset->setCurrentIndex(1); // City Twilight
+    QCOMPARE(radius->value(), 383);
+    QCOMPARE(strength->value(), 1.14);
+    QCOMPARE(saturation->value(), -3);
+
+    // Editing a value drops the preset back to Custom.
+    detail->setValue(7);
+    QCOMPARE(preset->currentText(), QStringLiteral("Custom"));
+    dialog.reject();
+}
+
+void ImageAdjustmentsTest::hdrToningRefusedApplyDoesNotAccept()
+{
+    // A refused apply (here: no target view) must reject, so `get()` reports the
+    // failure and the frame does not refresh as if the toning landed.
+    pictura::HdrToningDialog dialog(nullptr, QRect());
+    dialog.accept();
+    QCOMPARE(dialog.result(), int(QDialog::Rejected));
 }
 
 void ImageAdjustmentsTest::directCommandsRespectTheSelection()

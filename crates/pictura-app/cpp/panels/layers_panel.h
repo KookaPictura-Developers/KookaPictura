@@ -141,6 +141,9 @@ public:
     bool rowShapeForTest(const QString& path) const;
     // Alt-click the line under `path`'s row, as a user would.
     void altClickBelowRowForTest(const QString& path);
+    // Click the eye of a synthetic Smart Filters row (the group header or a
+    // filter child); false when the path has no live row.
+    bool clickSmartFilterEyeForTest(const QString& path);
     bool rowNameItalicForTest(const QString& path) const;
     bool rowNameUnderlineForTest(const QString& path) const;
     int rowHeightForTest() const;

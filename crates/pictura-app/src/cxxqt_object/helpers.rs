@@ -69,6 +69,26 @@ pub(super) fn adjustment_layer(kind: &str, mask: Option<LayerMask>) -> Option<La
             "Color Lookup",
             encode_color_lookup(&identity_cube(), "Identity.CUBE"),
         ),
+        "levels" => (
+            "Levels",
+            pictura_render::default_adjustment_block("levels", [0, 0, 0], [255, 255, 255])?,
+        ),
+        "curves" => (
+            "Curves",
+            pictura_render::default_adjustment_block("curves", [0, 0, 0], [255, 255, 255])?,
+        ),
+        "exposure" => (
+            "Exposure",
+            pictura_render::default_adjustment_block("exposure", [0, 0, 0], [255, 255, 255])?,
+        ),
+        "vibrance" => (
+            "Vibrance",
+            pictura_render::default_adjustment_block("vibrance", [0, 0, 0], [255, 255, 255])?,
+        ),
+        "black-white" => (
+            "Black & White",
+            pictura_render::default_adjustment_block("black-white", [0, 0, 0], [255, 255, 255])?,
+        ),
         _ => return None,
     };
 
@@ -657,9 +677,37 @@ pub(crate) mod paint_timing {
 
 #[cfg(test)]
 mod tests {
+    use super::adjustment_layer;
     use super::TileSet;
     use pictura_core::PsdRect;
     use pictura_render::TILE;
+
+    #[test]
+    fn adjustment_layer_covers_every_kind_and_rejects_unknown() {
+        const KINDS: [&str; 16] = [
+            "invert",
+            "posterize",
+            "threshold",
+            "brightness-contrast",
+            "levels",
+            "curves",
+            "exposure",
+            "vibrance",
+            "hue-saturation",
+            "color-balance",
+            "black-white",
+            "photo-filter",
+            "channel-mixer",
+            "selective-color",
+            "color-lookup",
+            "gradient-map",
+        ];
+        for kind in KINDS {
+            let layer = adjustment_layer(kind, None).unwrap_or_else(|| panic!("{kind} should map"));
+            assert!(layer.adjustment.is_some(), "{kind} carries adjustment data");
+        }
+        assert!(adjustment_layer("bogus", None).is_none());
+    }
 
     fn r(top: i32, left: i32, w: i32, h: i32) -> PsdRect {
         PsdRect {

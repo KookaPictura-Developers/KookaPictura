@@ -67,6 +67,26 @@ enum Op<'a> {
     Adjustment(&'a Adjustment),
 }
 
+/// Whether rerunning `filter` over a grey copy of the alpha plane is a no-op.
+///
+/// The unlocked-layer alpha pass assumes a kernel that maps a flat 255 plane
+/// back to 255: blur, noise, and spatial kernels do. A kernel that depends on
+/// absolute channel values (HDR Toning), takes gradients (Glowing Edges), sums
+/// onto a darkening base (Lighting), or hashes pixel position (Diffuse) would
+/// instead corrupt a fully opaque layer's transparency, so their alpha plane is
+/// left exactly as found.
+/// ponytail: a real fix folds alpha into the working buffer so every kernel
+/// receives the fourth plane; until then, skip the pass for these kinds.
+pub fn filter_preserves_opacity(filter: &Filter) -> bool {
+    matches!(
+        filter,
+        Filter::HdrToning(_)
+            | Filter::GlowingEdges { .. }
+            | Filter::Lighting { .. }
+            | Filter::Diffuse { .. }
+    )
+}
+
 fn apply_op_region(
     layer: &mut Layer,
     op: Op,
@@ -164,17 +184,19 @@ fn apply_op_region(
         crop
     });
     let filtered_alpha = match op {
-        Op::Filter(filter, _) if !alpha_locked => alpha_original
-            .as_ref()
-            .map(|alpha| -> Result<Vec<u8>, FilterError> {
-                let mut gray = PixelBuffer::new(cw as u32, ch as u32, 3);
-                for c in 0..3usize {
-                    gray.data[c * n..c * n + n].copy_from_slice(alpha);
-                }
-                pictura_filters::apply(filter, &mut gray)?;
-                Ok(gray.data[0..n].to_vec())
-            })
-            .transpose()?,
+        Op::Filter(filter, _) if !alpha_locked && !filter_preserves_opacity(filter) => {
+            alpha_original
+                .as_ref()
+                .map(|alpha| -> Result<Vec<u8>, FilterError> {
+                    let mut gray = PixelBuffer::new(cw as u32, ch as u32, 3);
+                    for c in 0..3usize {
+                        gray.data[c * n..c * n + n].copy_from_slice(alpha);
+                    }
+                    pictura_filters::apply(filter, &mut gray)?;
+                    Ok(gray.data[0..n].to_vec())
+                })
+                .transpose()?
+        }
         _ => None,
     };
 
@@ -241,6 +263,7 @@ pub fn preview_apron(filter: &Filter) -> i32 {
         | Filter::UnsharpMask { radius, .. }
         | Filter::HighPass { radius }
         | Filter::SmartSharpen { radius, .. } => radius.ceil(),
+        Filter::HdrToning(p) => (3.0 * p.radius).ceil(),
         Filter::BoxBlur { radius }
         | Filter::SurfaceBlur { radius, .. }
         | Filter::Median { radius }
@@ -349,6 +372,24 @@ mod tests {
 
     fn chan(layer: &Layer, id: i16) -> &[u8] {
         &layer.channels.iter().find(|c| c.id == id).unwrap().data
+    }
+
+    /// A non-uniform colour layer (the step in [`step_layer`] cannot expose a
+    /// too-small apron, because clamping replays the same flat values).
+    fn varied_layer(w: i32, h: i32) -> Layer {
+        let n = (w * h) as usize;
+        let mut layer = step_layer(w, h, 255);
+        for (c, ch) in layer.channels.iter_mut().filter(|c| c.id >= 0).enumerate() {
+            let plane: Vec<u8> = (0..n)
+                .map(|i| {
+                    let x = (i % w as usize) as u32;
+                    let y = (i / w as usize) as u32;
+                    ((x * 7 + y * 13 + c as u32 * 53) % 256) as u8
+                })
+                .collect();
+            ch.data = plane.into();
+        }
+        layer
     }
 
     #[test]
@@ -593,6 +634,69 @@ mod tests {
             alpha_before.as_slice(),
             "an unlocked layer's alpha is filtered"
         );
+    }
+
+    #[test]
+    fn opacity_preserving_filters_leave_alpha_bit_identical() {
+        let filters = [
+            Filter::GlowingEdges {
+                width: 2,
+                brightness: 6,
+                smoothness: 1,
+            },
+            Filter::Lighting {
+                lighting: pictura_filters::Lighting::default(),
+            },
+            Filter::HdrToning(pictura_filters::HdrToningParams::default()),
+        ];
+        for filter in filters {
+            let mut layer = step_layer(16, 16, 255);
+            let alpha_before = chan(&layer, -1).to_vec();
+            apply_filter(&mut layer, &filter, None, false).unwrap();
+            assert_eq!(
+                chan(&layer, -1),
+                alpha_before.as_slice(),
+                "{filter:?} must leave alpha bit-identical"
+            );
+        }
+    }
+
+    #[test]
+    fn hdr_toning_apron_covers_its_blur_support() {
+        let (w, h) = (512i32, 64i32);
+        let filter = Filter::HdrToning(pictura_filters::HdrToningParams {
+            radius: 40.0,
+            gamma: 1.0,
+            ..Default::default()
+        });
+        assert_eq!(preview_apron(&filter), 120, "apron must be 3 * sigma");
+
+        let viewport = rect(16, 160, 48, 352);
+        let base = varied_layer(w, h);
+        let mut whole = base.clone();
+        apply_filter(&mut whole, &filter, None, false).unwrap();
+
+        let apron = preview_apron(&filter);
+        let expanded = rect(
+            viewport.top - apron,
+            viewport.left - apron,
+            viewport.bottom + apron,
+            viewport.right + apron,
+        );
+        let mut region = base.clone();
+        apply_filter_region(&mut region, &filter, None, false, expanded).unwrap();
+
+        let lw = w as usize;
+        for y in viewport.top..viewport.bottom {
+            for x in viewport.left..viewport.right {
+                let i = y as usize * lw + x as usize;
+                assert_eq!(
+                    chan(&region, 0)[i],
+                    chan(&whole, 0)[i],
+                    "expanded-region preview differs from a full apply at ({x},{y})"
+                );
+            }
+        }
     }
 
     #[test]

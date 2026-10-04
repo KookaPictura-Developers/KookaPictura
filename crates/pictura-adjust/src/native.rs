@@ -19,7 +19,8 @@ use crate::types::{
     AdjustError, Adjustment, AutoKind, BlackWhiteParams, BrightnessContrastParams,
     ChannelMixerParams, ColorBalanceParams, ColorLookupParams, CurvesParams, ExposureParams,
     GradientMapParams, HueSaturationParams, LevelsParams, Lut3d, PhotoFilterParams,
-    SelectiveColorMethod, SelectiveColorParams, SelectiveRange, VibranceParams,
+    SelectiveColorMethod, SelectiveColorParams, SelectiveRange, ShadowsHighlightsParams,
+    VibranceParams,
 };
 
 type Rgb = [f64; 3];
@@ -92,6 +93,9 @@ pub fn apply_native(
         Adjustment::GradientMap(p) => gradient_map_native(p, samples, width, height, channels),
         Adjustment::HueSaturation(p) => hue_saturation_native(p, samples, width, height, channels),
         Adjustment::Vibrance(p) => vibrance_native(p, samples, width, height, channels),
+        Adjustment::ShadowsHighlights(p) => {
+            shadows_highlights_native(p, samples, width, height, channels)
+        }
         Adjustment::ColorBalance(p) => color_balance_native(p, samples, width, height, channels),
         Adjustment::BlackWhite(p) => black_white_native(p, samples, width, height, channels),
         Adjustment::PhotoFilter(p) => photo_filter_native(p, samples, width, height, channels),
@@ -207,6 +211,52 @@ fn posterize_map(levels: u8) -> Result<impl Fn(f64) -> f64, AdjustError> {
         let q = (u * 255.0 * denom / 255.0).round();
         (q * 255.0 / denom).round() / 255.0
     })
+}
+
+fn shadows_highlights_native(
+    p: &ShadowsHighlightsParams,
+    samples: &mut Samples,
+    width: usize,
+    height: usize,
+    channels: u8,
+) -> Result<(), AdjustError> {
+    let sa = p.shadows_amount;
+    let ha = p.highlights_amount;
+    if !sa.is_finite()
+        || !ha.is_finite()
+        || !(0.0..=100.0).contains(&sa)
+        || !(0.0..=100.0).contains(&ha)
+    {
+        return Err(AdjustError::InvalidParams(
+            "shadows/highlights amounts must be within 0..=100".into(),
+        ));
+    }
+    if sa == 0.0 && ha == 0.0 {
+        return Ok(());
+    }
+    // The same delta curve as the 8-bit kernel, scaled to the unit domain so the
+    // u8 store round-trips byte-for-byte through `to_unit`/`from_unit`.
+    let mut lut = [0.0f64; 256];
+    for (i, slot) in lut.iter_mut().enumerate() {
+        let l = i as f64 / 255.0;
+        let st = (1.0 - 2.0 * l).clamp(0.0, 1.0);
+        let sw = st * st * (3.0 - 2.0 * st);
+        let shadow_delta = sw * (sa / 100.0) * 0.35;
+        let ht = ((l - 0.5) * 2.0).clamp(0.0, 1.0);
+        let hw = ht * ht * (3.0 - 2.0 * ht);
+        let highlight_delta = hw * (ha / 100.0) * 0.30;
+        *slot = shadow_delta - highlight_delta;
+    }
+    map(samples, width, height, channels, move |[r, g, b]| {
+        let y = luma(r * 255.0, g * 255.0, b * 255.0);
+        let delta = lut[y.round().clamp(0.0, 255.0) as usize];
+        [
+            (r + delta).clamp(0.0, 1.0),
+            (g + delta).clamp(0.0, 1.0),
+            (b + delta).clamp(0.0, 1.0),
+        ]
+    });
+    Ok(())
 }
 
 struct Curve {

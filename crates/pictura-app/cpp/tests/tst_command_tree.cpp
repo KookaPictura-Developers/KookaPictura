@@ -29,6 +29,7 @@ private slots:
     void menubarClear();
     void panelMenusToolsIcons();
     void widgetmenuButton();
+    void layerAdjustmentMenu();
 
 private:
     pictura::test::ScopedStateHome stateHome_;
@@ -245,6 +246,71 @@ void CommandTreeTest::widgetmenuButton()
                  && column->widgetMenuHasCloseForTest(QStringLiteral("colorPanel"))
                  && column->widgetMenuHasCloseForTest(QStringLiteral("historyPanel")),
              "close stays off the widget menu");
+}
+
+// Layer > New Adjustment Layer: every CS6 kind is implemented, enabled with a
+// document open, and creates an adjustment layer named for its menu entry;
+// Shadows/Highlights and HDR Toning are destructive Image commands, not kinds.
+void CommandTreeTest::layerAdjustmentMenu()
+{
+    pictura::PictureView* view = window_->activeView();
+    QVERIFY(view != nullptr);
+    pictura::CommandRegistry* registry = window_->registry();
+    QVERIFY(registry != nullptr);
+
+    const QStringList leaves = {
+        QStringLiteral("Brightness/Contrast"), QStringLiteral("Levels"),
+        QStringLiteral("Curves"),              QStringLiteral("Exposure"),
+        QStringLiteral("Vibrance"),            QStringLiteral("Hue/Saturation"),
+        QStringLiteral("Color Balance"),       QStringLiteral("Black & White"),
+        QStringLiteral("Photo Filter"),        QStringLiteral("Channel Mixer"),
+        QStringLiteral("Color Lookup"),        QStringLiteral("Invert"),
+        QStringLiteral("Posterize"),           QStringLiteral("Threshold"),
+        QStringLiteral("Gradient Map"),        QStringLiteral("Selective Color")};
+    for (const QString& name : leaves) {
+        QAction* action = registry->action(pictura::commandIdForPath(
+            {QStringLiteral("Layer"), QStringLiteral("New Adjustment Layer"), name}));
+        QVERIFY2(action, qPrintable(name));
+        registry->refresh();
+        QVERIFY2(action->isEnabled(), qPrintable(name));
+        const QString expected =
+            name == QStringLiteral("Invert") ? name : name + QStringLiteral("\u2026");
+        QCOMPARE(action->text(), expected);
+
+        const int before = view->layer_row_count();
+        action->trigger();
+        QCOMPARE(view->layer_row_count(), before + 1);
+        bool named = false;
+        for (int i = 0; i < view->layer_row_count(); ++i) {
+            if (view->layer_row_name(i) == name) {
+                named = true;
+            }
+        }
+        QVERIFY2(named, qPrintable(name));
+    }
+
+    for (const QString& gone :
+         {QStringLiteral("Shadows/Highlights"), QStringLiteral("HDR Toning")}) {
+        QVERIFY2(!registry->action(pictura::commandIdForPath(
+                     {QStringLiteral("Layer"), QStringLiteral("New Adjustment Layer"), gone})),
+                 qPrintable(gone));
+    }
+
+    // The Adjustments panel lists the same sixteen kinds in CS6 panel order,
+    // then the two trailing toggles.
+    pictura::PanelColumn* column = window_->panelColumn();
+    QVERIFY(column != nullptr);
+    const QStringList expectedPanel = {
+        QStringLiteral("Brightness-Contrast"), QStringLiteral("Levels"),
+        QStringLiteral("Curves"),              QStringLiteral("Exposure"),
+        QStringLiteral("Vibrance"),            QStringLiteral("Hue-Saturation"),
+        QStringLiteral("Color Balance"),       QStringLiteral("Black & White"),
+        QStringLiteral("Photo Filter"),        QStringLiteral("Channel Mixer"),
+        QStringLiteral("Color Lookup"),        QStringLiteral("Invert"),
+        QStringLiteral("Posterize"),           QStringLiteral("Threshold"),
+        QStringLiteral("Gradient Map"),        QStringLiteral("Selective Color"),
+        QStringLiteral("Add Mask by Default"), QStringLiteral("Clip to Layer")};
+    QCOMPARE(column->widgetMenuTextsForTest(QStringLiteral("adjustmentsPanel")), expectedPanel);
 }
 
 QTEST_MAIN(CommandTreeTest)

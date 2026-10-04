@@ -4,6 +4,8 @@
 #include "frame_includes.h"
 
 #include "adjustment_dialog.h"
+#include "hdr_toning_dialog.h"
+#include "replace_color_dialog.h"
 
 #include "pictura_app/src/cxxqt_object/filter_tools.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/image_adjust.cxxqt.h"
@@ -33,6 +35,8 @@ constexpr Entry kDialogs[] = {
     {"threshold", "Threshold"},
     {"gradient-map", "Gradient Map"},
     {"selective-color", "Selective Color"},
+    {"shadows-highlights", "Shadows/Highlights"},
+    {"color-lookup", "Color Lookup"},
 };
 
 // The commands that apply at once.
@@ -42,10 +46,37 @@ constexpr Entry kDirect[] = {
     {"auto-contrast", "Auto Contrast"}, {"auto-color", "Auto Color"},
 };
 
+// The sixteen CS6 Layer > New Adjustment Layer kinds, in menu order. `ellipsis`
+// follows the same split as Image > Adjustments: Invert has no options, so it
+// creates silently; every other kind opens its dialog.
+struct LayerAdjustment {
+    const char* kind;
+    const char* leaf;
+    bool ellipsis;
+};
+
+constexpr LayerAdjustment kLayerAdjustments[] = {
+    {"brightness-contrast", "Brightness/Contrast", true},
+    {"levels", "Levels", true},
+    {"curves", "Curves", true},
+    {"exposure", "Exposure", true},
+    {"vibrance", "Vibrance", true},
+    {"hue-saturation", "Hue/Saturation", true},
+    {"color-balance", "Color Balance", true},
+    {"black-white", "Black & White", true},
+    {"photo-filter", "Photo Filter", true},
+    {"channel-mixer", "Channel Mixer", true},
+    {"color-lookup", "Color Lookup", true},
+    {"invert", "Invert", false},
+    {"posterize", "Posterize", true},
+    {"threshold", "Threshold", true},
+    {"gradient-map", "Gradient Map", true},
+    {"selective-color", "Selective Color", true},
+};
+
 } // namespace
 
-// ponytail: Color Lookup, Shadows/Highlights, HDR Toning, Match Color, and
-// Replace Color stay disabled stubs.
+// ponytail: Match Color stays a disabled stub.
 void PicturaMainWindow::wireImageAdjustments()
 {
     const auto ready = [this]() {
@@ -94,6 +125,88 @@ void PicturaMainWindow::wireImageAdjustments()
             });
             registry_->setEnabledProvider(id, ready);
         }
+    }
+
+    // HDR Toning is a neighborhood operator, not a pointwise adjustment, so it
+    // runs through the filter preview/apply path via its own dialog.
+    {
+        const QString leaf = QStringLiteral("HDR Toning");
+        const QString id =
+            commandIdForPath({QStringLiteral("Image"), QStringLiteral("Adjustments"), leaf});
+        registry_->setImplemented(id, true);
+        registry_->setLabelProvider(id, [leaf]() { return leaf + QStringLiteral("…"); });
+        registry_->setHandler(id, [this]() {
+            PictureView* view = activeView();
+            ImageView* canvas = imageView();
+            const QRect visible = canvas ? canvas->visibleDocumentRect().toAlignedRect() : QRect();
+            if (view && filter_target_ready(*view)
+                && HdrToningDialog::get(this, view, visible)) {
+                refresh();
+            } else if (view) {
+                reportFilterRefusal(view);
+            }
+        });
+        registry_->setEnabledProvider(id, ready);
+    }
+
+    // Replace Color is dialog-only and non-modal, so its eyedropper can reach
+    // the canvas; OK commits one "Replace Color" state.
+    {
+        const QString leaf = QStringLiteral("Replace Color");
+        const QString id =
+            commandIdForPath({QStringLiteral("Image"), QStringLiteral("Adjustments"), leaf});
+        registry_->setImplemented(id, true);
+        registry_->setLabelProvider(id, [leaf]() { return leaf + QStringLiteral("…"); });
+        registry_->setHandler(id, [this]() {
+            PictureView* view = activeView();
+            if (!view || !filter_target_ready(*view)) {
+                if (view) {
+                    reportFilterRefusal(view);
+                }
+                return;
+            }
+            if (replaceColorDialog_) {
+                replaceColorDialog_->raise();
+                replaceColorDialog_->activateWindow();
+                return;
+            }
+            auto* dialog = new ReplaceColorDialog(view, tools_, imageView(), this);
+            dialog->setAttribute(Qt::WA_DeleteOnClose);
+            replaceColorDialog_ = dialog;
+            connect(dialog, &QDialog::finished, this, [this](int result) {
+                if (result == QDialog::Accepted) {
+                    refresh();
+                }
+            });
+            dialog->show();
+        });
+        registry_->setEnabledProvider(id, ready);
+    }
+}
+
+// Layer > New Adjustment Layer: the same add_adjustment bridge the Adjustments
+// panel uses, one entry per CS6 kind over the active document.
+void PicturaMainWindow::wireLayerAdjustments()
+{
+    const auto ready = [this]() {
+        return activeView() && activeView()->has_document();
+    };
+    for (const LayerAdjustment& entry : kLayerAdjustments) {
+        const QString leaf = QString::fromUtf8(entry.leaf);
+        const QString id = commandIdForPath(
+            {QStringLiteral("Layer"), QStringLiteral("New Adjustment Layer"), leaf});
+        const QString kind = QString::fromLatin1(entry.kind);
+        registry_->setImplemented(id, true);
+        if (entry.ellipsis) {
+            registry_->setLabelProvider(id, [leaf]() { return leaf + QStringLiteral("…"); });
+        }
+        registry_->setHandler(id, [this, kind]() {
+            PictureView* view = activeView();
+            if (view && view->add_adjustment(kind)) {
+                refresh();
+            }
+        });
+        registry_->setEnabledProvider(id, ready);
     }
 }
 

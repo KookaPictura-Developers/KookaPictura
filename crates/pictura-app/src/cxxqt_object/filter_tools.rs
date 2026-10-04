@@ -50,7 +50,9 @@ pub mod ffi {
 
         /// Preview `kind` restricted to the document rect `(x, y, w, h)` (the
         /// visible viewport), expanded by the filter's support. Cheaper than a
-        /// full-layer preview while exact across the visible area.
+        /// full-layer preview while exact across the visible area. Positional
+        /// kinds (see [`filter_preview_needs_whole_layer`]) ignore the rect and
+        /// preview the whole layer, because a crop changes their result.
         fn filter_preview_section(
             view: Pin<&mut PictureView>,
             kind: &QString,
@@ -132,6 +134,16 @@ fn filter_preview(mut view: Pin<&mut PictureView>, kind: &QString, params: &QLis
     true
 }
 
+/// Filters that resolve pixel position or a global statistic against the whole
+/// layer, so a cropped section preview would not match the commit: Diffuse
+/// hashes the pixel's absolute coordinates, Lighting resolves its light span
+/// against the crop, and HDR Toning computes a global pivot.
+/// ponytail: `lens-flare` places its centre as a fraction of the buffer, a
+/// pre-existing case of the same class, left out to keep this fix scoped.
+pub(crate) fn filter_preview_needs_whole_layer(kind: &str) -> bool {
+    matches!(kind, "diffuse" | "lighting-effects" | "hdr-toning")
+}
+
 fn filter_preview_section(
     mut view: Pin<&mut PictureView>,
     kind: &QString,
@@ -149,9 +161,10 @@ fn filter_preview_section(
         bottom: y + h.max(0),
         right: x + w.max(0),
     };
+    let section = (!filter_preview_needs_whole_layer(&kind_s)).then_some(visible);
     let region = {
         let mut rust = view.as_mut().rust_mut();
-        apply_filter_active_region(&mut rust, &kind_s, &params_v, false, Some(visible))
+        apply_filter_active_region(&mut rust, &kind_s, &params_v, false, section)
     };
     let Some(region) = region else {
         return false;

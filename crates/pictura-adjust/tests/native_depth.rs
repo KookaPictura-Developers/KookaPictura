@@ -6,7 +6,7 @@ use pictura_adjust::{
     BrightnessContrastParams, ChannelMixerParams, ColorBalanceParams, ColorLookupKind,
     ColorLookupParams, CurvesParams, ExposureParams, GradientMapParams, GradientStop,
     HueSaturationParams, LevelsParams, PhotoFilterParams, SelectiveColorMethod,
-    SelectiveColorParams, SelectiveRange, VibranceParams,
+    SelectiveColorParams, SelectiveRange, ShadowsHighlightsParams, VibranceParams,
 };
 use pictura_core::{PixelBuffer, Samples};
 
@@ -125,6 +125,10 @@ fn covered() -> Vec<Adjustment> {
         Adjustment::Vibrance(VibranceParams {
             vibrance: 45,
             saturation: -20,
+        }),
+        Adjustment::ShadowsHighlights(ShadowsHighlightsParams {
+            shadows_amount: 70.0,
+            highlights_amount: 40.0,
         }),
         Adjustment::ColorBalance(ColorBalanceParams {
             shadows: [12.0, -6.0, 4.0],

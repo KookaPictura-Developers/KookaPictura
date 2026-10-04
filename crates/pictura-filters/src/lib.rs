@@ -15,6 +15,7 @@ pub mod artistic;
 pub mod blur;
 pub mod brush_strokes;
 pub mod distort;
+pub mod hdr_toning;
 pub mod kernel;
 pub mod luma;
 pub mod noise;
@@ -27,7 +28,9 @@ pub mod sketch;
 pub mod stylize;
 pub mod texture;
 
-pub use render::LensType;
+pub use hdr_toning::HdrToningParams;
+pub use render::{LensType, LightType, Lighting, TextureChannel};
+pub use stylize::DiffuseMode;
 
 #[derive(Debug, thiserror::Error)]
 pub enum FilterError {

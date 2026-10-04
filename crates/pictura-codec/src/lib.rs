@@ -77,8 +77,8 @@ pub use metadata::{
 };
 pub use patterns::{decode_patterns, PatternPixels};
 pub use pictura_raw::{
-    attach_pictura_raw_filter, decode_pictura_raw_settings, encode_pictura_raw_fltr,
-    CAMERA_RAW_FILTER_ID, CAMERA_RAW_FILTER_NAME,
+    attach_pictura_raw_filter, attach_smart_filter, decode_pictura_raw_settings,
+    encode_pictura_raw_fltr, CAMERA_RAW_FILTER_ID, CAMERA_RAW_FILTER_NAME,
 };
 // Re-exported so the app's profile commands can name a `Profile` without adding
 // a direct dependency on `pictura-color`.
@@ -89,7 +89,9 @@ pub use live_shape::{
 pub use pictura_color::{Policy, Profile};
 pub use probe::{probe_image, ImageBudget, ImageFormat, ImageProbe, ImportError, LimitKind};
 pub use read::{read_psd, read_psd_with};
-pub use smart_filter::set_camera_raw_option;
+pub use smart_filter::{
+    set_camera_raw_option, set_smart_filter_enabled, set_smart_filters_enabled,
+};
 pub use smart_object::remove_linked_source;
 pub use type_tool::encode_type_tool;
 pub use type_write::author_type_tool;
