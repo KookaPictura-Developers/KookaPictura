@@ -1,8 +1,8 @@
 use crate::{
-    BrushType, ContourEdge, ExtrudeType, GrainType, HalftoneType, LensType, LightDirection,
-    MezzotintType, NoiseDistribution, PolarKind, Quality, RadialMethod, RippleSize, SharpenRemove,
-    ShearFill, SpherizeMode, StrokeDirection, TextureOptions, TileFill, TonalFade, WaveType,
-    WindMethod, ZigZagStyle,
+    BrushType, ContourEdge, DiffuseMode, ExtrudeType, GrainType, HalftoneType, LensType,
+    LightDirection, Lighting, MezzotintType, NoiseDistribution, PolarKind, Quality, RadialMethod,
+    RippleSize, SharpenRemove, ShearFill, SpherizeMode, StrokeDirection, TextureOptions, TileFill,
+    TonalFade, WaveType, WindMethod, ZigZagStyle,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -74,6 +74,14 @@ pub enum Filter {
     },
     FindEdges,
     Solarize,
+    Diffuse {
+        mode: DiffuseMode,
+    },
+    GlowingEdges {
+        width: u32,
+        brightness: u32,
+        smoothness: u32,
+    },
     Mosaic {
         cell_size: u32,
     },
@@ -159,6 +167,9 @@ pub enum Filter {
         brightness: f64,
         center: (f64, f64),
         lens: LensType,
+    },
+    Lighting {
+        lighting: Lighting,
     },
     Cutout {
         levels: u8,

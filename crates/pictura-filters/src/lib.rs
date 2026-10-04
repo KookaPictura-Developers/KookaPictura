@@ -27,7 +27,8 @@ pub mod sketch;
 pub mod stylize;
 pub mod texture;
 
-pub use render::LensType;
+pub use render::{LensType, LightType, Lighting, TextureChannel};
+pub use stylize::DiffuseMode;
 
 #[derive(Debug, thiserror::Error)]
 pub enum FilterError {

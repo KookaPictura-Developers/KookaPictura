@@ -10,10 +10,11 @@
 //! Source: https://github.com/perfecto25/photorust
 
 use pictura_filters::{
-    BrushType, ContourEdge, ExtrudeType, Filter, GrainType, HalftoneType, LensType, LightDirection,
-    MezzotintType, NoiseDistribution, PolarKind, Quality, RadialMethod, RippleSize, SharpenRemove,
-    ShearFill, SpherizeMode, StrokeDirection, TextureOptions, TextureSurface, TileFill, TonalFade,
-    WaveType, WindMethod, ZigZagStyle,
+    BrushType, ContourEdge, DiffuseMode, ExtrudeType, Filter, GrainType, HalftoneType, LensType,
+    LightDirection, LightType, Lighting, MezzotintType, NoiseDistribution, PolarKind, Quality,
+    RadialMethod, RippleSize, SharpenRemove, ShearFill, SpherizeMode, StrokeDirection,
+    TextureChannel, TextureOptions, TextureSurface, TileFill, TonalFade, WaveType, WindMethod,
+    ZigZagStyle,
 };
 
 /// Refuse a non-empty parameter list that does not match the kind's arity.
@@ -172,6 +173,19 @@ const LENS_TYPES: [LensType; 4] = [
 ];
 const RADIAL_METHODS: [RadialMethod; 2] = [RadialMethod::Spin, RadialMethod::Zoom];
 const QUALITIES: [Quality; 3] = [Quality::Draft, Quality::Good, Quality::Best];
+const LIGHT_TYPES: [LightType; 3] = [LightType::Spot, LightType::Point, LightType::Infinite];
+const TEXTURE_CHANNELS: [TextureChannel; 4] = [
+    TextureChannel::None,
+    TextureChannel::Red,
+    TextureChannel::Green,
+    TextureChannel::Blue,
+];
+const DIFFUSE_MODES: [DiffuseMode; 4] = [
+    DiffuseMode::Normal,
+    DiffuseMode::DarkenOnly,
+    DiffuseMode::LightenOnly,
+    DiffuseMode::Anisotropic,
+];
 
 /// Every supported kind and its exact slot count. This is the guard that
 /// keeps the Rust mapping and `cpp/filter_commands.cpp` in lock-step.
@@ -198,6 +212,8 @@ pub(super) const FILTER_ARITIES: &[(&str, usize)] = &[
     ("emboss", 3),
     ("find-edges", 0),
     ("solarize", 0),
+    ("diffuse", 1),
+    ("glowing-edges", 3),
     ("mosaic", 1),
     ("crystallize", 2),
     ("facet", 0),
@@ -218,6 +234,7 @@ pub(super) const FILTER_ARITIES: &[(&str, usize)] = &[
     ("difference-clouds", 8),
     ("fibers", 9),
     ("lens-flare", 4),
+    ("lighting-effects", 19),
     ("colored-pencil", 10),
     ("cutout", 3),
     ("dry-brush", 4),
@@ -412,6 +429,20 @@ pub(super) fn filter_from_kind_params(kind: &str, params: &[f64]) -> Option<Filt
             arity!(params, 0);
             Filter::Solarize
         }
+        "diffuse" => {
+            arity!(params, 1);
+            Filter::Diffuse {
+                mode: pick(&DIFFUSE_MODES, params, 0, 0),
+            }
+        }
+        "glowing-edges" => {
+            arity!(params, 3);
+            Filter::GlowingEdges {
+                width: u32v(params, 0, 2),
+                brightness: u32v(params, 1, 6),
+                smoothness: u32v(params, 2, 1),
+            }
+        }
         "mosaic" => {
             arity!(params, 1);
             Filter::Mosaic {
@@ -565,6 +596,27 @@ pub(super) fn filter_from_kind_params(kind: &str, params: &[f64]) -> Option<Filt
                 brightness: f(params, 0, 100.0),
                 center: (f(params, 1, 0.5), f(params, 2, 0.5)),
                 lens: pick(&LENS_TYPES, params, 3, 0),
+            }
+        }
+        "lighting-effects" => {
+            arity!(params, 19);
+            Filter::Lighting {
+                lighting: Lighting {
+                    kind: pick(&LIGHT_TYPES, params, 0, 0),
+                    color: rgb(params, 1, [255, 255, 255]),
+                    intensity: f(params, 4, 25.0) as f32,
+                    hotspot: f(params, 5, 44.0) as f32,
+                    colorize: rgb(params, 6, [255, 255, 255]),
+                    ambience: f(params, 9, 0.0) as f32,
+                    exposure: f(params, 10, 0.0) as f32,
+                    gloss: f(params, 11, 0.0) as f32,
+                    metallic: f(params, 12, 0.0) as f32,
+                    texture: pick(&TEXTURE_CHANNELS, params, 13, 0),
+                    height: f(params, 14, 50.0) as f32,
+                    center: (f(params, 15, 0.5) as f32, f(params, 16, 0.5) as f32),
+                    size: f(params, 17, 0.45) as f32,
+                    angle: f(params, 18, 45.0) as f32,
+                },
             }
         }
         "colored-pencil" => {
