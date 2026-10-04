@@ -6,6 +6,7 @@ use crate::color::{
     vibrance,
 };
 use crate::common::{map_float, validate};
+use crate::replace_color::replace_color;
 use crate::tonal::{
     brightness_contrast, curves, desaturate, equalize, exposure, gradient_map, levels, posterize,
     shadows_highlights, threshold,
@@ -54,5 +55,6 @@ pub fn apply(adjustment: &Adjustment, buf: &mut PixelBuffer) -> Result<(), Adjus
             "pattern fill is composited, not applied destructively".into(),
         )),
         Adjustment::ColorLookup(p) => crate::lut::apply_color_lookup(p, buf),
+        Adjustment::ReplaceColor(p) => replace_color(p, buf, n),
     }
 }

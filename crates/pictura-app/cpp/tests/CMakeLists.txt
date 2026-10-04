@@ -22,6 +22,7 @@ set(PICTURA_QT_TESTS
     tst_icon_assets
     tst_filter_menu
     tst_color_range
+    tst_replace_color
     tst_print
     tst_image_adjustments
 )

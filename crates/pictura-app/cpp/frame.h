@@ -43,6 +43,7 @@ class LayersPanel;
 class NavigatorPanel;
 class NotesPanel;
 class ColorRangeDialog;
+class ReplaceColorDialog;
 class PathsPanel;
 class OptionsBar;
 class PanelColumn;
@@ -322,6 +323,7 @@ private:
     ColorState* colorState_ = nullptr;
     ColorPanel* colorPanel_ = nullptr;
     QPointer<ColorRangeDialog> colorRangeDialog_;
+    QPointer<ReplaceColorDialog> replaceColorDialog_;
     SwatchesPanel* swatchesPanel_ = nullptr;
     InfoPanel* infoPanel_ = nullptr;
     HistogramPanel* histogramPanel_ = nullptr;

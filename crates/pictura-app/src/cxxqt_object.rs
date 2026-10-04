@@ -15,6 +15,7 @@ mod helpers;
 mod helpers_composite;
 mod image_adjust;
 mod image_hdr_toning;
+mod image_replace_color;
 mod impl_core;
 mod impl_filters;
 mod impl_history;
@@ -1183,7 +1184,6 @@ pub mod qobject {
         /// Offscreen GPU spike: renders a gradient on Vulkan; 0 no GPU, 1 non-blank, 2 blank.
         #[qinvokable]
         fn render_gpu(self: Pin<&mut Self>) -> i32;
-
         /// Create a Vulkan device for the zero-copy interop probe and keep it
         /// alive. Returns false when no device is available.
         #[qinvokable]

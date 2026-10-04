@@ -1,3 +1,5 @@
+use crate::replace_color::ReplaceColorParams;
+
 #[derive(Debug, thiserror::Error)]
 pub enum AdjustError {
     #[error("unsupported: {0}")]
@@ -267,4 +269,8 @@ pub enum Adjustment {
     /// Color Lookup (`clrL`): samples a parsed 3-D lookup, or is a no-op when
     /// [`ColorLookupParams::lookup`] is `None`.
     ColorLookup(ColorLookupParams),
+    /// Image > Adjustments > Replace Color (#164): an HSL shift feathered by
+    /// each pixel's colour match to the sampled colours. Dialog-only, so it
+    /// has no PSD encoding; native-depth apply refuses it.
+    ReplaceColor(ReplaceColorParams),
 }

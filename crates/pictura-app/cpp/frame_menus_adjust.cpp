@@ -5,6 +5,7 @@
 
 #include "adjustment_dialog.h"
 #include "hdr_toning_dialog.h"
+#include "replace_color_dialog.h"
 
 #include "pictura_app/src/cxxqt_object/filter_tools.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/image_adjust.cxxqt.h"
@@ -47,7 +48,7 @@ constexpr Entry kDirect[] = {
 
 } // namespace
 
-// ponytail: Match Color and Replace Color stay disabled stubs.
+// ponytail: Match Color stays a disabled stub.
 void PicturaMainWindow::wireImageAdjustments()
 {
     const auto ready = [this]() {
@@ -116,6 +117,42 @@ void PicturaMainWindow::wireImageAdjustments()
             } else if (view) {
                 reportFilterRefusal(view);
             }
+        });
+        registry_->setEnabledProvider(id, ready);
+    }
+
+    // Replace Color is dialog-only and non-modal, so its eyedropper can reach
+    // the canvas; OK commits one "Replace Color" state.
+    {
+        const QString leaf = QStringLiteral("Replace Color");
+        const QString id =
+            commandIdForPath({QStringLiteral("Image"), QStringLiteral("Adjustments"), leaf});
+        registry_->setImplemented(id, true);
+        registry_->setLabelProvider(id, [leaf]() { return leaf + QStringLiteral("…"); });
+        registry_->setHandler(id, [this]() {
+            PictureView* view = activeView();
+            if (!view || !filter_target_ready(*view)) {
+                if (view) {
+                    reportFilterRefusal(view);
+                }
+                return;
+            }
+            if (replaceColorDialog_) {
+                replaceColorDialog_->raise();
+                replaceColorDialog_->activateWindow();
+                return;
+            }
+            ImageView* canvas = imageView();
+            const QRect visible = canvas ? canvas->visibleDocumentRect().toAlignedRect() : QRect();
+            auto* dialog = new ReplaceColorDialog(view, tools_, visible, this);
+            dialog->setAttribute(Qt::WA_DeleteOnClose);
+            replaceColorDialog_ = dialog;
+            connect(dialog, &QDialog::finished, this, [this](int result) {
+                if (result == QDialog::Accepted) {
+                    refresh();
+                }
+            });
+            dialog->show();
         });
         registry_->setEnabledProvider(id, ready);
     }

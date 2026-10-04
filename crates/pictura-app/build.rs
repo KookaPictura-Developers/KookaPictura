@@ -56,6 +56,7 @@ fn main() {
                 "src/cxxqt_object/healing.rs",
                 "src/cxxqt_object/image_adjust.rs",
                 "src/cxxqt_object/image_hdr_toning.rs",
+                "src/cxxqt_object/image_replace_color.rs",
                 "src/cxxqt_object/magnetic.rs",
                 "src/cxxqt_object/paint_tools.rs",
                 "src/cxxqt_object/paint_tools/fills.rs",
