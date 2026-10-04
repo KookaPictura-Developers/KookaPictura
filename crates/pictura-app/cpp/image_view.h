@@ -139,6 +139,11 @@ public:
     // Committed-selection marching ants. `encoded` is `"x,y x,y ..."` loops
     // joined by `;` (see PictureView::selection_contour); empty clears.
     void setSelectionContour(const QString& encoded);
+    // The Channels panel's visible colour channels (image_view_channels.cpp):
+    // bit 0 red, 1 green, 2 blue; 0x7 shows all. One visible channel draws as
+    // greyscale, as CS6 does by default; two draw in their own colours.
+    void setChannelMask(int mask);
+    int channelMask() const { return channelMask_; }
     void clearSelectionContour();
     void setSelectionEdgesVisible(bool on);
     bool selectionEdgesVisible() const { return selectionEdgesVisible_; }
@@ -387,6 +392,15 @@ private:
     const QImage* presentCrop(QRect& docRect);
 
     QImage image_;
+    int channelMask_ = 0x7;
+    // The single visible channel as greyscale, rebuilt when the image or the
+    // mask changes.
+    QImage channelImage_;
+    qint64 channelImageKey_ = -1;
+    int channelImageMask_ = -1;
+    // The visible channel when exactly one is, else -1.
+    int singleChannel() const;
+    const QImage& channelImage();
     QColor canvasColor_{Qt::darkGray};
     double zoom_ = 1.0;
     QPointF offset_;

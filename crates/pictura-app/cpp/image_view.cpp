@@ -773,7 +773,13 @@ void ImageView::paintEvent(QPaintEvent*)
         painter.setRenderHint(QPainter::SmoothPixmapTransform,
                               rotation_ != 0.0 || smoothSamplingForZoom(zoom_));
         painter.setClipRect(docDevice);
-        if (crop) {
+        if (singleChannel() >= 0) {
+            const QRectF visible = visibleDocumentRect();
+            painter.drawImage(QRectF(offset_.x() + visible.x() * zoom_,
+                                     offset_.y() + visible.y() * zoom_, visible.width() * zoom_,
+                                     visible.height() * zoom_),
+                              channelImage(), visible);
+        } else if (crop) {
             const QRectF target(offset_.x() + cropDoc.x() * zoom_,
                                 offset_.y() + cropDoc.y() * zoom_, cropDoc.width() * zoom_,
                                 cropDoc.height() * zoom_);
@@ -792,6 +798,13 @@ void ImageView::paintEvent(QPaintEvent*)
         }
         painter.restore();
         presentCacheRebuiltLastPaint_ = presentCache_.rebuilds != before;
+    }
+    // Hidden channels (two still shown): zero them with one multiply.
+    if (channelMask_ != 0x7 && singleChannel() < 0) {
+        painter.setCompositionMode(QPainter::CompositionMode_Multiply);
+        painter.fillRect(docClip, QColor(channelMask_ & 1 ? 255 : 0, channelMask_ & 2 ? 255 : 0,
+                                         channelMask_ & 4 ? 255 : 0));
+        painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
     }
     painter.restore();
 

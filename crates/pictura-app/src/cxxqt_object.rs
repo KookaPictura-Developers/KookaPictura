@@ -3,6 +3,7 @@
 mod adjustment_edit;
 mod align;
 mod annotations;
+mod channels;
 mod clipboard;
 mod clipping;
 mod color_range;
@@ -1171,8 +1172,7 @@ pub mod qobject {
         #[qinvokable]
         fn history_snapshot_label(&self, i: i32) -> QString;
 
-        /// Restore named restore point `i`, recomposite, and emit [`changed`].
-        /// Returns false when `i` is out of range.
+        /// Restore named restore point `i`, recomposite, and emit [`changed`]. Returns false when `i` is out of range.
         #[qinvokable]
         fn history_restore_snapshot(self: Pin<&mut Self>, i: i32) -> bool;
 
