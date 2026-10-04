@@ -445,14 +445,16 @@ pub fn type_layer_spec(layer: &pictura_core::Layer) -> Option<TypeSpec> {
     let tool = layer.type_tool.as_ref()?;
     let style = tool.style.as_ref()?;
     let mut character = style.character.clone();
-    let family = style
-        .font
-        .as_deref()
-        .and_then(crate::fonts::font_family)
-        .or_else(|| (!character.font_family.is_empty()).then(|| character.font_family.clone()))
-        .or_else(|| style.font.clone())
-        .unwrap_or_default();
-    character.font_family = family;
+    let postscript = style.font.as_deref();
+    // The EngineData's own `/FontFamily` is authoritative; the registry only
+    // normalizes the PostScript name decode falls back to when the family key is
+    // absent, in which case `character.font_family` equals `style.font`.
+    if character.font_family.is_empty() || Some(character.font_family.as_str()) == postscript {
+        character.font_family = postscript
+            .and_then(crate::fonts::font_family)
+            .or_else(|| style.font.clone())
+            .unwrap_or_default();
+    }
     let mut spec = TypeSpec {
         text: type_lines(&tool.text).join("\r"),
         vertical: tool.vertical,
