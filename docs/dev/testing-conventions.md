@@ -20,13 +20,14 @@ toolkit's own Qt Test for the C++ GUI suites.
 | C++ Qt shell tests | Qt Test + CTest (`add_test`) | `crates/pictura-app/cpp/tests/` | per-executable JUnit, folded into the unified report by `scripts/test-report.sh` |
 | Python oracle tooling | `argparse` CLIs, no test framework | `scripts/*.py` | stdout (machine-readable or raw bytes) + exit code |
 
-Current inventory: **1972 `#[test]`**, **8 `#[ignore]`** (all profiling/GPU tests,
+Current inventory: **1985 `#[test]`**, **8 `#[ignore]`** (all profiling/GPU tests,
 see §3), **511** `ST_BEGIN` self-test sites (**475** executed in a bare
-`--headless --self-test` run), and fourteen Qt Test suites (`tst_smoke`,
+`--headless --self-test` run), and sixteen Qt Test suites (`tst_smoke`,
 `tst_command_tree`, `tst_layers_panel`, `tst_align_distribute`,
 `tst_edit_clipboard`, `tst_fill_tools`, `tst_retouch_tools`, `tst_pen_tools`,
 `tst_path_selection_tools`, `tst_shape_tools`, `tst_rotate_view`,
-`tst_save_for_web`, `tst_type_tools`, `tst_type_panels`) run under CTest.
+`tst_save_for_web`, `tst_type_tools`, `tst_type_panels`, `tst_color_range`,
+`tst_print`) run under CTest.
 `pictura-testkit` is the only dev-dependency; there are no
 test-runner crates outside Qt Test.
 

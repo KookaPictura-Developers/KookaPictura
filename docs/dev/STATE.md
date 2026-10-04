@@ -947,6 +947,40 @@ Snapshot for resuming after a context break. Update after each milestone.
   Glyphs toggle it, Type > Panels > Character / Paragraph open it, and the Type
   bar gained CS6's panel toggle. The column's minimum width is unchanged
   (`no_hscroll_off` held at 333 px). Qt Test `tst_type_panels`.
+- **Color Range** (change `color-range-dialog`, issue #67, from photorust's
+  `ColorRangeDialog` / `wand.rs`): `pictura_select::color_range` now takes a
+  `ColorRangeSelect` (Sampled Colors, six hue bands that exclude greys, three
+  tonal bands) with Fuzziness 0–200 and Invert, replacing the unused
+  sampled-only Chebyshev ramp. Select > Color Range… opens a non-modal dialog
+  (Select, Fuzziness, swatch + eyedropper, Invert, greyscale mask preview);
+  while its eyedropper is down `ToolController::setCanvasSampler` routes canvas
+  presses to it under the eyedropper cursor. OK selects, or intersects a live
+  selection (CS6's refine), as one "Color Range" state; unavailable at 32 bpc.
+  Qt Test `tst_color_range`. Ceilings (`ponytail:`): no Skin Tones, Detect
+  Faces, Localized Color Clusters, Out Of Gamut, plus / minus eyedroppers,
+  preview modes, or Save / Load.
+- **Print** (change `print-dialog`, issue #66, from photorust's `PrintDialog`):
+  File > Print… (Ctrl+P) opens CS6's dialog — page preview (destination paper,
+  portrait / landscape, Show Paper White), Printer Setup (CUPS queues plus a
+  Linux **Save as PDF** destination, copies, Print Settings…), printer-managed
+  colour — and prints the flattened sRGB image fitted to the printable area.
+  Done / Print keep the settings for Print One Copy, which prints to the last
+  printer or opens the dialog. Links **Qt6::PrintSupport** (system Qt / CI base
+  install; no crate). Qt Test `tst_print` writes a real PDF. Ceilings
+  (`ponytail:`): no Photoshop-managed colour, proofing, Position and Size,
+  Print Selected Area, or marks.
+- **Properties panel editing** (change `properties-panel-editing`, issue #70,
+  from photorust's `PropertiesPanel`): `pictura-render`'s `adjustment_params`
+  describes thirteen adjustments' controls and edits them in place — patching
+  only the parameter's bytes or descriptor item, so unmodelled data survives;
+  Curves re-encodes its points. The panel builds its controls from that page,
+  edits the canvas live, records one "Modify … Layer" state per gesture, and
+  carries Clip to Layer / Reset / Toggle Visibility / Delete; other layers get
+  a read-only summary (post-CS6, ported on request). Its pages scroll so the
+  panel column keeps its size (self-test 172 / 191 unchanged). Qt Test
+  `tst_properties_panel` extended. Ceilings (`ponytail:`): no Presets menu,
+  mask page, Previous State; Monochrome, Colorize / ranges, B&W tint, Gradient
+  Map, and Color Lookup not editable.
 - **Shape options bar** (change `shape-options-bar`, owner follow-up on #48
   from a CS6 screenshot): all six shape tools share CS6's bar — Mode, Fill,
   Stroke (width, type pop-up with Align), W / link / H, disabled path
