@@ -76,6 +76,7 @@ fn build_smart_object(layer: &Layer, records: &[LinkedRecord]) -> Option<SmartOb
         filter_mask_enabled: flags.mask_enabled,
         filter_mask_linked: flags.mask_linked,
         filter_mask_extend_with_white: flags.extend_with_white,
+        smart_filters_enabled: flags.enabled,
         ..Default::default()
     };
     let Some(record) = records.iter().find(|r| r.uuid == uuid) else {
@@ -102,6 +103,7 @@ fn build_smart_object(layer: &Layer, records: &[LinkedRecord]) -> Option<SmartOb
 /// The group-level flags carried by a smart object's `filterFXStyle`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FilterFxFlags {
+    enabled: bool,
     mask_enabled: bool,
     mask_linked: bool,
     extend_with_white: bool,
@@ -111,6 +113,7 @@ impl Default for FilterFxFlags {
     fn default() -> Self {
         // Match the writer's defaults for a missing `filterFXStyle`.
         Self {
+            enabled: true,
             mask_enabled: true,
             mask_linked: false,
             extend_with_white: true,
@@ -129,6 +132,7 @@ fn parse_filter_fx(items: &[(Vec<u8>, DescValue)]) -> (Vec<SmartFilter>, FilterF
         return (Vec::new(), FilterFxFlags::default());
     };
     let flags = FilterFxFlags {
+        enabled: bool_item(filter_fx, b"enab", true),
         mask_enabled: bool_item(filter_fx, b"filterMaskEnable", true),
         mask_linked: bool_item(filter_fx, b"filterMaskLinked", false),
         extend_with_white: bool_item(filter_fx, b"filterMaskExtendWithWhite", true),
@@ -914,6 +918,7 @@ crs:Exposure2012=\"+0.50\"/></rdf:RDF></x:xmpmeta>";
             .expect("smart object resolved");
 
         assert_eq!(so.smart_filters.len(), 1, "exactly one smart filter");
+        assert!(so.smart_filters_enabled, "the group is enabled by default");
         let filter = &so.smart_filters[0];
         assert_eq!(filter.filter_id, 2683);
         assert_eq!(filter.name, "Camera Raw Filter");

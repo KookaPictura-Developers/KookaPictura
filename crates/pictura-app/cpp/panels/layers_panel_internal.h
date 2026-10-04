@@ -71,6 +71,9 @@ struct LayerRow {
     QImage maskThumbnail;
     int documentWidth = 0;
     int documentHeight = 0;
+    /// A display-only row (the Smart Filters group and its children) with no
+    /// real layer behind its path: not editable, draggable, or a drop target.
+    bool synthetic = false;
 };
 
 QString layerTooltip(const LayerRow& layer);
@@ -150,6 +153,7 @@ enum LayerRole {
     DocumentWidthRole,
     DocumentHeightRole,
     LayerRowShapeRole,
+    SyntheticRole,
 };
 
 struct Node {
@@ -303,6 +307,8 @@ public:
             return row.documentWidth;
         case DocumentHeightRole:
             return row.documentHeight;
+        case SyntheticRole:
+            return row.synthetic;
         default:
             return {};
         }
@@ -314,6 +320,12 @@ public:
             // The invalid parent is the top-level drop surface; without the
             // flag Qt computes no AboveItem/BelowItem indicator for root rows.
             return Qt::ItemIsDropEnabled;
+        }
+        const Node* node = static_cast<const Node*>(index.internalPointer());
+        if (node && node->row.synthetic) {
+            // A synthetic Smart Filters row selects and expands but neither
+            // renames, drags, nor accepts a drop.
+            return Qt::ItemIsEnabled | Qt::ItemIsSelectable;
         }
         return Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsEditable
             | Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled;
@@ -342,6 +354,9 @@ public:
             return false;
         }
         if (role == Qt::EditRole) {
+            if (node->row.synthetic) {
+                return false;
+            }
             const QString name = value.toString().trimmed();
             if (name.isEmpty() || name == node->row.name) {
                 return false;
@@ -867,6 +882,14 @@ public:
             if (index.data(KindRole).toString() == QLatin1String("group")) {
                 const QPixmap glyph =
                     pictura::icon(QStringLiteral("layers.group")).pixmap(thumb, thumb);
+                if (!glyph.isNull()) {
+                    painter->drawPixmap(box, glyph);
+                }
+            } else if (index.data(KindRole).toString().startsWith(QLatin1String("smart-filter"))) {
+                // The Smart Filters group and its rows show the fx badge instead
+                // of a checkerboard (there is no raster thumbnail for them).
+                const QPixmap glyph =
+                    pictura::icon(QStringLiteral("layers.fx")).pixmap(thumb, thumb);
                 if (!glyph.isNull()) {
                     painter->drawPixmap(box, glyph);
                 }

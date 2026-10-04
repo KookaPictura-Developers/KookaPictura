@@ -29,6 +29,7 @@ mod impl_paint;
 mod impl_pictura_raw;
 mod impl_selection;
 mod impl_transform;
+mod layers_smart_filters;
 mod magnetic;
 mod paint_tools;
 mod paths;
@@ -65,7 +66,6 @@ pub mod qobject {
         /// Render `text` with the system `family` font to packed RGBA8888 of the given size.
         fn render_text_rgba(family: &str, pixel_size: f64, text: &str, justify: i32, r: u8, g: u8, b: u8, a: u8, width: i32, height: i32) -> Vec<u8>;
     }
-
     extern "RustQt" {
         #[qobject]
         #[namespace = "pictura"]

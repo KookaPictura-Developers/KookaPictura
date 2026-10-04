@@ -579,8 +579,9 @@ void addDefaultCommands(CommandRegistry& registry) {
     registry.add(command_ids::FilterLastFilterSettings, {"Filter", "Last Filter Settings…"},
                  QStringLiteral("Last Filter Settings…"),
                  QKeySequence(QStringLiteral("Ctrl+Alt+F")), true);
-    leaf(registry, {"Filter", "Convert for Smart Filters"},
-         QStringLiteral("Convert for Smart Filters"));
+    registry.add(command_ids::FilterConvertForSmartFilters,
+                 {"Filter", "Convert for Smart Filters"},
+                 QStringLiteral("Convert for Smart Filters"), QKeySequence(), true);
     registry.addSeparator({"Filter"});
     leaf(registry, {"Filter", "Filter Gallery…"}, QStringLiteral("Filter Gallery…"));
     leaf(registry, {"Filter", "Adaptive Wide Angle…"}, QStringLiteral("Adaptive Wide Angle…"));

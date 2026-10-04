@@ -95,6 +95,7 @@ pub fn encode_pictura_raw_fltr(settings: &PicturaRawSettings) -> DescValue {
 /// smart object and by [`attach_smart_filter`] to insert one.
 pub(crate) fn author_filter_fx(
     filters: &[SmartFilter],
+    enabled: bool,
     mask_enabled: bool,
     mask_linked: bool,
     extend_with_white: bool,
@@ -106,7 +107,7 @@ pub(crate) fn author_filter_fx(
     Some(object(
         b"filterFXStyle",
         vec![
-            (b"enab", DescValue::Bool(true)),
+            (b"enab", DescValue::Bool(enabled)),
             (b"validAtPosition", DescValue::Bool(true)),
             (b"filterMaskEnable", DescValue::Bool(mask_enabled)),
             (b"filterMaskLinked", DescValue::Bool(mask_linked)),
@@ -249,19 +250,21 @@ fn new_filter(settings: &PicturaRawSettings) -> SmartFilter {
     }
 }
 
-/// The group flags the writer authors for a fresh `filterFX` on `layer`.
-fn group_flags(layer: &Layer) -> (bool, bool, bool) {
+/// The group flags the writer authors for a fresh `filterFX` on `layer`:
+/// `(enabled, mask_enabled, mask_linked, extend_with_white)`.
+fn group_flags(layer: &Layer) -> (bool, bool, bool, bool) {
     layer
         .smart_object
         .as_ref()
         .map(|so| {
             (
+                so.smart_filters_enabled,
                 so.filter_mask_enabled,
                 so.filter_mask_linked,
                 so.filter_mask_extend_with_white,
             )
         })
-        .unwrap_or((true, false, true))
+        .unwrap_or((true, true, false, true))
 }
 
 /// The `filterID` of a `filterFXList` entry, or `None` when absent.
@@ -313,12 +316,18 @@ fn insert_into_config(
         },
         Some(_) => return Err(malformed("filterFX is not an object")),
         None => {
-            let (enabled, linked, extend) = group_flags(layer);
+            let (enabled, mask_enabled, linked, extend) = group_flags(layer);
             set_object_item(
                 items,
                 b"filterFX",
-                author_filter_fx(std::slice::from_ref(filter), enabled, linked, extend)
-                    .ok_or_else(|| malformed("no filter to author"))?,
+                author_filter_fx(
+                    std::slice::from_ref(filter),
+                    enabled,
+                    mask_enabled,
+                    linked,
+                    extend,
+                )
+                .ok_or_else(|| malformed("no filter to author"))?,
             );
         }
     }

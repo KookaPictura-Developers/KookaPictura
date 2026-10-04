@@ -12,6 +12,7 @@
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/clipping.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/layers_smart_filters.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/shapes.cxxqt.h"
 
 #include <QtCore/QAbstractItemModel>
@@ -210,7 +211,14 @@ LayersPanel::LayersPanel(QWidget* parent)
     // path + mode and the panel turns it into one reparent/move undo step.
     tree_->setDragPathsProvider([this] {
         const QString path = currentPath();
-        return path.isEmpty() ? QStringList{} : QStringList{path};
+        if (path.isEmpty()) {
+            return QStringList{};
+        }
+        const QModelIndex index = model_->indexForPath(path);
+        if (index.isValid() && index.data(SyntheticRole).toBool()) {
+            return QStringList{};
+        }
+        return QStringList{path};
     });
     tree_->setPathResolver([this](const QModelIndex& index) { return pathForProxyIndex(index); });
     tree_->setDropHandler([this](const QString& dragged, const QString& target, int mode) {
@@ -452,6 +460,43 @@ void LayersPanel::refresh()
             row.maskThumbnail = view_->layer_row_mask_thumbnail(i, thumbSize);
             rows.push_back(std::move(row));
         }
+        // Display-only Smart Filters rows: a group header under each filtered
+        // smart object plus one row per filter. The header carries the filter
+        // count and the group eye; the children carry their own eyes.
+        QVector<LayerRow> synthetic;
+        for (int k = 0; k < rows.size(); ++k) {
+            LayerRow& row = rows[k];
+            if (row.path.isEmpty() || !layer_has_smart_filters(*view_, row.path)) {
+                continue;
+            }
+            const int count = layer_smart_filter_count(*view_, row.path);
+            // The smart object row gains a disclosure so the filter group can be
+            // revealed, as CS6 nests "Smart Filters" under the layer.
+            row.expandable = true;
+            LayerRow group;
+            group.path = row.path + QStringLiteral("/@sf");
+            group.depth = row.depth + 1;
+            group.name = QStringLiteral("Smart Filters");
+            group.kind = QStringLiteral("smart-filters");
+            group.visible = layer_smart_filters_enabled(*view_, row.path);
+            group.expandable = true;
+            group.childCount = count;
+            group.synthetic = true;
+            synthetic.push_back(std::move(group));
+            for (int j = 0; j < count; ++j) {
+                LayerRow child;
+                child.path = row.path + QStringLiteral("/@sf/") + QString::number(j);
+                child.depth = row.depth + 2;
+                child.name = layer_smart_filter_name(*view_, row.path, j);
+                child.kind = QStringLiteral("smart-filter");
+                child.visible = layer_smart_filter_visible(*view_, row.path, j);
+                child.synthetic = true;
+                synthetic.push_back(std::move(child));
+            }
+        }
+        for (LayerRow& row : synthetic) {
+            rows.push_back(std::move(row));
+        }
     }
     model_->setRows(std::move(rows));
 
@@ -662,6 +707,20 @@ bool LayersPanel::eventFilter(QObject* watched, QEvent* event)
             }
             if (index.isValid() && delegate_->eyeRect(tree_->visualRect(index)).contains(pos)) {
                 const QString path = pathForProxyIndex(index);
+                const QString kind = index.data(KindRole).toString();
+                if (view_ && kind.startsWith(QLatin1String("smart-filter"))) {
+                    const int sf = path.indexOf(QLatin1String("/@sf"));
+                    const QString base = sf >= 0 ? path.left(sf) : path;
+                    const bool on = !index.data(VisibleRole).toBool();
+                    if (kind == QLatin1String("smart-filters")) {
+                        set_layer_smart_filters_enabled(*view_, base, on);
+                    } else {
+                        const int filterIndex =
+                            path.mid(path.lastIndexOf(QLatin1Char('/')) + 1).toInt();
+                        set_layer_smart_filter_visible(*view_, base, filterIndex, on);
+                    }
+                    return true;
+                }
                 if (mouse->modifiers() & Qt::AltModifier) {
                     toggleSolo(path);
                     return true;
@@ -683,6 +742,9 @@ bool LayersPanel::eventFilter(QObject* watched, QEvent* event)
             const QPoint pos = mouse->position().toPoint();
             const QModelIndex index = tree_->indexAt(pos);
             if (index.isValid()) {
+                if (index.data(KindRole).toString().startsWith(QLatin1String("smart-filter"))) {
+                    return true;
+                }
                 const QString path = pathForProxyIndex(index);
                 if (index.data(KindRole).toString() == QLatin1String("background")) {
                     // A control keeps its own action; any other content-band

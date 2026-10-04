@@ -34,13 +34,18 @@ pub fn decode_smart_filter(filter: &SmartFilter) -> Option<SmartFilterOp> {
 /// `base` covers `rect` (document coordinates). When `mask` is given, each
 /// pixel is lerped from the unfiltered `base` toward the filtered result by the
 /// mask coverage, so black mask pixels keep the source and white pixels take
-/// the filter.
+/// the filter. When `enabled` is false (the `filterFXStyle.enab` group flag)
+/// the chain is bypassed and `base` is returned unchanged.
 pub fn apply_smart_filter_chain(
     base: &PixelBuffer,
     rect: PsdRect,
     filters: &[SmartFilter],
     mask: Option<&LayerMask>,
+    enabled: bool,
 ) -> PixelBuffer {
+    if !enabled {
+        return base.clone();
+    }
     let mut out = base.clone();
     for filter in filters.iter().filter(|f| f.enabled) {
         if let Some(op) = decode_smart_filter(filter) {
@@ -115,7 +120,13 @@ pub(crate) fn composite_smart_filtered_source(
     let Some(base) = render_smart_source(so, layer.rect, region) else {
         return false;
     };
-    let src = apply_smart_filter_chain(&base, region, &so.smart_filters, so.filter_mask.as_ref());
+    let src = apply_smart_filter_chain(
+        &base,
+        region,
+        &so.smart_filters,
+        so.filter_mask.as_ref(),
+        so.smart_filters_enabled,
+    );
 
     let rw = region.width() as usize;
     let rh = region.height() as usize;

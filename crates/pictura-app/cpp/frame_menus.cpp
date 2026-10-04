@@ -1,5 +1,7 @@
 #include "frame_includes.h"
 
+#include "pictura_app/src/cxxqt_object/layers_smart_filters.cxxqt.h"
+
 namespace pictura {
 
 void PicturaMainWindow::buildMenus()
@@ -831,6 +833,21 @@ void PicturaMainWindow::registerHandlers()
         }
     });
     registry_->setEnabledProvider(command_ids::LayerSmartObjectConvertTo,
+                                  [currentSmartPath]() { return !currentSmartPath().isEmpty(); });
+
+    // Convert for Smart Filters shares the convertible-raster eligibility and
+    // records its own state label so the Filter menu command is distinct.
+    registry_->setHandler(command_ids::FilterConvertForSmartFilters,
+                          [this, currentSmartPath]() {
+                              if (PictureView* view = activeView()) {
+                                  const QString path = currentSmartPath();
+                                  if (!path.isEmpty()
+                                      && convert_for_smart_filters(*view, path)) {
+                                      refresh();
+                                  }
+                              }
+                          });
+    registry_->setEnabledProvider(command_ids::FilterConvertForSmartFilters,
                                   [currentSmartPath]() { return !currentSmartPath().isEmpty(); });
 
     const auto currentRasterizableSmartPath = [this]() -> QString {

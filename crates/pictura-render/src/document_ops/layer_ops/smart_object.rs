@@ -76,6 +76,14 @@ pub fn convert_to_smart_object(doc: &mut Document, path: &str) -> bool {
     true
 }
 
+/// `Filter > Convert for Smart Filters`: alias of [`convert_to_smart_object`].
+///
+/// CS6 makes the raster layer smart so filters can attach non-destructively;
+/// the underlying conversion is the same operation, so this delegates.
+pub fn convert_for_smart_filters(doc: &mut Document, path: &str) -> bool {
+    convert_to_smart_object(doc, path)
+}
+
 /// Whether `path` resolves to a replaceable smart-object layer: not a group, no
 /// adjustment data, and an `Embedded` object with a non-empty payload.
 pub fn can_replace_smart_object_contents(doc: &Document, path: &str) -> bool {

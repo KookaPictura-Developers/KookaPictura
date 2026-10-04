@@ -55,6 +55,7 @@ inline constexpr char EditAssignProfile[] = "edit.assignProfile";
 inline constexpr char EditConvertProfile[] = "edit.convertProfile";
 inline constexpr char EditColorSettings[] = "edit.colorSettings";
 inline constexpr char FilterPicturaRaw[] = "filter.picturaRaw";
+inline constexpr char FilterConvertForSmartFilters[] = "filter.convertForSmartFilters";
 inline constexpr char FilterLastFilter[] = "filter.last";
 inline constexpr char FilterLastFilterSettings[] = "filter.lastSettings";
 inline constexpr char ImageRotate90Cw[] = "image.rotate90cw";
