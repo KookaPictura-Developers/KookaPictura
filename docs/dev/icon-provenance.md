@@ -15,9 +15,9 @@ not edit by hand; change the JSON and regenerate.
   vendored files carry no baked colour. Internal shading uses alpha
   gradients / `stroke-opacity`.
 
-## Summary (165 icons)
+## Summary (180 icons)
 
-- Lucide-derived: **91**
+- Lucide-derived: **106**
 - Custom (Lucide-style): **61**
 - Note / deferred: **3**
 - Out of scope (3D tools, file unchanged): **10**
@@ -53,6 +53,18 @@ hand-authored assets, or the note for deferred entries.
 | `info.bounds` | lucide:scan | good |  |
 | `info.crosshair` | custom | custom | same as the existing crosshair readout glyph |
 | `info.protractor` | lucide:angle | good |  |
+| `layer.alignBottom` | lucide:align-end-horizontal | good |  |
+| `layer.alignHorizontalCenter` | lucide:align-center-vertical | good |  |
+| `layer.alignLeft` | lucide:align-start-vertical | good |  |
+| `layer.alignRight` | lucide:align-end-vertical | good |  |
+| `layer.alignTop` | lucide:align-start-horizontal | good |  |
+| `layer.alignVerticalCenter` | lucide:align-center-horizontal | good |  |
+| `layer.distributeBottom` | lucide:align-vertical-distribute-end | good |  |
+| `layer.distributeHorizontalCenter` | lucide:align-horizontal-distribute-center | good |  |
+| `layer.distributeLeft` | lucide:align-horizontal-distribute-start | good |  |
+| `layer.distributeRight` | lucide:align-horizontal-distribute-end | good |  |
+| `layer.distributeTop` | lucide:align-vertical-distribute-start | good |  |
+| `layer.distributeVerticalCenter` | lucide:align-vertical-distribute-center | good |  |
 | `layers.clipMask` | lucide:corner-left-down | approximate |  |
 | `layers.delete` | lucide:trash | exact |  |
 | `layers.disclosureDown` | lucide:chevron-down | exact |  |
@@ -180,8 +192,10 @@ hand-authored assets, or the note for deferred entries.
 | `window.panels.adjustments` | custom | custom | typical contrast glyph rotated 45 degrees |
 | `window.panels.brushes` | custom (base: brush) | custom | brush |
 | `window.panels.channels` | custom | custom | three evenly overlapping circles with varying fill |
+| `window.panels.character` | lucide:a-large-small | approximate |  |
 | `window.panels.cloneSource` | custom (base: stamp) | custom | stamp with a small list in the top-left |
 | `window.panels.color` | lucide:palette | good |  |
+| `window.panels.glyphs` | lucide:omega | approximate |  |
 | `window.panels.gradients` | custom | custom | 4:3 rectangle with an alpha-gradient fill |
 | `window.panels.histogram` | custom | custom | audio-lines, bottom-aligned |
 | `window.panels.history` | lucide:rotate-ccw-clock | good |  |
@@ -189,6 +203,7 @@ hand-authored assets, or the note for deferred entries.
 | `window.panels.layers` | lucide:layers | exact |  |
 | `window.panels.navigator` | lucide:ship-wheel | good |  |
 | `window.panels.notes` | custom | custom | same custom sticky-note as tool.note |
+| `window.panels.paragraph` | lucide:pilcrow | exact |  |
 | `window.panels.paths` | lucide:spline | good |  |
 | `window.panels.patterns` | lucide:grid-3x3 | approximate |  |
 | `window.panels.properties` | lucide:settings-2 | approximate |  |

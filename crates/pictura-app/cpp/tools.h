@@ -311,6 +311,8 @@ public:
     bool commitText();
     bool cancelText();
     bool textActive() const;
+    // Insert `text` into the open type edit; false when none is open.
+    bool insertText(const QString& text);
     void setMixerReservoir(const QColor& color) override;
     QColor foreground() const override;
     void setForeground(const QColor& color);

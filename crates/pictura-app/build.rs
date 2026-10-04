@@ -44,6 +44,7 @@ fn main() {
             .files([
                 "src/cxxqt_object.rs",
                 "src/decode_bridge.rs",
+                "src/cxxqt_object/align.rs",
                 "src/cxxqt_object/annotations.rs",
                 "src/cxxqt_object/clipping.rs",
                 "src/cxxqt_object/clipboard.rs",

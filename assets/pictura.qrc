@@ -25,6 +25,18 @@
     <file>icons/info.crosshair.svg</file>
     <file>icons/info.protractor.svg</file>
     <file>icons/count.newGroup.svg</file>
+    <file>icons/layer.alignBottom.svg</file>
+    <file>icons/layer.alignHorizontalCenter.svg</file>
+    <file>icons/layer.alignLeft.svg</file>
+    <file>icons/layer.alignRight.svg</file>
+    <file>icons/layer.alignTop.svg</file>
+    <file>icons/layer.alignVerticalCenter.svg</file>
+    <file>icons/layer.distributeBottom.svg</file>
+    <file>icons/layer.distributeHorizontalCenter.svg</file>
+    <file>icons/layer.distributeLeft.svg</file>
+    <file>icons/layer.distributeRight.svg</file>
+    <file>icons/layer.distributeTop.svg</file>
+    <file>icons/layer.distributeVerticalCenter.svg</file>
     <file>icons/layers.clipMask.svg</file>
     <file>icons/layers.delete.svg</file>
     <file>icons/layers.disclosureDown.svg</file>
@@ -152,8 +164,10 @@
     <file>icons/window.panels.adjustments.svg</file>
     <file>icons/window.panels.brushes.svg</file>
     <file>icons/window.panels.channels.svg</file>
+    <file>icons/window.panels.character.svg</file>
     <file>icons/window.panels.cloneSource.svg</file>
     <file>icons/window.panels.color.svg</file>
+    <file>icons/window.panels.glyphs.svg</file>
     <file>icons/window.panels.gradients.svg</file>
     <file>icons/window.panels.histogram.svg</file>
     <file>icons/window.panels.history.svg</file>
@@ -161,6 +175,7 @@
     <file>icons/window.panels.layers.svg</file>
     <file>icons/window.panels.navigator.svg</file>
     <file>icons/window.panels.notes.svg</file>
+    <file>icons/window.panels.paragraph.svg</file>
     <file>icons/window.panels.paths.svg</file>
     <file>icons/window.panels.patterns.svg</file>
     <file>icons/window.panels.properties.svg</file>

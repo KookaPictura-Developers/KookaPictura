@@ -139,6 +139,16 @@ fn offset_store(layer: &mut Layer, dx: i32, dy: i32) {
     }
 }
 
+/// Shift a pixel layer's bounds, retained store, and mask by `(dx, dy)`; no
+/// pixels move, the compositor reads the shifted `rect`.
+pub(crate) fn offset_layer(layer: &mut Layer, dx: i32, dy: i32) {
+    layer.rect = offset_rect(layer.rect, dx, dy);
+    offset_store(layer, dx, dy);
+    if let Some(mask) = &mut layer.mask {
+        mask.rect = offset_rect(mask.rect, dx, dy);
+    }
+}
+
 /// Shift the topmost pixel layer's bounds by `(dx, dy)`.
 ///
 /// Groups and adjustment layers are ignored; no pixels move, the compositor
@@ -150,11 +160,7 @@ pub fn translate_layer(doc: &mut Document, dx: i32, dy: i32) -> bool {
     if layer_move_locked(layer) {
         return false;
     }
-    layer.rect = offset_rect(layer.rect, dx, dy);
-    offset_store(layer, dx, dy);
-    if let Some(mask) = &mut layer.mask {
-        mask.rect = offset_rect(mask.rect, dx, dy);
-    }
+    offset_layer(layer, dx, dy);
     recompute(doc);
     true
 }
@@ -172,11 +178,7 @@ pub fn translate_layer_rect(doc: &mut Document, dx: i32, dy: i32) -> bool {
     if layer_move_locked(layer) {
         return false;
     }
-    layer.rect = offset_rect(layer.rect, dx, dy);
-    offset_store(layer, dx, dy);
-    if let Some(mask) = &mut layer.mask {
-        mask.rect = offset_rect(mask.rect, dx, dy);
-    }
+    offset_layer(layer, dx, dy);
     true
 }
 
@@ -193,11 +195,7 @@ pub fn translate_layer_active(doc: &mut Document, dx: i32, dy: i32, gpu_enabled:
     if layer_move_locked(layer) {
         return false;
     }
-    layer.rect = offset_rect(layer.rect, dx, dy);
-    offset_store(layer, dx, dy);
-    if let Some(mask) = &mut layer.mask {
-        mask.rect = offset_rect(mask.rect, dx, dy);
-    }
+    offset_layer(layer, dx, dy);
     let (composite, _) = crate::gpu::composite_active(doc, gpu_enabled);
     doc.composite = composite;
     true
@@ -216,11 +214,7 @@ pub fn translate_layer_index(doc: &mut Document, index: usize, dx: i32, dy: i32)
     if layer_move_locked(layer) {
         return false;
     }
-    layer.rect = offset_rect(layer.rect, dx, dy);
-    offset_store(layer, dx, dy);
-    if let Some(mask) = &mut layer.mask {
-        mask.rect = offset_rect(mask.rect, dx, dy);
-    }
+    offset_layer(layer, dx, dy);
     true
 }
 

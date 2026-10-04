@@ -3,6 +3,7 @@ set(PICTURA_QT_TESTS
     tst_smoke
     tst_edit_clipboard
     tst_layers_panel
+    tst_align_distribute
     tst_command_tree
     tst_fill_tools
     tst_retouch_tools
@@ -12,6 +13,7 @@ set(PICTURA_QT_TESTS
     tst_rotate_view
     tst_save_for_web
     tst_type_tools
+    tst_type_panels
     tst_shared_widgets
     tst_info_panel
     tst_swatches_panel

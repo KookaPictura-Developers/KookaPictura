@@ -143,6 +143,10 @@ inline constexpr char WindowPanelsPaths[] = "window.panels.paths";
 inline constexpr char WindowPanelsActions[] = "window.panels.actions";
 inline constexpr char WindowPanelsBrush[] = "window.panels.brushes";
 inline constexpr char WindowPanelsCloneSource[] = "window.panels.cloneSource";
+inline constexpr char WindowPanelsCharacter[] = "window.panels.character";
+inline constexpr char WindowPanelsParagraph[] = "window.panels.paragraph";
+// Not a CS6 panel (Photoshop CC 2015); kept for the photorust port (#65).
+inline constexpr char WindowPanelsGlyphs[] = "window.panels.glyphs";
 inline constexpr char HelpAbout[] = "help.about";
 } // namespace command_ids
 
