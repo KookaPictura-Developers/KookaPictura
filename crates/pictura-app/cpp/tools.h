@@ -10,6 +10,8 @@
 #include <QtCore/Qt>
 #include <QtGui/QColor>
 #include <QtGui/QImage>
+
+#include <functional>
 #include <QtGui/QPolygonF>
 
 #include "tool_context.h"
@@ -311,6 +313,11 @@ public:
     bool commitText();
     bool cancelText();
     bool textActive() const;
+    // While set, a left press on the canvas samples for a dialog (Color Range)
+    // instead of reaching the active tool, under the eyedropper cursor; clear
+    // it with an empty function.
+    void setCanvasSampler(std::function<void(const QPointF&)> sampler);
+    bool canvasSamplerActive() const { return bool(canvasSampler_); }
     // Insert `text` into the open type edit; false when none is open.
     bool insertText(const QString& text);
     void setMixerReservoir(const QColor& color) override;
@@ -520,6 +527,7 @@ private:
     PenOptions pen_;
     ShapeOptions shape_;
     TypeOptions type_;
+    std::function<void(const QPointF&)> canvasSampler_;
     std::array<CloneSource, 5> cloneSources_{};
     int cloneSlot_ = 0;
     int brushRoundness_ = 100;

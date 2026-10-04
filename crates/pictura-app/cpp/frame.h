@@ -2,6 +2,7 @@
 
 #include <QtCore/QByteArray>
 #include <QtCore/QList>
+#include <QtCore/QPointer>
 #include <QtCore/QPoint>
 #include <QtCore/QSet>
 #include <QtCore/QString>
@@ -41,6 +42,7 @@ class InfoPanel;
 class LayersPanel;
 class NavigatorPanel;
 class NotesPanel;
+class ColorRangeDialog;
 class PathsPanel;
 class OptionsBar;
 class PanelColumn;
@@ -281,6 +283,8 @@ private:
     // frame_menus_align.cpp: Layer > Align / Align Layers To Selection /
     // Distribute, and the Move tool's buttons, over the selected layers.
     void wireAlignMenu();
+    // frame_menus_adjust.cpp: Image > Adjustments and the Image > Auto commands.
+    void wireImageAdjustments();
     void alignSelectedLayers(int edge, bool toSelection);
     void distributeSelectedLayers(int edge);
     void updateAlignControls();
@@ -317,6 +321,7 @@ private:
     NavigatorPanel* navigatorPanel_ = nullptr;
     ColorState* colorState_ = nullptr;
     ColorPanel* colorPanel_ = nullptr;
+    QPointer<ColorRangeDialog> colorRangeDialog_;
     SwatchesPanel* swatchesPanel_ = nullptr;
     InfoPanel* infoPanel_ = nullptr;
     HistogramPanel* histogramPanel_ = nullptr;

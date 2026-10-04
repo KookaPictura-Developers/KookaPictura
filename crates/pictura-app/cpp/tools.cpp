@@ -716,9 +716,19 @@ void ToolController::applyToolPolicy()
     }
 }
 
+void ToolController::setCanvasSampler(std::function<void(const QPointF&)> sampler)
+{
+    canvasSampler_ = std::move(sampler);
+    refreshCursor();
+}
+
 void ToolController::handlePressed(const QPointF& imagePos, int button, int modifiers)
 {
     if (button != Qt::LeftButton) {
+        return;
+    }
+    if (canvasSampler_) {
+        canvasSampler_(imagePos);
         return;
     }
     PictureView* v = view();
@@ -761,6 +771,10 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
 
 void ToolController::handleMoved(const QPointF& imagePos)
 {
+    if (canvasSampler_) {
+        refreshCursor();
+        return;
+    }
     if (transformSessionActive()) {
         PictureView* v = view();
         const Qt::KeyboardModifiers mods = QGuiApplication::queryKeyboardModifiers();
@@ -790,6 +804,9 @@ void ToolController::handleMoved(const QPointF& imagePos)
 
 void ToolController::handleReleased(const QPointF& imagePos)
 {
+    if (canvasSampler_) {
+        return;
+    }
     if (transformSessionActive()) {
         if (transformDragging_) {
             transformDragging_ = false;

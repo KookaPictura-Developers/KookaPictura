@@ -474,6 +474,19 @@ fn threshold_binarizes_and_extremes() {
 }
 
 #[test]
+fn equalize_spreads_the_levels_present_and_keeps_greys_neutral() {
+    let mut b = buf3(3, 1, &[[100, 100, 100], [120, 120, 120], [140, 140, 140]]);
+    apply(&Adjustment::Equalize, &mut b).unwrap();
+    assert_eq!(px3(&b, 0), [0, 0, 0]);
+    assert_eq!(px3(&b, 1), [128, 128, 128]);
+    assert_eq!(px3(&b, 2), [255, 255, 255]);
+    // A flat image has nothing to spread.
+    let mut flat = buf3(2, 1, &[[60, 60, 60], [60, 60, 60]]);
+    apply(&Adjustment::Equalize, &mut flat).unwrap();
+    assert_eq!(px3(&flat, 0), [60, 60, 60]);
+}
+
+#[test]
 fn desaturate_known_and_neutral() {
     let mut b = buf3(2, 1, &[[12, 104, 22], [77, 77, 77]]);
     apply(&Adjustment::Desaturate, &mut b).unwrap();

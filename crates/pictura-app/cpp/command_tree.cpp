@@ -215,17 +215,23 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Image", "Mode", "32 Bits/Channel"}, QStringLiteral("32 Bits/Channel"));
     leaf(registry, {"Image", "Adjustments", "Brightness/Contrast"},
          QStringLiteral("Brightness/Contrast"));
-    leaf(registry, {"Image", "Adjustments", "Levels"}, QStringLiteral("Levels"));
-    leaf(registry, {"Image", "Adjustments", "Curves"}, QStringLiteral("Curves"));
+    leaf(registry, {"Image", "Adjustments", "Levels"}, QStringLiteral("Levels"),
+         QStringLiteral("Ctrl+L"));
+    leaf(registry, {"Image", "Adjustments", "Curves"}, QStringLiteral("Curves"),
+         QStringLiteral("Ctrl+M"));
     leaf(registry, {"Image", "Adjustments", "Exposure"}, QStringLiteral("Exposure"));
     leaf(registry, {"Image", "Adjustments", "Vibrance"}, QStringLiteral("Vibrance"));
-    leaf(registry, {"Image", "Adjustments", "Hue/Saturation"}, QStringLiteral("Hue/Saturation"));
-    leaf(registry, {"Image", "Adjustments", "Color Balance"}, QStringLiteral("Color Balance"));
-    leaf(registry, {"Image", "Adjustments", "Black & White"}, QStringLiteral("Black & White"));
+    leaf(registry, {"Image", "Adjustments", "Hue/Saturation"}, QStringLiteral("Hue/Saturation"),
+         QStringLiteral("Ctrl+U"));
+    leaf(registry, {"Image", "Adjustments", "Color Balance"}, QStringLiteral("Color Balance"),
+         QStringLiteral("Ctrl+B"));
+    leaf(registry, {"Image", "Adjustments", "Black & White"}, QStringLiteral("Black & White"),
+         QStringLiteral("Alt+Shift+Ctrl+B"));
     leaf(registry, {"Image", "Adjustments", "Photo Filter"}, QStringLiteral("Photo Filter"));
     leaf(registry, {"Image", "Adjustments", "Channel Mixer"}, QStringLiteral("Channel Mixer"));
     leaf(registry, {"Image", "Adjustments", "Color Lookup"}, QStringLiteral("Color Lookup"));
-    leaf(registry, {"Image", "Adjustments", "Invert"}, QStringLiteral("Invert"));
+    leaf(registry, {"Image", "Adjustments", "Invert"}, QStringLiteral("Invert"),
+         QStringLiteral("Ctrl+I"));
     leaf(registry, {"Image", "Adjustments", "Posterize"}, QStringLiteral("Posterize"));
     leaf(registry, {"Image", "Adjustments", "Threshold"}, QStringLiteral("Threshold"));
     leaf(registry, {"Image", "Adjustments", "Gradient Map"}, QStringLiteral("Gradient Map"));
@@ -233,7 +239,8 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Image", "Adjustments", "Shadows/Highlights"},
          QStringLiteral("Shadows/Highlights"));
     leaf(registry, {"Image", "Adjustments", "HDR Toning"}, QStringLiteral("HDR Toning"));
-    leaf(registry, {"Image", "Adjustments", "Desaturate"}, QStringLiteral("Desaturate"));
+    leaf(registry, {"Image", "Adjustments", "Desaturate"}, QStringLiteral("Desaturate"),
+         QStringLiteral("Shift+Ctrl+U"));
     leaf(registry, {"Image", "Adjustments", "Match Color"}, QStringLiteral("Match Color"));
     leaf(registry, {"Image", "Adjustments", "Replace Color"}, QStringLiteral("Replace Color"));
     leaf(registry, {"Image", "Adjustments", "Equalize"}, QStringLiteral("Equalize"));

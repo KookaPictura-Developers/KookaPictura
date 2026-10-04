@@ -5,6 +5,13 @@
 #include "panels/properties_panel.h"
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 
+#include <QtWidgets/QCheckBox>
+#include <QtWidgets/QComboBox>
+#include <QtWidgets/QFormLayout>
+#include <QtWidgets/QLabel>
+#include <QtWidgets/QSlider>
+#include <QtWidgets/QToolButton>
+
 #include "qt_test_support.h"
 
 class PropertiesPanelTest : public QObject {
@@ -15,12 +22,19 @@ private slots:
     void cleanup();
     void plainDocumentShowsNoProperties();
     void adjustmentLayerShowsItsName();
+    void slidersEditLiveAndCommitOnce();
+    void groupsCurvesAndFooter();
 
 private:
+    // A white 16x16 document with one `kind` adjustment layer, selected.
+    bool setupAdjustment(const QString& kind);
+
     pictura::test::ScopedStateHome stateHome_;
     std::unique_ptr<pictura::PicturaMainWindow> window_;
     pictura::PictureView* view_ = nullptr;
     pictura::PropertiesPanel* panel_ = nullptr;
+    pictura::LayersPanel* layers_ = nullptr;
+    QString path_;
 };
 
 void PropertiesPanelTest::initTestCase()
@@ -41,17 +55,61 @@ void PropertiesPanelTest::cleanup()
     panel_ = nullptr;
 }
 
+// No document reads No Properties; a plain layer gets the read-only summary
+// (a post-CS6 page ported from photorust, #70).
 void PropertiesPanelTest::plainDocumentShowsNoProperties()
 {
+    panel_ = window_->findChild<pictura::PropertiesPanel*>(QStringLiteral("propertiesPanel"));
+    QVERIFY(panel_);
+    panel_->setView(nullptr);
+    QCOMPARE(panel_->messageForTest(), QStringLiteral("No Properties"));
+
     const bool created = window_->newDocument(QStringLiteral("Props"), 16, 16,
                                               QStringLiteral("rgb"), 8, QStringLiteral("white"));
     view_ = window_->activeView();
-    panel_ = window_->findChild<pictura::PropertiesPanel*>(QStringLiteral("propertiesPanel"));
-    QVERIFY2(created && view_ && panel_, "properties fixture");
-
+    auto* layers = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    QVERIFY2(created && view_ && layers, "properties fixture");
     panel_->setView(view_);
+    layers->setView(view_);
+    QVERIFY(layers->selectRowForTest(view_->layer_row_path(0)));
     panel_->refresh();
-    QCOMPARE(panel_->messageForTest(), QStringLiteral("No Properties"));
+    QCOMPARE(panel_->messageForTest(), QStringLiteral("Layer Properties"));
+    QStringList text;
+    for (QLabel* label : panel_->findChildren<QLabel*>()) {
+        text << label->text();
+    }
+    // A new document's single layer is "Layer 0", a pixel layer.
+    QVERIFY(text.contains(QStringLiteral("Pixel")));
+    QVERIFY(text.contains(QStringLiteral("16 x 16 px")));
+    QVERIFY(text.contains(QStringLiteral("Normal")));
+    QVERIFY(text.contains(QStringLiteral("100%")));
+}
+
+bool PropertiesPanelTest::setupAdjustment(const QString& kind)
+{
+    if (!window_->newDocument(QStringLiteral("Adjust"), 16, 16, QStringLiteral("rgb"), 8,
+                              QStringLiteral("white"))) {
+        return false;
+    }
+    view_ = window_->activeView();
+    panel_ = window_->findChild<pictura::PropertiesPanel*>(QStringLiteral("propertiesPanel"));
+    layers_ = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    if (!view_ || !panel_ || !layers_ || !view_->add_adjustment(kind)) {
+        return false;
+    }
+    path_.clear();
+    for (int i = 0; i < view_->layer_row_count(); ++i) {
+        if (view_->layer_row_has_adjustment(i)) {
+            path_ = view_->layer_row_path(i);
+        }
+    }
+    panel_->setView(view_);
+    layers_->setView(view_);
+    if (path_.isEmpty() || !layers_->selectRowForTest(path_)) {
+        return false;
+    }
+    panel_->refresh();
+    return panel_->pathForTest() == path_;
 }
 
 void PropertiesPanelTest::adjustmentLayerShowsItsName()
@@ -79,6 +137,86 @@ void PropertiesPanelTest::adjustmentLayerShowsItsName()
     QVERIFY2(layers->selectRowForTest(path), "adjustment row selected");
     QVERIFY2(panel_->messageForTest().contains(QStringLiteral("Brightness/Contrast")),
              "adjustment kind named");
+}
+
+// A slider changes the canvas live, and the gesture is one "Modify … Layer"
+// state; undo restores the panel's value and the pixels.
+void PropertiesPanelTest::slidersEditLiveAndCommitOnce()
+{
+    QVERIFY(setupAdjustment(QStringLiteral("hue-saturation")));
+    QCOMPARE(panel_->messageForTest(), QStringLiteral("Hue/Saturation"));
+    auto* hue = qobject_cast<QSlider*>(panel_->controlForTest(QStringLiteral("hue")));
+    auto* lightness = qobject_cast<QSlider*>(panel_->controlForTest(QStringLiteral("lightness")));
+    QVERIFY(hue && lightness);
+    QCOMPARE(hue->value(), 30);
+    const QRgb before = view_->composite_argb(4, 4);
+    const int history = view_->history_count();
+    lightness->setValue(-50);
+    lightness->setValue(-100);
+    QCOMPARE(qGray(view_->composite_argb(4, 4)), 0);
+    QCOMPARE(view_->history_count(), history);
+    panel_->commitForTest();
+    QCOMPARE(view_->history_count(), history + 1);
+    QCOMPARE(view_->history_label(view_->history_index()),
+             QStringLiteral("Modify Hue/Saturation Layer"));
+
+    QVERIFY(view_->undo());
+    panel_->refresh();
+    QCOMPARE(lightness->value(), 0);
+    QCOMPARE(view_->composite_argb(4, 4), before);
+}
+
+// Color Balance's tone menu switches the sliders; Reset restores defaults;
+// the footer toggles visibility and deletes. (Curves editing is covered by the
+// engine's `adjustment_params` tests: `add_adjustment` makes no Curves layer.)
+void PropertiesPanelTest::groupsCurvesAndFooter()
+{
+    QVERIFY(setupAdjustment(QStringLiteral("color-balance")));
+    auto* group = qobject_cast<QComboBox*>(panel_->controlForTest(QStringLiteral("group")));
+    QWidget* shadows = panel_->controlForTest(QStringLiteral("shadows.cyanRed"));
+    QWidget* highlights = panel_->controlForTest(QStringLiteral("highlights.cyanRed"));
+    QVERIFY(group && shadows && highlights);
+    QCOMPARE(group->count(), 3);
+    QVERIFY(shadows->isVisibleTo(panel_) && !highlights->isVisibleTo(panel_));
+    group->setCurrentIndex(2);
+    QVERIFY(!shadows->isVisibleTo(panel_) && highlights->isVisibleTo(panel_));
+    qobject_cast<QSlider*>(highlights)->setValue(60);
+    panel_->commitForTest();
+    auto* luminosity =
+        qobject_cast<QCheckBox*>(panel_->controlForTest(QStringLiteral("preserveLuminosity")));
+    QVERIFY(luminosity && luminosity->isChecked());
+    luminosity->setChecked(false);
+    QCOMPARE(view_->history_label(view_->history_index()),
+             QStringLiteral("Modify Color Balance Layer"));
+
+    auto* reset = panel_->findChild<QToolButton*>(QStringLiteral("propertiesReset"));
+    QVERIFY(reset);
+    reset->click();
+    QCOMPARE(qobject_cast<QSlider*>(highlights)->value(), 0);
+    QVERIFY(luminosity->isChecked());
+
+    auto* visible = panel_->findChild<QToolButton*>(QStringLiteral("propertiesVisible"));
+    QVERIFY(visible);
+    visible->click();
+    int row = -1;
+    for (int i = 0; i < view_->layer_row_count(); ++i) {
+        row = view_->layer_row_path(i) == path_ ? i : row;
+    }
+    QVERIFY(row >= 0 && !view_->layer_row_visible(row));
+    const int rows = view_->layer_row_count();
+    panel_->findChild<QToolButton*>(QStringLiteral("propertiesDelete"))->click();
+    QCOMPARE(view_->layer_row_count(), rows - 1);
+    window_->closeDocument(window_->activeDocumentIndex(), false);
+
+    // A single-slider page (Threshold) commits under its own name.
+    QVERIFY(setupAdjustment(QStringLiteral("threshold")));
+    auto* level = qobject_cast<QSlider*>(panel_->controlForTest(QStringLiteral("level")));
+    QVERIFY(level);
+    QCOMPARE(level->value(), 128);
+    level->setValue(250);
+    panel_->commitForTest();
+    QCOMPARE(view_->history_label(view_->history_index()),
+             QStringLiteral("Modify Threshold Layer"));
 }
 
 QTEST_MAIN(PropertiesPanelTest)

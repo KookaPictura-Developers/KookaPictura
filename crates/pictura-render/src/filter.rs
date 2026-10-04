@@ -5,6 +5,7 @@
 //! transparency-locked. [`apply_filter_region`] bounds the work to a document
 //! rectangle for viewport-sized previews.
 
+use pictura_adjust::Adjustment;
 use pictura_core::{
     layer_pixel_locked, layer_transparency_locked, Layer, LayerMask, PixelBuffer, PsdRect,
 };
@@ -41,6 +42,35 @@ pub fn apply_filter_region(
     filter: &Filter,
     mask: Option<&LayerMask>,
     gpu_enabled: bool,
+    region: PsdRect,
+) -> Result<(), FilterError> {
+    apply_op_region(layer, Op::Filter(filter, gpu_enabled), mask, region)
+}
+
+/// Apply a destructive Image > Adjustments `adjustment` to a pixel layer's
+/// colour channels, gated by an optional coverage `mask`, over `region`
+/// (clamped to the layer rect). Unlike a filter it leaves transparency alone,
+/// and a transparency lock keeps clear pixels untouched.
+pub fn apply_adjustment_region(
+    layer: &mut Layer,
+    adjustment: &Adjustment,
+    mask: Option<&LayerMask>,
+    region: PsdRect,
+) -> Result<(), FilterError> {
+    apply_op_region(layer, Op::Adjustment(adjustment), mask, region)
+}
+
+/// What [`apply_op_region`] runs on the working buffer.
+#[derive(Clone, Copy)]
+enum Op<'a> {
+    Filter(&'a Filter, bool),
+    Adjustment(&'a Adjustment),
+}
+
+fn apply_op_region(
+    layer: &mut Layer,
+    op: Op,
+    mask: Option<&LayerMask>,
     region: PsdRect,
 ) -> Result<(), FilterError> {
     let lrect = layer.rect;
@@ -109,7 +139,13 @@ pub fn apply_filter_region(
     }
 
     let orig = buf.clone();
-    crate::gpu_filter::apply_filter_active(filter, &mut buf, gpu_enabled)?;
+    match op {
+        Op::Filter(filter, gpu_enabled) => {
+            crate::gpu_filter::apply_filter_active(filter, &mut buf, gpu_enabled)?;
+        }
+        Op::Adjustment(adjustment) => pictura_adjust::apply(adjustment, &mut buf)
+            .map_err(|error| FilterError::InvalidParams(error.to_string()))?,
+    }
 
     // A transparency lock preserves the alpha plane exactly and leaves fully
     // transparent pixels untouched; only opaque pixels take the filter colour.
@@ -127,10 +163,8 @@ pub fn apply_filter_region(
         }
         crop
     });
-    let filtered_alpha = if alpha_locked {
-        None
-    } else {
-        alpha_original
+    let filtered_alpha = match op {
+        Op::Filter(filter, _) if !alpha_locked => alpha_original
             .as_ref()
             .map(|alpha| -> Result<Vec<u8>, FilterError> {
                 let mut gray = PixelBuffer::new(cw as u32, ch as u32, 3);
@@ -140,7 +174,8 @@ pub fn apply_filter_region(
                 pictura_filters::apply(filter, &mut gray)?;
                 Ok(gray.data[0..n].to_vec())
             })
-            .transpose()?
+            .transpose()?,
+        _ => None,
     };
 
     let (left, top) = (clip.left, clip.top);
@@ -558,6 +593,36 @@ mod tests {
             alpha_before.as_slice(),
             "an unlocked layer's alpha is filtered"
         );
+    }
+
+    #[test]
+    fn an_adjustment_changes_colour_inside_the_region_and_never_alpha() {
+        let (w, h) = (8usize, 8usize);
+        let mut layer = step_layer(w as i32, h as i32, 255);
+        for c in &mut layer.channels {
+            if c.id == -1 {
+                for i in 0..w * h {
+                    c.data[i] = if i % w < w / 2 { 255 } else { 90 };
+                }
+            }
+        }
+        let alpha_before = chan(&layer, -1).to_vec();
+        let colour_before = chan(&layer, 0).to_vec();
+        let left = PsdRect {
+            top: 0,
+            left: 0,
+            bottom: h as i32,
+            right: (w / 2) as i32,
+        };
+        apply_adjustment_region(&mut layer, &Adjustment::Invert, None, left).unwrap();
+        assert_eq!(chan(&layer, -1), alpha_before.as_slice(), "alpha untouched");
+        let after = chan(&layer, 0);
+        assert_eq!(
+            after[0],
+            255 - colour_before[0],
+            "inside the region inverts"
+        );
+        assert_eq!(after[w - 1], colour_before[w - 1], "outside it does not");
     }
 
     #[test]

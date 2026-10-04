@@ -169,6 +169,29 @@ pub(crate) fn desaturate(buf: &mut PixelBuffer, n: usize) {
     }
 }
 
+/// One lookup from the cumulative histogram of every colour sample, applied to
+/// each channel, so neutral greys stay neutral and the darkest and lightest
+/// levels present map to 0 and 255. A flat image is left alone.
+pub(crate) fn equalize(buf: &mut PixelBuffer, n: usize) {
+    let mut histogram = [0u64; 256];
+    for &v in &buf.data[..3 * n] {
+        histogram[v as usize] += 1;
+    }
+    let total: u64 = histogram.iter().sum();
+    let first = histogram.iter().copied().find(|&h| h > 0).unwrap_or(0);
+    if total == 0 || first == total {
+        return;
+    }
+    let mut lut = [0u8; 256];
+    let mut running = 0u64;
+    for (slot, &count) in lut.iter_mut().zip(&histogram) {
+        running += count;
+        let spread = running.saturating_sub(first) as f64 / (total - first) as f64;
+        *slot = (spread * 255.0).round() as u8;
+    }
+    map_lut(buf, n, &lut);
+}
+
 pub(crate) fn posterize(levels: u8, buf: &mut PixelBuffer, n: usize) -> Result<(), AdjustError> {
     if levels < 2 {
         return Err(AdjustError::InvalidParams(

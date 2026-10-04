@@ -48,6 +48,10 @@ void PicturaMainWindow::retargetDock()
     if (notesPanel_) {
         notesPanel_->setView(view);
     }
+    // Color Range works on one document; switching away cancels it.
+    if (colorRangeDialog_ && colorRangeDialog_->view() != view) {
+        colorRangeDialog_->reject();
+    }
     if (pathsPanel_) {
         pathsPanel_->setView(view);
         pathsPanel_->refresh();

@@ -1,9 +1,11 @@
 //! The cxx-qt bridge: a Rust `QObject` that owns the image shown by the shell.
 #![allow(clippy::too_many_arguments)] // brush parameter lists mirror the C++ API
+mod adjustment_edit;
 mod align;
 mod annotations;
 mod clipboard;
 mod clipping;
+mod color_range;
 mod crop_group;
 mod export;
 mod filter_map;
@@ -11,6 +13,7 @@ mod filter_tools;
 mod healing;
 mod helpers;
 mod helpers_composite;
+mod image_adjust;
 mod impl_core;
 mod impl_filters;
 mod impl_history;
@@ -425,8 +428,7 @@ pub mod qobject {
             on: bool,
         ) -> i32;
 
-        /// Set the color label on every path. Returns the number changed;
-        /// records one undo state only when non-zero.
+        /// Set the color label on every path. Returns the number changed; records one undo state only when non-zero.
         #[qinvokable]
         fn set_layers_color(self: Pin<&mut Self>, paths: &QStringList, value: i32) -> i32;
 
@@ -434,8 +436,7 @@ pub mod qobject {
         #[qinvokable]
         fn apply_visibility(self: Pin<&mut Self>, paths: &QStringList, label: &QString) -> i32;
 
-        /// Delete every eligible path. Returns the number deleted; records one
-        /// undo state only when non-zero.
+        /// Delete every eligible path. Returns the number deleted; records one undo state only when non-zero.
         #[qinvokable]
         fn delete_layers(self: Pin<&mut Self>, paths: &QStringList) -> i32;
 
@@ -1091,8 +1092,7 @@ pub mod qobject {
             alt: bool,
         ) -> i32;
 
-        /// Hover hit-test for the transform overlay cursor; 0..=7 scale,
-        /// 8 rotate, 9 move, -1 outside. Read-only.
+        /// Hover hit-test for the transform overlay cursor; 0..=7 scale, 8 rotate, 9 move, -1 outside. Read-only.
         #[qinvokable]
         fn transform_hit_test(&self, x: f64, y: f64, zoom: f64) -> i32;
 
