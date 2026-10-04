@@ -13,6 +13,7 @@ mod filter_tools;
 mod healing;
 mod helpers;
 mod helpers_composite;
+mod image_adjust;
 mod impl_core;
 mod impl_filters;
 mod impl_history;
@@ -427,8 +428,7 @@ pub mod qobject {
             on: bool,
         ) -> i32;
 
-        /// Set the color label on every path. Returns the number changed;
-        /// records one undo state only when non-zero.
+        /// Set the color label on every path. Returns the number changed; records one undo state only when non-zero.
         #[qinvokable]
         fn set_layers_color(self: Pin<&mut Self>, paths: &QStringList, value: i32) -> i32;
 

@@ -5,8 +5,6 @@
 #include <QtGui/QColor>
 #include <QtWidgets/QWidget>
 
-#include <functional>
-#include <vector>
 
 class QComboBox;
 class QFormLayout;
@@ -18,7 +16,7 @@ class QVBoxLayout;
 
 namespace pictura {
 
-class CurveWidget;
+class AdjustmentControls;
 class PictureView;
 
 // Window > Properties (PAN-006). For an adjustment layer it builds the
@@ -50,29 +48,11 @@ public:
     void commitForTest() { commit(); }
 
 private:
-    struct Row {
-        QString key;
-        int group = -1;
-        QWidget* widget = nullptr;      // the row container, shown per group
-        QWidget* control = nullptr;     // the slider / check / combo / colour button
-        std::function<void(double)> load;
-    };
-
     // The selected layer's path and its Layers-panel row, or empty / -1.
     QString activePath(int* row) const;
     void showNothing();
     void showLayer(int row);
     void showAdjustment(const QStringList& page);
-    void buildAdjustment(const QStringList& page);
-    void loadAdjustment(const QStringList& page);
-    void clearAdjustment();
-    void addSlider(const QStringList& cells);
-    void addCheck(const QStringList& cells);
-    void addChoice(const QStringList& cells);
-    void addColor(const QStringList& cells);
-    void addCurves();
-    void showGroup(int group);
-    void loadCurve();
     // Write one parameter live, then (re)arm the commit.
     void push(const QString& key, double value);
     void edited();
@@ -80,23 +60,14 @@ private:
 
     PictureView* view_ = nullptr;
     QString path_;
-    QString builtFor_;
     QString title_;
-    bool loading_ = false;
     bool dirty_ = false;
 
     QLabel* header_ = nullptr;
     QStackedWidget* stack_ = nullptr;
     QTimer* commitTimer_ = nullptr;
 
-    // Adjustment page.
-    QWidget* adjustmentPage_ = nullptr;
-    QVBoxLayout* controls_ = nullptr;
-    QComboBox* groups_ = nullptr;
-    QLabel* note_ = nullptr;
-    std::vector<Row> rows_;
-    CurveWidget* curve_ = nullptr;
-    QComboBox* curveChannel_ = nullptr;
+    AdjustmentControls* controls_ = nullptr;
     QWidget* footer_ = nullptr;
     QToolButton* clip_ = nullptr;
     QToolButton* visible_ = nullptr;

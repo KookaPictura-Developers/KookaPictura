@@ -23,6 +23,7 @@ set(PICTURA_QT_TESTS
     tst_filter_menu
     tst_color_range
     tst_print
+    tst_image_adjustments
 )
 
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/qt-test-results)

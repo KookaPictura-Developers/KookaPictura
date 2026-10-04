@@ -93,6 +93,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/color_settings_dialog.cpp
     crates/pictura-app/cpp/color_picker_dialog.cpp
     crates/pictura-app/cpp/color_range_dialog.cpp
+    crates/pictura-app/cpp/adjustment_dialog.cpp
     crates/pictura-app/cpp/print_dialog.cpp
     crates/pictura-app/cpp/export_as_dialog.cpp
     crates/pictura-app/cpp/image_view.cpp
@@ -112,6 +113,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/frame_menus_edit.cpp
     crates/pictura-app/cpp/frame_menus_filter.cpp
     crates/pictura-app/cpp/frame_menus_align.cpp
+    crates/pictura-app/cpp/frame_menus_adjust.cpp
     crates/pictura-app/cpp/frame_recent.cpp
     crates/pictura-app/cpp/frame_test.cpp
     crates/pictura-app/cpp/frame_build.cpp
@@ -134,6 +136,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/panels/brush_panel.cpp
     crates/pictura-app/cpp/panels/brush_preset_picker.cpp
     crates/pictura-app/cpp/panels/clone_source_panel.cpp
+    crates/pictura-app/cpp/panels/adjustment_controls.cpp
     crates/pictura-app/cpp/panels/character_panel.cpp
     crates/pictura-app/cpp/panels/paragraph_panel.cpp
     crates/pictura-app/cpp/panels/glyphs_panel.cpp

@@ -65,13 +65,17 @@ fn adjustment_data(view: &PictureView, path: &str) -> Option<AdjustmentData> {
 }
 
 fn adjustment_page(view: &PictureView, path: &QString) -> QStringList {
-    let mut rows = QStringList::default();
-    let Some(editor) = adjustment_data(view, &path.to_string())
+    adjustment_data(view, &path.to_string())
         .as_ref()
         .and_then(pictura_render::adjustment_editor)
-    else {
-        return rows;
-    };
+        .map(|editor| page_rows(&editor))
+        .unwrap_or_default()
+}
+
+/// An editor page as the tab-separated rows [`adjustment_page`] documents
+/// (shared with the Image > Adjustments dialogs).
+pub(super) fn page_rows(editor: &pictura_render::AdjustmentEditor) -> QStringList {
+    let mut rows = QStringList::default();
     let mut push = |row: String| rows.append(QString::from(row.as_str()));
     push(format!("title\t{}", editor.title));
     if let Some(note) = editor.note {
@@ -138,7 +142,7 @@ fn adjustment_set(view: Pin<&mut PictureView>, path: &QString, key: &QString, va
     })
 }
 
-fn format_points(points: &[(u8, u8)]) -> String {
+pub(super) fn format_points(points: &[(u8, u8)]) -> String {
     points
         .iter()
         .map(|(x, y)| format!("{x},{y}"))
@@ -146,7 +150,7 @@ fn format_points(points: &[(u8, u8)]) -> String {
         .join(" ")
 }
 
-fn parse_points(text: &str) -> Option<Vec<(u8, u8)>> {
+pub(super) fn parse_points(text: &str) -> Option<Vec<(u8, u8)>> {
     text.split_whitespace()
         .map(|pair| {
             let (x, y) = pair.split_once(',')?;

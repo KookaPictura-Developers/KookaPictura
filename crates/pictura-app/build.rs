@@ -54,6 +54,7 @@ fn main() {
                 "src/cxxqt_object/export.rs",
                 "src/cxxqt_object/filter_tools.rs",
                 "src/cxxqt_object/healing.rs",
+                "src/cxxqt_object/image_adjust.rs",
                 "src/cxxqt_object/magnetic.rs",
                 "src/cxxqt_object/paint_tools.rs",
                 "src/cxxqt_object/paint_tools/fills.rs",
