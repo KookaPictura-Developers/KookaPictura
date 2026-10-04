@@ -981,6 +981,20 @@ Snapshot for resuming after a context break. Update after each milestone.
   `tst_properties_panel` extended. Ceilings (`ponytail:`): no Presets menu,
   mask page, Previous State; Monochrome, Colorize / ranges, B&W tint, Gradient
   Map, and Color Lookup not editable.
+- **Image > Adjustments** (change `image-adjustments-menu`, issue #83, from
+  photorust's adjustment dialogs): the submenu and Image > Auto Tone / Contrast
+  / Color were disabled stubs. Fourteen entries open a dialog (the Properties
+  panel's descriptor controls, now `panels/adjustment_controls`, plus Preview /
+  OK / Cancel) on CS6's defaults (`default_adjustment_block`); Invert,
+  Desaturate, Equalize (new `Adjustment::Equalize`), and the Auto commands
+  apply at once. They run through the Filter menu's active-layer path (an
+  `ActiveOp`): layer checks, selection masking, a preview re-applied from the
+  original pixels, an exact Cancel, one state named for the adjustment;
+  `apply_adjustment_region` leaves transparency alone. CS6 shortcuts (Levels
+  Ctrl+L, Curves Ctrl+M, Hue/Saturation Ctrl+U, Color Balance Ctrl+B, Invert
+  Ctrl+I, …). Qt Test `tst_image_adjustments`. Ceilings (`ponytail:`): Color
+  Lookup, Shadows/Highlights, HDR Toning, Match Color, and Replace Color stay
+  stubs; no dialog presets, eyedroppers, histograms, or Load / Save.
 - **Shape options bar** (change `shape-options-bar`, owner follow-up on #48
   from a CS6 screenshot): all six shape tools share CS6's bar — Mode, Fill,
   Stroke (width, type pop-up with Align), W / link / H, disabled path
