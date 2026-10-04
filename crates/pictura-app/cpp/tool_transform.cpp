@@ -1,10 +1,59 @@
 #include "tools.h"
 
+#include "icons.h"
 #include "image_view.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 
+#include <QtCore/QHash>
+#include <QtCore/QLineF>
+
+#include <cmath>
+
 namespace pictura {
+
+namespace {
+
+// Free Transform's rotate handle (`transform_hit_test`'s ROTATE_HANDLE).
+constexpr int kRotateHandle = 8;
+
+// The centre of a `transform_quad` string ("x,y x,y x,y x,y"), or `fallback`.
+QPointF quadCentre(const QString& quad, const QPointF& fallback)
+{
+    const QStringList corners = quad.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    if (corners.size() != 4) {
+        return fallback;
+    }
+    QPointF sum;
+    for (const QString& corner : corners) {
+        const QStringList xy = corner.split(QLatin1Char(','));
+        if (xy.size() != 2) {
+            return fallback;
+        }
+        sum += QPointF(xy[0].toDouble(), xy[1].toDouble());
+    }
+    return sum / 4.0;
+}
+
+// CS6's curved double arrow, turned so its arc bulges away from the box's
+// centre toward `pointer`, both in widget space (the SVG's arc bulges
+// up-right, at -45 degrees).
+// Cached per 5 degrees so a drag does not re-render the SVG on every move.
+QCursor rotateCursor(const QPointF& centre, const QPointF& pointer)
+{
+    static QHash<int, QCursor> cache;
+    const QLineF out(centre, pointer);
+    const double heading = out.length() > 1e-6 ? -out.angle() : -45.0;
+    const int step = int(std::lround((heading + 45.0) / 5.0)) % 72;
+    const int key = step < 0 ? step + 72 : step;
+    auto it = cache.find(key);
+    if (it == cache.end()) {
+        it = cache.insert(key, cursor(QStringLiteral("cursor.rotate"), 12, 12, key * 5.0));
+    }
+    return it.value();
+}
+
+} // namespace
 
 bool ToolController::beginFreeTransform(const QString& path)
 {
@@ -64,7 +113,10 @@ void ToolController::setTransformCursor(const QPointF& imagePos)
     if (!canvas_ || !v) {
         return;
     }
-    const int hit = v->transform_hit_test(imagePos.x(), imagePos.y(), canvas_->zoom());
+    // A drag keeps the cursor of the handle it grabbed, wherever the pointer goes.
+    const int hit = transformDragging_
+        ? transformHandle_
+        : v->transform_hit_test(imagePos.x(), imagePos.y(), canvas_->zoom());
     switch (hit) {
     case 0:
     case 2:
@@ -85,8 +137,11 @@ void ToolController::setTransformCursor(const QPointF& imagePos)
     case 9:
         canvas_->setCursor(transformDragging_ ? Qt::ClosedHandCursor : Qt::OpenHandCursor);
         break;
-    case 8:
-        canvas_->setCursor(Qt::CrossCursor);
+    case kRotateHandle:
+        // In widget space, so a turned view (Rotate View) turns the arrow too.
+        canvas_->setCursor(
+            rotateCursor(canvas_->imageToWidget(quadCentre(v->transform_quad(), imagePos)),
+                         canvas_->imageToWidget(imagePos)));
         break;
     default:
         canvas_->setCursor(Qt::ArrowCursor);

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <!-- A quarter arc bulging up-right, its middle on the (12, 12) hotspot, with an
+       arrowhead at each end; the transform cursor turns it to face each corner. -->
+  <g stroke="#ffffff" stroke-width="4">
+    <path d="M6 9.5A8.5 8.5 0 0 1 14.5 18"/>
+    <path d="M8.5 7 6 9.5 8.5 12M12 15.5 14.5 18 17 15.5"/>
+  </g>
+  <g stroke="#202020" stroke-width="1.5">
+    <path d="M6 9.5A8.5 8.5 0 0 1 14.5 18"/>
+    <path d="M8.5 7 6 9.5 8.5 12M12 15.5 14.5 18 17 15.5"/>
+  </g>
+</svg>

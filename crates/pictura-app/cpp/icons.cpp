@@ -42,6 +42,11 @@ QCursor cursor(const QString& id)
 
 QCursor cursor(const QString& id, int hotX, int hotY)
 {
+    return cursor(id, hotX, hotY, 0.0);
+}
+
+QCursor cursor(const QString& id, int hotX, int hotY, double degrees)
+{
     const QString path = QStringLiteral(":/cursors/") + id + QStringLiteral(".svg");
     if (!QFile::exists(path)) {
         return QCursor();
@@ -59,6 +64,12 @@ QCursor cursor(const QString& id, int hotX, int hotY)
     QPixmap pixmap(size, size);
     pixmap.fill(Qt::transparent);
     QPainter painter(&pixmap);
+    if (degrees != 0.0) {
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.translate(hotX * dpr, hotY * dpr);
+        painter.rotate(degrees);
+        painter.translate(-hotX * dpr, -hotY * dpr);
+    }
     renderer.render(&painter);
     painter.end();
     pixmap.setDevicePixelRatio(dpr);
