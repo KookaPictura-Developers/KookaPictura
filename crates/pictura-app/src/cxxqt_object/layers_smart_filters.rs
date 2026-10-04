@@ -2,9 +2,10 @@
 //!
 //! Mirrors the read/write accessors the Layers tree needs to show a "Smart
 //! Filters" group under a filtered smart object and toggle its rows. Read
-//! functions resolve the real layer path; the writer functions mutate the typed
-//! `SmartFilter.enabled` / `SmartObject.smart_filters_enabled`, recomposite, and
-//! record one "Smart Filter Visibility" state.
+//! functions resolve the real layer path; the writer functions persist the
+//! `SmartFilter.enabled` / `SmartObject.smart_filters_enabled` toggle into the
+//! preserved `SoLd`/`SoLE` descriptor, recomposite, and record one "Smart Filter
+//! Visibility" state.
 //!
 //! [`PictureView`]: super::qobject::PictureView
 
@@ -110,31 +111,35 @@ fn set_smart_filter_visible(doc: &mut Document, path: &str, i: i32, visible: boo
     let Some(layer) = pictura_render::resolve_path_mut(doc, base_path(path)) else {
         return false;
     };
-    let Some(so) = layer.smart_object.as_mut() else {
+    let Some(current) = layer
+        .smart_object
+        .as_ref()
+        .and_then(|so| so.smart_filters.get(i as usize))
+        .map(|filter| filter.enabled)
+    else {
         return false;
     };
-    let Some(filter) = so.smart_filters.get_mut(i as usize) else {
-        return false;
-    };
-    if filter.enabled == visible {
+    if current == visible {
         return false;
     }
-    filter.enabled = visible;
-    true
+    pictura_codec::set_smart_filter_enabled(layer, i as usize, visible).is_ok()
 }
 
 fn set_smart_filters_enabled(doc: &mut Document, path: &str, enabled: bool) -> bool {
     let Some(layer) = pictura_render::resolve_path_mut(doc, base_path(path)) else {
         return false;
     };
-    let Some(so) = layer.smart_object.as_mut() else {
+    let Some(current) = layer
+        .smart_object
+        .as_ref()
+        .map(|so| so.smart_filters_enabled)
+    else {
         return false;
     };
-    if so.smart_filters_enabled == enabled {
+    if current == enabled {
         return false;
     }
-    so.smart_filters_enabled = enabled;
-    true
+    pictura_codec::set_smart_filters_enabled(layer, enabled).is_ok()
 }
 
 fn layer_has_smart_filters(view: &PictureView, layer_path: &QString) -> bool {
@@ -227,6 +232,7 @@ fn convert_for_smart_filters(mut view: Pin<&mut PictureView>, path: &QString) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::history::{History, Snapshot};
     use pictura_core::{BitDepth, ColorMode};
     use pictura_render::apply_smart_filter_chain;
 
@@ -246,6 +252,13 @@ mod tests {
         };
         pictura_codec::attach_pictura_raw_filter(layer, &settings).expect("attach filter");
         doc
+    }
+
+    /// A round-tripped document, so the smart filter lives in a preserved `SoLd`
+    /// block (the save source of truth), as it does for an imported PSD.
+    fn preserved_smart_filter_doc() -> Document {
+        let bytes = pictura_codec::write_psd(&camera_raw_exposure_doc()).expect("writes");
+        pictura_codec::read_psd(&bytes).expect("re-reads with a preserved SoLd")
     }
 
     #[test]
@@ -299,5 +312,53 @@ mod tests {
         let enabled =
             apply_smart_filter_chain(&base, rect, std::slice::from_ref(filter), None, true);
         assert_ne!(enabled.data.as_ref(), base.data.as_ref());
+    }
+
+    #[test]
+    fn toggles_persist_on_a_preserved_smart_object() {
+        let mut doc = preserved_smart_filter_doc();
+        let layer = pictura_render::resolve_path(&doc, "0").expect("layer");
+        assert!(
+            layer.extra_blocks.iter().any(|b| &b.key == b"SoLd"),
+            "the round trip leaves a preserved SoLd"
+        );
+
+        assert!(set_smart_filter_visible(&mut doc, "0", 0, false));
+        assert!(set_smart_filters_enabled(&mut doc, "0", false));
+
+        let bytes = pictura_codec::write_psd(&doc).expect("writes");
+        let back = pictura_codec::read_psd(&bytes).expect("re-reads");
+        let so = pictura_render::resolve_path(&back, "0")
+            .and_then(|layer| layer.smart_object.as_ref())
+            .expect("smart object survives");
+        assert!(!so.smart_filters[0].enabled, "filter toggle persists");
+        assert!(!so.smart_filters_enabled, "group toggle persists");
+    }
+
+    #[test]
+    fn app_setter_changes_the_composite_and_records_one_state() {
+        let mut doc = preserved_smart_filter_doc();
+        let before = pictura_render::composite_rgba(&doc);
+        let mut history = History::default();
+
+        // Replays the `set_layer_smart_filter_visible` bridge body: the real
+        // `PictureView` is a C++-constructed QObject with no Rust constructor
+        // (see `tests_impl::move_profile`), so the pure setter plus the bridge's
+        // one capture stand in for the ffi row.
+        assert!(set_smart_filter_visible(&mut doc, "0", 0, false));
+        let after = pictura_render::composite_rgba(&doc);
+        assert_ne!(
+            before.data, after.data,
+            "disabling the filter changes the composite"
+        );
+        history.capture(
+            Snapshot {
+                doc: doc.clone(),
+                selection: None,
+            },
+            "Smart Filter Visibility",
+        );
+        assert_eq!(history.count(), 1, "exactly one history state");
+        assert_eq!(history.label(0), "Smart Filter Visibility");
     }
 }

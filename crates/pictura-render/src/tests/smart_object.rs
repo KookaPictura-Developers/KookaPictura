@@ -1174,11 +1174,45 @@ fn disabled_smart_filter_matches_no_filter() {
     pictura_codec::attach_pictura_raw_filter(&mut disabled, &settings).expect("filter attaches");
     disabled.smart_object.as_mut().unwrap().smart_filters[0].enabled = false;
 
+    // Composite equality alone cannot distinguish "the chain skipped a disabled
+    // filter" from "there is no chain": both fall back to the unfiltered source.
+    // Assert the typed and render outcomes explicitly.
+    assert!(
+        plain
+            .smart_object
+            .as_ref()
+            .unwrap()
+            .smart_filters
+            .is_empty(),
+        "the plain layer carries no filter"
+    );
+    let so = disabled.smart_object.as_ref().unwrap();
+    assert_eq!(
+        so.smart_filters.len(),
+        1,
+        "the disabled layer still carries one"
+    );
+    assert!(!so.smart_filters[0].enabled);
+
     let a = composite_rgba(&doc(4, 4, vec![plain]));
-    let b = composite_rgba(&doc(4, 4, vec![disabled]));
+    let b = composite_rgba(&doc(4, 4, vec![disabled.clone()]));
     assert_eq!(
         a.data, b.data,
         "a disabled filter is byte-identical to none"
+    );
+
+    // The chain itself is what skips the filter: with the group enabled it
+    // returns `base` unchanged for the disabled filter and changes the pixels
+    // once the filter is enabled.
+    let base = render_smart_source(so, full(4, 4), full(4, 4)).expect("source renders");
+    let mut enabled = so.smart_filters.clone();
+    enabled[0].enabled = true;
+    let skipped = apply_smart_filter_chain(&base, full(4, 4), &so.smart_filters, None, true);
+    let applied = apply_smart_filter_chain(&base, full(4, 4), &enabled, None, true);
+    assert_eq!(skipped.data, base.data, "the disabled filter is skipped");
+    assert_ne!(
+        applied.data, base.data,
+        "an enabled filter changes the pixels"
     );
 }
 

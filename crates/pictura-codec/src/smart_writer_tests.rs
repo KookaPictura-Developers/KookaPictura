@@ -160,6 +160,39 @@ fn authored_smart_object_with_filter_round_trips() {
 }
 
 #[test]
+fn authored_disabled_filter_group_round_trips() {
+    let settings = PicturaRawSettings {
+        exposure: Some(0.5),
+        ..Default::default()
+    };
+    let options = crate::write_descriptor(&crate::encode_pictura_raw_fltr(&settings));
+    let mut so = embedded("source.psb", payload(0x66, 256));
+    so.smart_filters = vec![SmartFilter {
+        filter_id: crate::CAMERA_RAW_FILTER_ID,
+        name: crate::CAMERA_RAW_FILTER_NAME.to_string(),
+        enabled: true,
+        options,
+    }];
+    so.smart_filters_enabled = false;
+
+    let doc = doc_with(vec![smart_layer("Smart", so)]);
+    let back = read_psd(&write_psd(&doc).unwrap()).unwrap();
+    let so = back.layers[0]
+        .smart_object
+        .as_ref()
+        .expect("authored smart object resolves");
+
+    assert!(
+        !so.smart_filters_enabled,
+        "the disabled group flag survives"
+    );
+    assert!(
+        so.smart_filters[0].enabled,
+        "the per-filter enab is independent of the group flag"
+    );
+}
+
+#[test]
 fn authored_shared_payload_emits_one_record() {
     let data = payload(0xabcd, 1024);
     let doc = doc_with(vec![

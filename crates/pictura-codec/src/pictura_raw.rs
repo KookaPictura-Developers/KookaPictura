@@ -278,6 +278,43 @@ fn entry_filter_id(entry: &DescValue) -> Option<i32> {
     }
 }
 
+/// Merge a newly attached filter into an existing `filterFXList` entry: overlay
+/// the new `Fltr` keys onto the entry's preserved `Fltr` (new values win), refresh
+/// `Nm  `/`enab`, and keep `blendOptions` and every other unmodeled key.
+fn merge_filter_entry(entry: &mut DescValue, filter: &SmartFilter) {
+    let DescValue::Object { items, .. } = entry else {
+        *entry = filter_item(filter);
+        return;
+    };
+    let new_fltr = {
+        let mut r = Reader::new(&filter.options);
+        descriptor::read_descriptor(&mut r).unwrap_or_else(|_| object(b"null", Vec::new()))
+    };
+    match get_object_item_mut(items, b"Fltr") {
+        Some(DescValue::Object {
+            items: existing_fltr,
+            ..
+        }) => {
+            if let DescValue::Object {
+                items: new_items, ..
+            } = new_fltr
+            {
+                for (key, value) in new_items {
+                    set_object_item(existing_fltr, &key, value);
+                }
+            }
+        }
+        Some(slot) => *slot = new_fltr,
+        None => set_object_item(items, b"Fltr", new_fltr),
+    }
+    set_object_item(
+        items,
+        b"Nm  ",
+        DescValue::Text(format!("{}\0", filter.name)),
+    );
+    set_object_item(items, b"enab", DescValue::Bool(filter.enabled));
+}
+
 /// Insert or replace the entry in a preserved `SoLd`/`SoLE` descriptor,
 /// rewriting the block and the layer's typed view consistently.
 fn insert_into_config(
@@ -308,7 +345,7 @@ fn insert_into_config(
                     .iter_mut()
                     .find(|entry| entry_filter_id(entry) == Some(filter.filter_id))
                 {
-                    Some(entry) => *entry = filter_item(filter),
+                    Some(entry) => merge_filter_entry(entry, filter),
                     None => list.push(filter_item(filter)),
                 }
             }
@@ -526,6 +563,156 @@ mod tests {
         let filter = &back.layers[0].smart_object.as_ref().unwrap().smart_filters[0];
         assert_eq!(filter.filter_id, CAMERA_RAW_FILTER_ID);
         assert_eq!(decode_pictura_raw_settings(&filter.options), settings);
+    }
+
+    /// Parse a preserved `SoLd`/`SoLE` block into `filterFXList[0]`'s items.
+    fn config_filter_entry(config_descriptor: &[u8]) -> Vec<(Vec<u8>, DescValue)> {
+        let mut r = Reader::new(&config_descriptor[8..]);
+        let DescValue::Object { items, .. } =
+            descriptor::read_descriptor(&mut r).expect("descriptor parses")
+        else {
+            panic!("descriptor is an object");
+        };
+        let DescValue::Object {
+            items: filter_fx, ..
+        } = get_object_item(&items, b"filterFX").expect("filterFX present")
+        else {
+            panic!("filterFX is an object");
+        };
+        let DescValue::List(list) = get_object_item(filter_fx, b"filterFXList").expect("list")
+        else {
+            panic!("filterFXList is a list");
+        };
+        let DescValue::Object { items: entry, .. } = &list[0] else {
+            panic!("entry is an object");
+        };
+        entry.clone()
+    }
+
+    #[test]
+    fn reattach_over_a_preserved_filter_keeps_unmodeled_keys() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../assets/test_with_smart_object02.psd");
+        let Ok(bytes) = std::fs::read(&path) else {
+            eprintln!("skipping: {} not found", path.display());
+            return;
+        };
+        let mut doc = crate::read_psd(&bytes).expect("fixture parses");
+        let layer = doc
+            .layers
+            .iter_mut()
+            .find(|l| l.name == "Layer 1 copy")
+            .expect("Layer 1 copy present");
+
+        let settings = PicturaRawSettings {
+            exposure: Some(1.25),
+            ..Default::default()
+        };
+        attach_pictura_raw_filter(layer, &settings).expect("re-attach over the preserved entry");
+
+        let written = crate::write_psd(&doc).expect("fixture writes");
+        let back = crate::read_psd(&written).expect("written fixture re-reads");
+        let so = back
+            .layers
+            .iter()
+            .find(|l| l.name == "Layer 1 copy")
+            .and_then(|l| l.smart_object.as_ref())
+            .expect("smart object survives a write");
+        assert_eq!(
+            so.smart_filters.len(),
+            1,
+            "the entry is replaced, not duplicated"
+        );
+        let filter = &so.smart_filters[0];
+        assert_eq!(filter.filter_id, CAMERA_RAW_FILTER_ID);
+        assert_eq!(
+            decode_pictura_raw_settings(&filter.options).exposure,
+            Some(1.25)
+        );
+
+        let entry = config_filter_entry(&so.config_descriptor);
+        assert!(
+            get_object_item(&entry, b"blendOptions").is_some(),
+            "the per-filter blendOptions survives the merge"
+        );
+        let DescValue::Object { items: fltr, .. } =
+            get_object_item(&entry, b"Fltr").expect("Fltr present")
+        else {
+            panic!("Fltr is an object");
+        };
+        assert_eq!(
+            get_object_item(fltr, b"Dhze"),
+            Some(&DescValue::Long(-14)),
+            "an unmodeled Fltr key survives the merge"
+        );
+    }
+
+    #[test]
+    fn reattach_a_generic_filter_replaces_only_its_own_entry() {
+        let options =
+            descriptor::write_descriptor(&object(b"null", vec![(b"Keep", DescValue::Long(7))]));
+        let so = SmartObject {
+            kind: SmartObjectKind::Embedded,
+            payload: Some(b"8BPS\x00\x01x".to_vec()),
+            smart_filters: vec![SmartFilter {
+                filter_id: 4242,
+                name: "First".to_string(),
+                enabled: true,
+                options,
+            }],
+            ..Default::default()
+        };
+        let layer0 = embedded_layer();
+        let data = crate::smart_writer::author_sold_block(&so, &layer0, 2, 2);
+        let mut layer = layer0;
+        layer.extra_blocks.push(LayerBlock {
+            key: *b"SoLd",
+            data,
+        });
+
+        let replacement = SmartFilter {
+            filter_id: 4242,
+            name: "Second".to_string(),
+            enabled: false,
+            options: descriptor::write_descriptor(&object(
+                b"null",
+                vec![(b"New", DescValue::Long(9))],
+            )),
+        };
+        attach_smart_filter(&mut layer, replacement).expect("same-id attach replaces the entry");
+
+        let doc = {
+            let mut doc = Document::new(
+                2,
+                2,
+                pictura_core::ColorMode::Rgb,
+                pictura_core::BitDepth::Eight,
+            );
+            doc.layers = vec![layer];
+            doc
+        };
+        let back = crate::read_psd(&crate::write_psd(&doc).expect("writes")).expect("re-reads");
+        let so = back.layers[0].smart_object.as_ref().expect("resolves");
+        assert_eq!(so.smart_filters.len(), 1, "still one entry");
+        assert_eq!(so.smart_filters[0].name, "Second");
+        assert!(!so.smart_filters[0].enabled);
+
+        let entry = config_filter_entry(&so.config_descriptor);
+        let DescValue::Object { items: fltr, .. } =
+            get_object_item(&entry, b"Fltr").expect("Fltr present")
+        else {
+            panic!("Fltr is an object");
+        };
+        assert_eq!(
+            get_object_item(fltr, b"New"),
+            Some(&DescValue::Long(9)),
+            "the replacement's keys win"
+        );
+        assert_eq!(
+            get_object_item(fltr, b"Keep"),
+            Some(&DescValue::Long(7)),
+            "the previous entry's unmodeled keys survive"
+        );
     }
 
     #[test]
