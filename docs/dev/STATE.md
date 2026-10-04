@@ -1005,6 +1005,17 @@ Snapshot for resuming after a context break. Update after each milestone.
   Ctrl+I, …). Qt Test `tst_image_adjustments`. Ceilings (`ponytail:`): Color
   Lookup, Shadows/Highlights, HDR Toning, Match Color, and Replace Color stay
   stubs; no dialog presets, eyedroppers, histograms, or Load / Save.
+- **Channels panel** (change `channels-panel-live`, issue #71, from photorust's
+  `ChannelsPanel`): rows follow the document's mode (the opened file's — RGB,
+  Gray, CMYK, Lab, Multichannel, Indexed, Bitmap, Duotone) with CS6's
+  Ctrl+number labels, then the alpha channels. The RGB eyes hide channels on
+  the canvas live (`ImageView::setChannelMask`: one multiply for two visible, a
+  greyscale copy for one; the composite eye shows all; the last stays); the
+  mask follows the active document. Footer: Load Channel as Selection, Save
+  Selection as Channel, New / Delete Channel (one state each). Qt Test
+  `tst_channels_panel` reads canvas pixels. Ceilings (`ponytail:`): eyes for
+  CMYK / Lab / other source modes are disabled (channels derived from RGB
+  working data); no alpha overlays or channel-targeted edits.
 - **Shape options bar** (change `shape-options-bar`, owner follow-up on #48
   from a CS6 screenshot): all six shape tools share CS6's bar — Mode, Fill,
   Stroke (width, type pop-up with Align), W / link / H, disabled path
