@@ -4,6 +4,8 @@
 #include "options_bar.h"
 
 #include "color_picker_dialog.h"
+#include "commands.h"
+#include "icons.h"
 
 #include <QtCore/QLocale>
 #include <QtCore/QSignalBlocker>
@@ -41,15 +43,22 @@ ToolId otherOrientation(ToolId id)
     }
 }
 
-// The size menu (px): CS6's point list, extended up to 288 as photorust's is.
-// Any value 1-1296 can be typed.
-constexpr int kTypeSizes[] = {6,  7,  8,  9,  10, 11, 12, 14,  18,  24,
-                              30, 36, 48, 60, 72, 96, 144, 192, 288};
+QString sizeText(double size)
+{
+    return QString::number(size, 'g', 6);
+}
+
+} // namespace
+
+QList<int> typeSizes()
+{
+    // CS6's point list, extended up to 288 as photorust's is.
+    return {6, 7, 8, 9, 10, 11, 12, 14, 18, 24, 30, 36, 48, 60, 72, 96, 144, 192, 288};
+}
 
 // photorust's paragraph-alignment glyphs: ruled lines flush left, centred, or
-// flush right, turned a quarter turn for vertical type (top / centre /
-// bottom). `justification` is 0 left, 1 right, 2 centre.
-QIcon alignIcon(int justification, bool vertical, const QColor& color)
+// flush right, turned a quarter turn for vertical type (top / centre / bottom).
+QIcon typeAlignIcon(int justification, bool vertical, const QColor& color)
 {
     // Three ruled lines per icon, each {from, across, to} on a 20 px grid.
     struct Line {
@@ -79,7 +88,7 @@ QIcon alignIcon(int justification, bool vertical, const QColor& color)
     return QIcon(pixmap);
 }
 
-QIcon swatchIcon(const QColor& color)
+QIcon typeSwatchIcon(const QColor& color)
 {
     QPixmap pixmap(16, 16);
     pixmap.fill(color);
@@ -89,20 +98,12 @@ QIcon swatchIcon(const QColor& color)
     return QIcon(pixmap);
 }
 
-QString sizeText(double size)
-{
-    return QString::number(size, 'g', 6);
-}
-
-} // namespace
-
 // Toggle Text Orientation, font family, size (px; a scrolling list or any typed
 // value), anti-aliasing (None / Sharp), alignment (left / centre / right; top /
 // centre / bottom for vertical type), the text colour swatch, then Cancel and
 // Commit while text is being typed. The four tools share one TypeOptions, so
 // each page re-reads it when shown.
-// ponytail: no font style, Crisp / Strong / Smooth, Warp Text, or Character /
-// Paragraph panels button.
+// ponytail: no font style, Crisp / Strong / Smooth, or Warp Text.
 QWidget* OptionsBar::buildTypePage(ToolId id)
 {
     auto* page = new QWidget(stack_);
@@ -132,7 +133,7 @@ QWidget* OptionsBar::buildTypePage(ToolId id)
     auto* sizeValidator = new QDoubleValidator(1.0, 1296.0, 1, size);
     sizeValidator->setNotation(QDoubleValidator::StandardNotation);
     size->setValidator(sizeValidator);
-    for (const int px : kTypeSizes) {
+    for (const int px : typeSizes()) {
         size->addItem(QString::number(px));
     }
     layout->addWidget(size);
@@ -161,7 +162,7 @@ QWidget* OptionsBar::buildTypePage(ToolId id)
         button->setObjectName(QLatin1String(names[justification]));
         button->setCheckable(true);
         button->setAutoRaise(true);
-        button->setIcon(alignIcon(justification, vertical, glyph));
+        button->setIcon(typeAlignIcon(justification, vertical, glyph));
         button->setIconSize(QSize(20, 20));
         button->setToolTip(tips.at(justification));
         align->addButton(button, justification);
@@ -174,6 +175,16 @@ QWidget* OptionsBar::buildTypePage(ToolId id)
     color->setAutoRaise(true);
     color->setIconSize(QSize(16, 16));
     layout->addWidget(color);
+
+    // CS6's Toggle the Character and Paragraph panels.
+    auto* panels = new QToolButton(page);
+    panels->setObjectName(QStringLiteral("optionsToggleCharacterPanel"));
+    panels->setIcon(icon(QString::fromLatin1(command_ids::WindowPanelsCharacter)));
+    panels->setToolTip(QStringLiteral("Toggle the Character and Paragraph panels"));
+    panels->setAutoRaise(true);
+    layout->addWidget(panels);
+    connect(panels, &QToolButton::clicked, this,
+            [this]() { emit panelToggleRequested(QStringLiteral("characterPanel")); });
 
     auto* cancel = new QToolButton(page);
     cancel->setObjectName(QStringLiteral("optionsTypeCancel"));
@@ -196,7 +207,7 @@ QWidget* OptionsBar::buildTypePage(ToolId id)
         const QSignalBlocker blockAntialias(antialias);
         family->setCurrentFont(QFont(o.family));
         size->setEditText(sizeText(o.size));
-        color->setIcon(swatchIcon(o.color));
+        color->setIcon(typeSwatchIcon(o.color));
         antialias->setCurrentIndex(o.antialias ? 1 : 0);
         if (QAbstractButton* button = align->button(o.justification)) {
             button->setChecked(true);

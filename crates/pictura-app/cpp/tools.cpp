@@ -213,6 +213,12 @@ bool ToolController::textActive() const
     return h && h->textActive();
 }
 
+bool ToolController::insertText(const QString& text)
+{
+    ToolHandler* h = registry_.forTool(active_);
+    return h && h->insertText(text);
+}
+
 void ToolController::setPenOptions(const PenOptions& options)
 {
     pen_ = options;

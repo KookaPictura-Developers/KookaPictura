@@ -364,6 +364,16 @@ public:
 
     bool textActive() const override { return active_; }
 
+    bool insertText(const QString& text) override
+    {
+        if (!active_) {
+            return false;
+        }
+        edit_.insert(text);
+        refreshOverlay();
+        return true;
+    }
+
 private:
     void keyPressed(const QKeyEvent& key)
     {

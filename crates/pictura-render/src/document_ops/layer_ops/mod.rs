@@ -3,6 +3,7 @@
 //! Pure functions over `&mut Document`, following the bottom-first convention of
 //! `Document::layers` (index 0 is the bottom of the stack).
 
+mod align;
 mod clipboard;
 mod clipping;
 mod create;
@@ -35,6 +36,7 @@ mod warp_styles;
 #[cfg(test)]
 mod warp_styles_tests;
 
+pub use align::{align_layers, can_align, can_distribute, distribute_layers, AlignEdge};
 pub use clipboard::{
     clear_layer, copy_layer, copy_merged, coverage_bounds, paste_clip, Clip, PasteMode,
 };

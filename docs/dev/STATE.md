@@ -918,6 +918,35 @@ Snapshot for resuming after a context break. Update after each milestone.
   Qt Test `tst_save_for_web`. Ceilings (`ponytail:`): no 4-Up, slices / HTML,
   colour-table editing, Lossy, Web Snap, JPEG Blur, metadata choice, PNG
   interlacing; settings last for the session.
+- **Align and Distribute layers** (change `align-distribute-layers`, issue #64,
+  from photorust's `Document::align_layers` / `distribute_layers` and
+  `MainWindow` Move options): `layer_ops/align.rs` lines layers up by the box
+  round their non-transparent pixels — Align against the union of the selected
+  layers (two or more) or a selection's bounds (one is enough), Distribute three
+  or more at even steps between the outermost. A position-locked layer or the
+  Background holds still but counts toward the union; `crop::offset_layer` is
+  the shared rect / store / mask shift. Layer > Align, Align Layers To
+  Selection, and Distribute (were inert) act on the Layers panel's selection,
+  each one state ("Align Top Edges", …). The Move tool gained an options bar
+  (`options_bar_move.cpp`) with CS6's six Align and six Distribute buttons
+  (aligning to the selection when there is one) and twelve Lucide icons. Unit
+  tests ported from photorust plus Qt Test `tst_align_distribute`. Ceilings
+  (`ponytail:`): groups, adjustments, and fill / shape layers are skipped; no
+  Auto-Select, Show Transform Controls, or Auto-Align Layers on the Move bar.
+- **Character, Paragraph, and Glyphs panels** (change `type-panels`, issue #65,
+  from photorust's panels): the Character panel edits the Type tools' shared
+  `TypeOptions` (family, size, colour, None / Sharp) and the Paragraph panel
+  their alignment (top / centre / bottom for vertical type), both following
+  outside changes; attributes the type model lacks (style, leading, kerning,
+  tracking, scale, baseline shift, justification, indents, spacing, Hyphenate)
+  are shown disabled. The Glyphs panel — **not a CS6 panel** (Photoshop CC
+  2015), ported on the owner's request — lists the code points a font has in
+  sixteen Unicode blocks and inserts one at the type caret through the new
+  `ToolController::insertText`, switching the family only when it lacks the
+  glyph. The three share one hidden group; Window > Character / Paragraph /
+  Glyphs toggle it, Type > Panels > Character / Paragraph open it, and the Type
+  bar gained CS6's panel toggle. The column's minimum width is unchanged
+  (`no_hscroll_off` held at 333 px). Qt Test `tst_type_panels`.
 - **Shape options bar** (change `shape-options-bar`, owner follow-up on #48
   from a CS6 screenshot): all six shape tools share CS6's bar — Mode, Fill,
   Stroke (width, type pop-up with Align), W / link / H, disabled path

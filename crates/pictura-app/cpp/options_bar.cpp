@@ -144,6 +144,8 @@ QWidget* OptionsBar::buildPage(ToolId id)
         return buildPenPage(id);
     case ToolId::RotateView:
         return buildRotateViewPage(id);
+    case ToolId::Move:
+        return buildMovePage(id);
     case ToolId::Rectangle:
     case ToolId::RoundedRectangle:
     case ToolId::Ellipse:

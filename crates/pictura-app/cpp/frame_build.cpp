@@ -65,6 +65,13 @@ void PicturaMainWindow::buildPanels()
     cloneSourcePanel_ = new CloneSourcePanel(this);
     cloneSourcePanel_->setObjectName(QStringLiteral("cloneSourcePanel"));
 
+    characterPanel_ = new CharacterPanel(this);
+    characterPanel_->setObjectName(QStringLiteral("characterPanel"));
+    paragraphPanel_ = new ParagraphPanel(this);
+    paragraphPanel_->setObjectName(QStringLiteral("paragraphPanel"));
+    glyphsPanel_ = new GlyphsPanel(this);
+    glyphsPanel_->setObjectName(QStringLiteral("glyphsPanel"));
+
     // Content widgets, not docks: the PanelColumn hosts them. Registering the
     // objectNames keeps the Window menu and the duplicate-name guard working.
     registerPanel(layersPanel_, Qt::RightDockWidgetArea);
@@ -85,6 +92,9 @@ void PicturaMainWindow::buildPanels()
     registerPanel(actionsPanel_, Qt::RightDockWidgetArea);
     registerPanel(brushPanel_, Qt::RightDockWidgetArea);
     registerPanel(cloneSourcePanel_, Qt::RightDockWidgetArea);
+    registerPanel(characterPanel_, Qt::RightDockWidgetArea);
+    registerPanel(paragraphPanel_, Qt::RightDockWidgetArea);
+    registerPanel(glyphsPanel_, Qt::RightDockWidgetArea);
 
     // CS6 Essentials groups and order. The tab text is the panel title and the
     // tab icon reuses the panel's `window.panels.<name>` asset.
@@ -152,6 +162,18 @@ void PicturaMainWindow::buildPanels()
              QString::fromLatin1(command_ids::WindowPanelsCloneSource));
     panelColumn_->addGroup(overflowGroup);
 
+    // CS6 docks Character and Paragraph as one group, opened from the Window
+    // or Type menu or the Type options bar's panel toggle; Glyphs (post-CS6)
+    // joins them.
+    auto* typeGroup = new PanelGroup(this);
+    addPanel(typeGroup, characterPanel_, tr("Character"),
+             QString::fromLatin1(command_ids::WindowPanelsCharacter));
+    addPanel(typeGroup, paragraphPanel_, tr("Paragraph"),
+             QString::fromLatin1(command_ids::WindowPanelsParagraph));
+    addPanel(typeGroup, glyphsPanel_, tr("Glyphs"),
+             QString::fromLatin1(command_ids::WindowPanelsGlyphs));
+    panelColumn_->addGroup(typeGroup);
+
     // Default visibility matches the pre-M41 layout: Color/Swatches/Styles,
     // Adjustments, Layers/Channels/Paths and Navigator/Histogram/Info visible;
     // History, Actions and the overflow panels hidden.
@@ -163,11 +185,15 @@ void PicturaMainWindow::buildPanels()
     panelColumn_->showPanel(QStringLiteral("notesPanel"), false);
     panelColumn_->showPanel(QStringLiteral("brushPanel"), false);
     panelColumn_->showPanel(QStringLiteral("cloneSourcePanel"), false);
+    panelColumn_->showPanel(QStringLiteral("glyphsPanel"), false);
+    panelColumn_->showPanel(QStringLiteral("characterPanel"), false);
+    panelColumn_->showPanel(QStringLiteral("paragraphPanel"), false);
 
     connect(layersPanel_, &LayersPanel::selectionChanged, this, [this] {
         if (propertiesPanel_) {
             propertiesPanel_->refresh();
         }
+        updateAlignControls();
     });
 }
 
@@ -320,8 +346,15 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
     optionsBar_->setObjectName(QStringLiteral("optionsBar"));
     addToolBar(optionsBar_);
     connect(optionsBar_, &OptionsBar::panelToggleRequested, this, &PicturaMainWindow::togglePanel);
+    connect(optionsBar_, &OptionsBar::alignRequested, this,
+            [this](int edge) { alignSelectedLayers(edge, true); });
+    connect(optionsBar_, &OptionsBar::distributeRequested, this,
+            &PicturaMainWindow::distributeSelectedLayers);
     brushPanel_->setController(tools_);
     cloneSourcePanel_->setController(tools_);
+    characterPanel_->setController(tools_);
+    paragraphPanel_->setController(tools_);
+    glyphsPanel_->setController(tools_);
 
     // The Info panel follows the Ruler tool: its A/L block and W/H readout come
     // from the ruler, and a new measuring line re-reads them.

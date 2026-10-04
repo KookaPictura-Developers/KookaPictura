@@ -1,5 +1,6 @@
 //! The cxx-qt bridge: a Rust `QObject` that owns the image shown by the shell.
 #![allow(clippy::too_many_arguments)] // brush parameter lists mirror the C++ API
+mod align;
 mod annotations;
 mod clipboard;
 mod clipping;
@@ -905,8 +906,7 @@ pub mod qobject {
         #[qinvokable]
         fn move_preview_cache_hit(&self) -> bool;
 
-        /// The cached base image (layers with the moved layer hidden); null when
-        /// not previewing.
+        /// The cached base image (layers with the moved layer hidden); null when not previewing.
         #[qinvokable]
         fn move_preview_base(&self) -> QImage;
 
