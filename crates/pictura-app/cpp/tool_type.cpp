@@ -116,6 +116,14 @@ double distanceToSegment(const QPointF& p, const QLineF& line)
     return QLineF(p, line.p1() + t * d).length();
 }
 
+// The three settings a Type session edits: where the text sits, its character
+// attributes, and its paragraph attributes.
+struct TypeEdit {
+    TypeSetting placement;
+    CharacterSetting character;
+    ParagraphSetting paragraph;
+};
+
 // Routes the window's key events to the session while it is open: an
 // application filter, because the shortcut map consults the focus widget,
 // which need not be the canvas. Text fields keep their keys.
@@ -207,24 +215,26 @@ public:
             return;
         }
         TypeSetting s = type_layer_setting(*v, layerPath_);
+        CharacterSetting c = type_layer_character_setting(*v, layerPath_);
+        ParagraphSetting p = type_layer_paragraph_setting(*v, layerPath_);
         QString family = familyForFontName(type_layer_font(*v, layerPath_));
         if (now.family != was.family) {
             family = now.family;
         }
         if (now.size != was.size) {
-            s.size = now.size;
-        }
-        if (now.justification != was.justification) {
-            s.justification = now.justification;
+            c.size = now.size;
         }
         if (now.antialias != was.antialias) {
-            s.antialias = now.antialias;
+            c.anti_alias = now.antialias;
         }
         if (now.color != was.color) {
-            s.color = now.color.rgba();
+            c.color = now.color.rgba();
+        }
+        if (now.justification != was.justification) {
+            p.justify = now.justification;
         }
         registerTypeFont(family);
-        type_update_layer(*v, layerPath_, type_layer_text(*v, layerPath_), family, s);
+        type_update_layer(*v, layerPath_, type_layer_text(*v, layerPath_), family, s, c, p);
     }
 
     bool onPress(ToolContext& ctx, const QPointF& imagePos, Qt::KeyboardModifiers mods) override
@@ -267,6 +277,8 @@ public:
             editPath_ = hit;
             edit_.reset(type_layer_text(*v, hit), 0);
             const TypeSetting s = type_layer_setting(*v, hit);
+            const CharacterSetting c = type_layer_character_setting(*v, hit);
+            const ParagraphSetting p = type_layer_paragraph_setting(*v, hit);
             origin_ = QPointF(s.x, s.y);
             vertical_ = s.vertical;
             matrix_ = {s.xx, s.xy, s.yx, s.yy};
@@ -275,9 +287,10 @@ public:
             if (!family.isEmpty()) {
                 o.family = family;
             }
-            o.size = s.size;
-            o.justification = s.justification;
-            o.color = QColor::fromRgba(s.color);
+            o.size = c.size;
+            o.justification = p.justify;
+            o.color = QColor::fromRgba(c.color);
+            o.antialias = c.anti_alias;
             ctx.setTypeOptions(o);
         }
         filter_ = std::make_unique<TypeKeyFilter>(
@@ -317,7 +330,7 @@ public:
         const bool current = v == ctx_->view();
         const QString text = edit_.text();
         const SelectionMode mode = mode_;
-        const TypeSetting setting = currentSetting();
+        const TypeEdit edit = currentSetting();
         const QString family = ctx_->typeOptions().family;
         registerTypeFont(family);
         endSession();
@@ -325,7 +338,9 @@ public:
             return true;
         }
         if (!editPath.isEmpty()) {
-            if (type_commit_edit(*v, editPath, text, family, setting) && current) {
+            if (type_commit_edit(*v, editPath, text, family, edit.placement, edit.character,
+                                 edit.paragraph)
+                && current) {
                 ctx_->notifyLayerCreated(editPath);
             }
             return true;
@@ -334,12 +349,14 @@ public:
             return true;
         }
         if (mask_) {
-            if (type_commit_mask(*v, text, family, setting, selectionModeString(mode))) {
+            if (type_commit_mask(*v, text, family, edit.placement, edit.character, edit.paragraph,
+                                 selectionModeString(mode))) {
                 ctx_->emitSelectionCommitted();
             }
             return true;
         }
-        const QString created = type_commit_layer(*v, text, family, setting);
+        const QString created = type_commit_layer(*v, text, family, edit.placement, edit.character,
+                                                  edit.paragraph);
         if (created.isEmpty()) {
             ctx_->refused(QStringLiteral("Type layers can only be added to an 8-bit RGB document"));
         } else if (current) {
@@ -523,15 +540,17 @@ private:
             known_ = ctx_ ? ctx_->typeOptions() : TypeOptions{};
             return;
         }
-        const TypeSetting s = type_layer_setting(*v, path);
+        const CharacterSetting c = type_layer_character_setting(*v, path);
+        const ParagraphSetting p = type_layer_paragraph_setting(*v, path);
         TypeOptions o = ctx_->typeOptions();
         const QString family = familyForFontName(type_layer_font(*v, path));
         if (!family.isEmpty()) {
             o.family = family;
         }
-        o.size = s.size;
-        o.justification = s.justification;
-        o.color = QColor::fromRgba(s.color);
+        o.size = c.size;
+        o.justification = p.justify;
+        o.color = QColor::fromRgba(c.color);
+        o.antialias = c.anti_alias;
         syncing_ = true;
         ctx_->setTypeOptions(o);
         syncing_ = false;
@@ -559,28 +578,36 @@ private:
         }
     }
 
-    TypeSetting currentSetting() const
+    TypeEdit currentSetting() const
     {
         const TypeOptions o = ctx_->typeOptions();
-        TypeSetting s;
-        s.size = o.size;
-        s.color = o.color.rgba();
-        s.justification = o.justification;
-        s.vertical = vertical_;
-        s.antialias = o.antialias;
-        s.x = origin_.x();
-        s.y = origin_.y();
-        s.xx = matrix_[0];
-        s.xy = matrix_[1];
-        s.yx = matrix_[2];
-        s.yy = matrix_[3];
-        return s;
+        TypeEdit edit;
+        edit.character = type_default_character_setting();
+        edit.paragraph = type_default_paragraph_setting();
+        // A reopened layer keeps its full attribute set; the bar overrides only
+        // the fields it exposes.
+        if (!editPath_.isEmpty() && view_ && view_->layer_is_type(editPath_)) {
+            edit.character = type_layer_character_setting(*view_, editPath_);
+            edit.paragraph = type_layer_paragraph_setting(*view_, editPath_);
+        }
+        edit.character.size = o.size;
+        edit.character.color = o.color.rgba();
+        edit.character.anti_alias = o.antialias;
+        edit.paragraph.justify = o.justification;
+        edit.placement.vertical = vertical_;
+        edit.placement.x = origin_.x();
+        edit.placement.y = origin_.y();
+        edit.placement.xx = matrix_[0];
+        edit.placement.xy = matrix_[1];
+        edit.placement.yx = matrix_[2];
+        edit.placement.yy = matrix_[3];
+        return edit;
     }
 
-    QRect previewRect(const QString& text, const TypeSetting& s) const
+    QRect previewRect(const QString& text, const TypeEdit& edit) const
     {
-        const ::rust::Vec<std::int32_t> r =
-            type_preview_rect(text, ctx_->typeOptions().family, s);
+        const ::rust::Vec<std::int32_t> r = type_preview_rect(
+            text, ctx_->typeOptions().family, edit.placement, edit.character, edit.paragraph);
         return r.size() == 4 ? QRect(r[0], r[1], r[2], r[3]) : QRect();
     }
 
@@ -590,7 +617,7 @@ private:
         if (!view_ || !canvas) {
             return;
         }
-        const TypeSetting s = currentSetting();
+        const TypeEdit edit = currentSetting();
         ImageView::TypeOverlay overlay;
         overlay.active = true;
         overlay.mask = mask_;
@@ -599,13 +626,16 @@ private:
         const QString family = ctx_->typeOptions().family;
         registerTypeFont(family);
         stops_.clear();
-        const ::rust::Vec<double> stops = type_caret_stops(text, family, s);
+        const ::rust::Vec<double> stops = type_caret_stops(text, family, edit.placement,
+                                                           edit.character, edit.paragraph);
         for (std::size_t i = 0; i + 3 < stops.size(); i += 4) {
             stops_.append(QLineF(stops[i], stops[i + 1], stops[i + 2], stops[i + 3]));
         }
-        const QRect rect = previewRect(text, s);
+        const QRect rect = previewRect(text, edit);
         const ::rust::Vec<std::uint8_t> rgba =
-            rect.isEmpty() ? ::rust::Vec<std::uint8_t>() : type_preview_rgba(text, family, s);
+            rect.isEmpty() ? ::rust::Vec<std::uint8_t>()
+                           : type_preview_rgba(text, family, edit.placement, edit.character,
+                                               edit.paragraph);
         if (std::size_t(rect.width()) * rect.height() * 4 == rgba.size() && !rect.isEmpty()) {
             QImage image(rect.size(), QImage::Format_RGBA8888);
             for (int y = 0; y < rect.height(); ++y) {

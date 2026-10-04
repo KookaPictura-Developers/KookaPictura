@@ -28,7 +28,11 @@ pub use text_render::{
     layout_lines, FontPolicy, GlyphMask, LayoutLine, LayoutParams, PlacedGlyph, RasterRequest,
     Rasterizer, ShapedGlyph, TextAlign, TextLayout, TextProvenance,
 };
-pub use type_tool::{TextStyle, TypeSpec, TypeTool};
+pub use type_tool::{
+    AntiAlias, CharacterAttrs, CharacterOverrides, CharacterStyle, Composer, Justify, KerningMode,
+    Leading, ParagraphAttrs, ParagraphOverrides, ParagraphStyle, ResolvedStyle, StyleError,
+    StyleOverrides, TextStyle, TextStyleSheet, TypeSpec, TypeTool, BASIC_PARAGRAPH,
+};
 pub use vector::{VectorFillRule, VectorMask, VectorSubpath};
 
 /// PSD color modes (`header.color_mode`).
@@ -220,6 +224,11 @@ pub struct Document {
     /// ponytail: not yet written to or read from the PSD path resources
     /// (1025 / 2000-2997), which stay preserved verbatim.
     pub work_path: path::VectorPath,
+    /// Named character and paragraph styles, carried on the history snapshot so
+    /// a style edit is undone with the document. `Basic Paragraph` is always
+    /// present. ponytail: not yet written to or read from PSD (the style block's
+    /// location is unresolved); an existing block is preserved verbatim.
+    pub text_styles: TextStyleSheet,
 }
 
 impl Document {
@@ -250,6 +259,7 @@ impl Document {
             slices: Vec::new(),
             annotations: Annotations::default(),
             work_path: path::VectorPath::default(),
+            text_styles: TextStyleSheet::default(),
         }
     }
 
@@ -821,6 +831,12 @@ pub struct Layer {
     /// Derived `TySh` type-tool view; `None` when absent or unparseable. The
     /// raw block remains in `extra_blocks` and is the serialization source.
     pub type_tool: Option<TypeTool>,
+    /// The named styles a type layer applies and the run's manual overrides, in
+    /// memory only (a style definition is not written to PSD). Carried on the
+    /// layer so a re-author within a session keeps them.
+    pub applied_character_style: Option<String>,
+    pub applied_paragraph_style: Option<String>,
+    pub type_overrides: StyleOverrides,
     /// Retained source channel samples, re-emitted on save when the layer has
     /// not moved: native `16`/`32`-bit samples for a Grayscale/RGB read, or the
     /// 8-bit Lab color planes for a Lab read.
@@ -861,6 +877,9 @@ impl Default for Layer {
             smart_object: None,
             vector_mask: None,
             type_tool: None,
+            applied_character_style: None,
+            applied_paragraph_style: None,
+            type_overrides: StyleOverrides::default(),
             source_channels: None,
         }
     }

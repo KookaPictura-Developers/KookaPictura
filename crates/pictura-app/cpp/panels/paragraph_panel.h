@@ -1,32 +1,52 @@
 #pragma once
 
+#include <QtCore/QSize>
+#include <QtCore/QString>
 #include <QtWidgets/QWidget>
 
-class QButtonGroup;
+class QCheckBox;
+class QComboBox;
+class QDoubleSpinBox;
 
 namespace pictura {
 
-class ToolController;
+class PictureView;
 
-// Window > Paragraph: the type tools' paragraph alignment (left / centre /
-// right; top / centre / bottom while a vertical Type tool is active), shared
-// with the Type options bar. Ported from photorust's ParagraphPanel.
-// ponytail: the type model has no justification, indents, paragraph spacing,
-// or hyphenation (point text does not wrap); they are shown disabled.
+// The Paragraph panel (CS6 `Window > Paragraph`, `Type > Panels > Paragraph`): a
+// live attribute editor over the active type layer's `ParagraphAttrs`. With no
+// type layer active it shows the model defaults and disables editing.
 class ParagraphPanel : public QWidget {
     Q_OBJECT
 
 public:
     explicit ParagraphPanel(QWidget* parent = nullptr);
 
-    void setController(ToolController* controller);
-    // Re-read the alignment and the active tool's orientation.
+    void setView(PictureView* view);
     void refresh();
 
+    // The dense form's natural minimum width would raise the panel column's
+    // shared floor; the column supplies the width, so report none.
+    QSize minimumSizeHint() const override;
+
+    QComboBox* justifyFieldForTest() const { return justify_; }
+    QDoubleSpinBox* firstLineIndentFieldForTest() const { return firstLineIndent_; }
+    bool editingEnabledForTest() const;
+    void commitForTest();
+
 private:
-    ToolController* controller_ = nullptr;
-    QButtonGroup* align_ = nullptr;
-    bool vertical_ = false;
+    void apply();
+    bool hasTypeLayer() const;
+
+    PictureView* view_ = nullptr;
+    QComboBox* justify_ = nullptr;
+    QDoubleSpinBox* startIndent_ = nullptr;
+    QDoubleSpinBox* endIndent_ = nullptr;
+    QDoubleSpinBox* firstLineIndent_ = nullptr;
+    QDoubleSpinBox* spaceBefore_ = nullptr;
+    QDoubleSpinBox* spaceAfter_ = nullptr;
+    QCheckBox* hanging_ = nullptr;
+    QCheckBox* hyphenate_ = nullptr;
+    QComboBox* composer_ = nullptr;
 };
 
 } // namespace pictura

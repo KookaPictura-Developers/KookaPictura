@@ -7,7 +7,7 @@
 //! re-encode framing-only (EngineData stays opaque inside those bytes). A
 //! malformed block leaves the view unset rather than failing the document.
 
-use pictura_core::{Layer, TextStyle, TypeTool};
+use pictura_core::{AntiAlias, Layer, TextStyle, TypeTool};
 
 use crate::common::Reader;
 use crate::descriptor::{self, get_object_item, DescValue};
@@ -71,7 +71,9 @@ fn is_vertical(value: &DescValue) -> bool {
 }
 
 /// Best-effort view of the `Txt ` descriptor's opaque `EngineData` blob; a
-/// missing or malformed blob leaves the style unset rather than failing.
+/// missing or malformed blob leaves the style unset rather than failing. The
+/// anti-aliasing method comes from the descriptor's `AntA` enum when present,
+/// overriding the EngineData `/AntiAlias` flag.
 fn engine_data_view(text: &DescValue) -> (Vec<String>, Option<TextStyle>) {
     let DescValue::Object { items, .. } = text else {
         return (Vec::new(), None);
@@ -83,13 +85,49 @@ fn engine_data_view(text: &DescValue) -> (Vec<String>, Option<TextStyle>) {
         return (Vec::new(), None);
     };
     let fonts = extract_fonts(&root);
-    let style = extract_style(&root, &fonts);
+    let mut style = extract_style(&root, &fonts);
+    if let Some(anti_alias) = descriptor_ant_alias(items) {
+        style.character.anti_alias = anti_alias;
+    }
     (fonts, Some(style))
+}
+
+/// The `AntA` enum value as an [`AntiAlias`], if the descriptor carries one.
+fn descriptor_ant_alias(items: &[(Vec<u8>, DescValue)]) -> Option<AntiAlias> {
+    match get_object_item(items, b"AntA") {
+        Some(DescValue::Enum { value, .. }) => ant_alias_value(value),
+        _ => None,
+    }
+}
+
+/// The CS6 `AntA` spelling of an anti-aliasing method.
+pub(crate) fn ant_alias_spelling(method: AntiAlias) -> &'static str {
+    match method {
+        AntiAlias::None => "antiAliasNone",
+        AntiAlias::Sharp => "antiAliasSharp",
+        AntiAlias::Crisp => "antiAliasCrisp",
+        AntiAlias::Strong => "antiAliasStrong",
+        AntiAlias::Smooth => "antiAliasSmooth",
+    }
+}
+
+/// The method an `AntA` enum value names, `None` for an unknown spelling.
+pub(crate) fn ant_alias_value(value: &[u8]) -> Option<AntiAlias> {
+    // ponytail: Crisp/Strong/Smooth spellings are inferred; validated against a
+    // CS6-authored PSD in the type-style-model follow-up.
+    match value {
+        b"antiAliasNone" => Some(AntiAlias::None),
+        b"antiAliasSharp" => Some(AntiAlias::Sharp),
+        b"antiAliasCrisp" => Some(AntiAlias::Crisp),
+        b"antiAliasStrong" => Some(AntiAlias::Strong),
+        b"antiAliasSmooth" => Some(AntiAlias::Smooth),
+        _ => None,
+    }
 }
 
 /// `tdta` raw values are `ostype + u32 length + bytes`; other shapes pass
 /// through so the parser can reject them.
-fn engine_data_payload(raw: &[u8]) -> &[u8] {
+pub(crate) fn engine_data_payload(raw: &[u8]) -> &[u8] {
     if raw.len() >= 8 && &raw[..4] == b"tdta" {
         let len = u32::from_be_bytes(raw[4..8].try_into().unwrap()) as usize;
         let end = (8 + len).min(raw.len());
@@ -193,6 +231,62 @@ mod tests {
         })
     }
 
+    /// A `Txt ` descriptor carrying `engine` as a `tdta` EngineData blob and an
+    /// optional `AntA` enum value.
+    fn text_desc_with(ant: Option<&str>, engine: &[u8]) -> Vec<u8> {
+        let mut raw = b"tdta".to_vec();
+        raw.extend_from_slice(&(engine.len() as u32).to_be_bytes());
+        raw.extend_from_slice(engine);
+        let mut items = vec![(b"Txt ".to_vec(), DescValue::Text(TEXT.into()))];
+        if let Some(ant) = ant {
+            items.push((
+                b"AntA".to_vec(),
+                DescValue::Enum {
+                    kind: b"Annt".to_vec(),
+                    value: ant.as_bytes().to_vec(),
+                },
+            ));
+        }
+        items.push((b"EngineData".to_vec(), DescValue::Raw(raw)));
+        write_descriptor(&DescValue::Object {
+            name: String::new(),
+            class_id: b"TxtX".to_vec(),
+            items,
+        })
+    }
+
+    const ENGINE: &[u8] = b"<< /EngineDict << /Editor << /Text (\xFE\xFF\x00a\x00\r) >> \
+        /StyleRun << /RunArray [ << /StyleSheet << /StyleSheetData << /FontSize 12.0 >> >> >> ] >> \
+        /AntiAlias 0 >> /ResourceDict << /FontSet [] >> >>";
+
+    #[test]
+    fn descriptor_ant_alias_is_reported_over_the_flag() {
+        let desc = text_desc_with(Some("antiAliasCrisp"), ENGINE);
+        let tool = decode_type_tool(&tysh_from(desc)).expect("decodes");
+        assert_eq!(
+            tool.style.expect("style").character.anti_alias,
+            AntiAlias::Crisp
+        );
+    }
+
+    #[test]
+    fn engine_data_flag_is_the_anti_alias_fallback() {
+        let desc = text_desc_with(None, ENGINE);
+        let tool = decode_type_tool(&tysh_from(desc)).expect("decodes");
+        assert_eq!(
+            tool.style.expect("style").character.anti_alias,
+            AntiAlias::None
+        );
+    }
+
+    #[test]
+    fn malformed_engine_data_leaves_the_style_unset() {
+        let desc = text_desc_with(None, b"<< /EngineDict /unterminated");
+        let tool = decode_type_tool(&tysh_from(desc)).expect("decodes");
+        assert_eq!(tool.text, TEXT);
+        assert!(tool.style.is_none());
+    }
+
     #[test]
     fn type_tool_decodes_transform_text_bounds() {
         let tool = decode_type_tool(&synthetic_tysh()).expect("decodes");
@@ -211,9 +305,9 @@ mod tests {
         assert_eq!(tool.fonts, ["AdobeInvisFont", "MyriadPro-Regular"]);
         let style = tool.style.expect("style decodes");
         assert_eq!(style.font.as_deref(), Some("MyriadPro-Regular"));
-        assert_eq!(style.font_size, 150.0);
-        assert_eq!(style.fill_color, [1.0, 1.0, 1.0, 1.0]);
-        assert_eq!(style.justification, 0);
+        assert_eq!(style.character.size, 150.0);
+        assert_eq!(style.character.fill_color, [1.0, 1.0, 1.0, 1.0]);
+        assert_eq!(style.paragraph.justify, pictura_core::Justify::Left);
     }
 
     #[test]

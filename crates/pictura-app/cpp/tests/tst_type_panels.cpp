@@ -1,5 +1,5 @@
-// The Character, Paragraph, and Glyphs panels (#65): they edit the Type tools'
-// shared options, and a glyph lands at the open type edit's caret.
+// The Glyphs panel (#65): a glyph lands at the open type edit's caret. The
+// Character and Paragraph panels are covered by tst_character_paragraph_panels.
 
 #include <QtTest/QtTest>
 
@@ -51,8 +51,6 @@ class TypePanelsTest : public QObject {
 
 private slots:
     void initTestCase();
-    void characterPanel();
-    void paragraphPanel();
     void glyphsPanel();
 
 private:
@@ -95,108 +93,6 @@ bool TypePanelsTest::openPanel(const char* command, const QString& panel)
     }
     QCoreApplication::processEvents();
     return window_->panelColumn()->isPanelVisible(panel);
-}
-
-void TypePanelsTest::characterPanel()
-{
-    pictura::PicturaMainWindow& frame = *window_;
-    Fixture f(frame, seed(), QStringLiteral("pictura_character_panel"));
-    QVERIFY2(f.ok(), "fixture");
-    showFrame();
-    const pictura::TypeOptions saved = f.tools->typeOptions();
-
-    // Type > Panels > Character opens it; the Window entry then reads checked.
-    QAction* typeCharacter = frame.registry()->action(pictura::commandIdForPath(
-        {QStringLiteral("Type"), QStringLiteral("Panels"), QStringLiteral("Character")}));
-    QVERIFY(typeCharacter);
-    frame.registry()->refresh();
-    QVERIFY(typeCharacter->isEnabled());
-    typeCharacter->trigger();
-    QVERIFY(frame.panelColumn()->isPanelVisible(QStringLiteral("characterPanel")));
-    QVERIFY(openPanel(pictura::command_ids::WindowPanelsCharacter,
-                      QStringLiteral("characterPanel")));
-
-    auto* size = child<QComboBox>(QStringLiteral("characterSize"));
-    auto* antialias = child<QComboBox>(QStringLiteral("characterAntialias"));
-    auto* family = child<QFontComboBox>(QStringLiteral("characterFamily"));
-    QVERIFY(size && antialias && family);
-
-    // The panel edits the shared options, as the options bar does.
-    size->setEditText(QStringLiteral("30"));
-    emit size->lineEdit()->editingFinished();
-    QCOMPARE(f.tools->typeOptions().size, 30.0);
-    size->setEditText(QStringLiteral("5000"));
-    emit size->lineEdit()->editingFinished();
-    QCOMPARE(f.tools->typeOptions().size, 30.0);
-    QCOMPARE(size->currentText(), QStringLiteral("30"));
-    antialias->setCurrentIndex(0);
-    QVERIFY(!f.tools->typeOptions().antialias);
-    const QStringList families = QFontDatabase::families();
-    QVERIFY(!families.isEmpty());
-    const QString other = families.first() == saved.family ? families.last() : families.first();
-    family->setCurrentFont(QFont(other));
-    QCOMPARE(f.tools->typeOptions().family, family->currentFont().family());
-
-    // And follows them when they change elsewhere.
-    pictura::TypeOptions o = f.tools->typeOptions();
-    o.size = 12.0;
-    o.antialias = true;
-    f.tools->setTypeOptions(o);
-    QCOMPARE(size->currentText(), QStringLiteral("12"));
-    QCOMPARE(antialias->currentIndex(), 1);
-
-    // What the type model lacks is shown but disabled.
-    for (QSpinBox* spin : frame.findChild<QWidget*>(QStringLiteral("characterPanel"))
-                              ->findChildren<QSpinBox*>()) {
-        QVERIFY(!spin->isEnabled());
-    }
-
-    // The Type options bar's panel button toggles the Character panel.
-    frame.setActiveTool(pictura::ToolId::HorizontalType);
-    QToolButton* toggle = nullptr;
-    for (auto* button : frame.findChildren<QToolButton*>(
-             QStringLiteral("optionsToggleCharacterPanel"))) {
-        toggle = button->isVisible() ? button : toggle;
-    }
-    QVERIFY(toggle && !toggle->icon().isNull());
-    toggle->click();
-    QVERIFY(!frame.panelColumn()->isPanelVisible(QStringLiteral("characterPanel")));
-    toggle->click();
-    QVERIFY(frame.panelColumn()->isPanelVisible(QStringLiteral("characterPanel")));
-    f.tools->setTypeOptions(saved);
-}
-
-void TypePanelsTest::paragraphPanel()
-{
-    pictura::PicturaMainWindow& frame = *window_;
-    Fixture f(frame, seed(), QStringLiteral("pictura_paragraph_panel"));
-    QVERIFY2(f.ok(), "fixture");
-    showFrame();
-    const pictura::TypeOptions saved = f.tools->typeOptions();
-    QVERIFY(openPanel(pictura::command_ids::WindowPanelsParagraph,
-                      QStringLiteral("paragraphPanel")));
-    auto* left = child<QToolButton>(QStringLiteral("paragraphAlignLeft"));
-    auto* center = child<QToolButton>(QStringLiteral("paragraphAlignCenter"));
-    auto* right = child<QToolButton>(QStringLiteral("paragraphAlignRight"));
-    QVERIFY(left && center && right);
-
-    center->click();
-    QCOMPARE(f.tools->typeOptions().justification, 2);
-    pictura::TypeOptions o = f.tools->typeOptions();
-    o.justification = 1;
-    f.tools->setTypeOptions(o);
-    QVERIFY(right->isChecked());
-
-    // A vertical Type tool turns the buttons to top / centre / bottom.
-    frame.setActiveTool(pictura::ToolId::VerticalType);
-    QCOMPARE(left->toolTip(), QStringLiteral("Top align text"));
-    frame.setActiveTool(pictura::ToolId::HorizontalType);
-    QCOMPARE(left->toolTip(), QStringLiteral("Left align text"));
-    for (QDoubleSpinBox* field : frame.findChild<QWidget*>(QStringLiteral("paragraphPanel"))
-                                     ->findChildren<QDoubleSpinBox*>()) {
-        QVERIFY(!field->isEnabled());
-    }
-    f.tools->setTypeOptions(saved);
 }
 
 void TypePanelsTest::glyphsPanel()

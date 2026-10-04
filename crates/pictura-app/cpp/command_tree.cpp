@@ -489,9 +489,12 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Layer", "Matting", "Remove Black Matte"}, QStringLiteral("Remove Black Matte"));
     leaf(registry, {"Layer", "Matting", "Remove White Matte"}, QStringLiteral("Remove White Matte"));
 
-    // Type
-    leaf(registry, {"Type", "Panels", "Character"}, QStringLiteral("Character"));
-    leaf(registry, {"Type", "Panels", "Paragraph"}, QStringLiteral("Paragraph"));
+    // Type. Character/Paragraph have their own ids so both menu paths toggle
+    // and reflect one panel without sharing a registry action.
+    registry.add(CommandSpec{command_ids::TypePanelsCharacter, {"Type", "Panels", "Character"},
+                             QStringLiteral("Character"), QKeySequence(), true, true});
+    registry.add(CommandSpec{command_ids::TypePanelsParagraph, {"Type", "Panels", "Paragraph"},
+                             QStringLiteral("Paragraph"), QKeySequence(), true, true});
     leaf(registry, {"Type", "Panels", "Character Styles"}, QStringLiteral("Character Styles"));
     leaf(registry, {"Type", "Panels", "Paragraph Styles"}, QStringLiteral("Paragraph Styles"));
     leaf(registry, {"Type", "Anti-Alias", "None"}, QStringLiteral("None"));

@@ -1112,6 +1112,8 @@ void PicturaMainWindow::registerHandlers()
         {command_ids::WindowPanelsCharacter, "characterPanel"},
         {command_ids::WindowPanelsParagraph, "paragraphPanel"},
         {command_ids::WindowPanelsGlyphs, "glyphsPanel"},
+        {command_ids::TypePanelsCharacter, "characterPanel"},
+        {command_ids::TypePanelsParagraph, "paragraphPanel"},
     };
     for (const PanelToggle& toggle : kPanelToggles) {
         const QString command = QString::fromLatin1(toggle.command);
@@ -1132,17 +1134,6 @@ void PicturaMainWindow::registerHandlers()
                 owner = panelColumn_;
             }
             return owner && owner->isPanelVisible(panel);
-        });
-    }
-    // Type > Panels > Character / Paragraph open (never close) their panel.
-    for (const char* name : {"Character", "Paragraph"}) {
-        const QString title = QLatin1String(name);
-        const QString id = commandIdForPath({QStringLiteral("Type"), QStringLiteral("Panels"), title});
-        const QString panel = title.toLower() + QStringLiteral("Panel");
-        registry_->setImplemented(id, true);
-        registry_->setHandler(id, [this, panel]() {
-            PanelColumn* owner = columnForPanel(panel);
-            (owner ? owner : panelColumn_)->showPanel(panel, true);
         });
     }
 

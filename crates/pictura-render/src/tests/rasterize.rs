@@ -348,10 +348,13 @@ fn rasterize_all_layers_rasterizes_a_type_layer() {
             fonts: Vec::new(),
             style: Some(pictura_core::TextStyle {
                 font: Some("Arial".into()),
-                font_size: 48.0,
-                fill_color: [1.0, 0.0, 0.0, 0.0],
-                tracking: 0.0,
-                justification: 0,
+                character: pictura_core::CharacterAttrs {
+                    size: 48.0,
+                    fill_color: [1.0, 0.0, 0.0, 0.0],
+                    ..pictura_core::CharacterAttrs::default()
+                },
+                paragraph: pictura_core::ParagraphAttrs::default(),
+                ..pictura_core::TextStyle::default()
             }),
             vertical: false,
         }),
