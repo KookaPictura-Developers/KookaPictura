@@ -46,6 +46,34 @@ constexpr Entry kDirect[] = {
     {"auto-contrast", "Auto Contrast"}, {"auto-color", "Auto Color"},
 };
 
+// The sixteen CS6 Layer > New Adjustment Layer kinds, in menu order. `ellipsis`
+// follows the same split as Image > Adjustments: Invert has no options, so it
+// creates silently; every other kind opens its dialog.
+struct LayerAdjustment {
+    const char* kind;
+    const char* leaf;
+    bool ellipsis;
+};
+
+constexpr LayerAdjustment kLayerAdjustments[] = {
+    {"brightness-contrast", "Brightness/Contrast", true},
+    {"levels", "Levels", true},
+    {"curves", "Curves", true},
+    {"exposure", "Exposure", true},
+    {"vibrance", "Vibrance", true},
+    {"hue-saturation", "Hue/Saturation", true},
+    {"color-balance", "Color Balance", true},
+    {"black-white", "Black & White", true},
+    {"photo-filter", "Photo Filter", true},
+    {"channel-mixer", "Channel Mixer", true},
+    {"color-lookup", "Color Lookup", true},
+    {"invert", "Invert", false},
+    {"posterize", "Posterize", true},
+    {"threshold", "Threshold", true},
+    {"gradient-map", "Gradient Map", true},
+    {"selective-color", "Selective Color", true},
+};
+
 } // namespace
 
 // ponytail: Match Color stays a disabled stub.
@@ -151,6 +179,32 @@ void PicturaMainWindow::wireImageAdjustments()
                 }
             });
             dialog->show();
+        });
+        registry_->setEnabledProvider(id, ready);
+    }
+}
+
+// Layer > New Adjustment Layer: the same add_adjustment bridge the Adjustments
+// panel uses, one entry per CS6 kind over the active document.
+void PicturaMainWindow::wireLayerAdjustments()
+{
+    const auto ready = [this]() {
+        return activeView() && activeView()->has_document();
+    };
+    for (const LayerAdjustment& entry : kLayerAdjustments) {
+        const QString leaf = QString::fromUtf8(entry.leaf);
+        const QString id = commandIdForPath(
+            {QStringLiteral("Layer"), QStringLiteral("New Adjustment Layer"), leaf});
+        const QString kind = QString::fromLatin1(entry.kind);
+        registry_->setImplemented(id, true);
+        if (entry.ellipsis) {
+            registry_->setLabelProvider(id, [leaf]() { return leaf + QStringLiteral("…"); });
+        }
+        registry_->setHandler(id, [this, kind]() {
+            PictureView* view = activeView();
+            if (view && view->add_adjustment(kind)) {
+                refresh();
+            }
         });
         registry_->setEnabledProvider(id, ready);
     }

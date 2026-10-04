@@ -363,9 +363,6 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Layer", "New Adjustment Layer", "Gradient Map"}, QStringLiteral("Gradient Map"));
     leaf(registry, {"Layer", "New Adjustment Layer", "Selective Color"},
          QStringLiteral("Selective Color"));
-    leaf(registry, {"Layer", "New Adjustment Layer", "Shadows/Highlights"},
-         QStringLiteral("Shadows/Highlights"));
-    leaf(registry, {"Layer", "New Adjustment Layer", "HDR Toning"}, QStringLiteral("HDR Toning"));
     leaf(registry, {"Layer", "Layer Content Options…"}, QStringLiteral("Layer Content Options…"));
     leaf(registry, {"Layer", "Layer Mask", "Reveal All"}, QStringLiteral("Reveal All"));
     leaf(registry, {"Layer", "Layer Mask", "Hide All"}, QStringLiteral("Hide All"));

@@ -286,6 +286,9 @@ private:
     void wireAlignMenu();
     // frame_menus_adjust.cpp: Image > Adjustments and the Image > Auto commands.
     void wireImageAdjustments();
+    // frame_menus_adjust.cpp: Layer > New Adjustment Layer, the sixteen
+    // adjustment-layer kinds over the active document.
+    void wireLayerAdjustments();
     void alignSelectedLayers(int edge, bool toSelection);
     void distributeSelectedLayers(int edge);
     void updateAlignControls();
