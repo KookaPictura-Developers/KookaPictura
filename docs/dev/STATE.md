@@ -24,6 +24,16 @@ Snapshot for resuming after a context break. Update after each milestone.
   The C++ self-test reports **480 passed, 0 failed, 0 skipped** standalone; the
   unified report (`scripts/verify-fast.sh`, which reruns both plus the workspace
   probes) reports **2344 passed, 13 skipped, 0 failed**.
+- **In flight:** `port-adjustments-filters-smart-filters` (branch
+  `feat/167-cs6-adjustments-filters-smart-filters`, PR pending). Closes the
+  remaining CS6 Image ▸ Adjustments / Filter gaps from #82/#83/#87 — Artistic
+  family exposure, Lighting Effects / Diffuse / Glowing Edges, Shadows/Highlights,
+  destructive Color Lookup, HDR Toning, Replace Color, and the New Adjustment
+  Layer submenu — and renders + exposes PSD smart filters (filterFX chain) in the
+  Layers panel. Reviewed; the critical/major findings were fixed (opacity-preserving
+  filters skip the alpha pass, Replace Color dialog lifetime, HDR apron/preview,
+  smart-filter toggle persistence, camera-raw `Fltr` key merge, Shadows/Highlights
+  gain). Follow-ups: #168 (Lens Flare preview), #169 (dead code), #87 (Pattern fill).
 - **Lucide icon set** (archived `lucide-icon-set`, spec `ui/icon-assets`): all 165
   `assets/icons/` SVGs are now Lucide-derived (91, vendored verbatim from
   `lucide-static` 1.50.0) or Lucide-style custom (61), with 3 flagged notes and
