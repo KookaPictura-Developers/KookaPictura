@@ -69,6 +69,26 @@ pub(super) fn adjustment_layer(kind: &str, mask: Option<LayerMask>) -> Option<La
             "Color Lookup",
             encode_color_lookup(&identity_cube(), "Identity.CUBE"),
         ),
+        "levels" => (
+            "Levels",
+            pictura_render::default_adjustment_block("levels", [0, 0, 0], [255, 255, 255])?,
+        ),
+        "curves" => (
+            "Curves",
+            pictura_render::default_adjustment_block("curves", [0, 0, 0], [255, 255, 255])?,
+        ),
+        "exposure" => (
+            "Exposure",
+            pictura_render::default_adjustment_block("exposure", [0, 0, 0], [255, 255, 255])?,
+        ),
+        "vibrance" => (
+            "Vibrance",
+            pictura_render::default_adjustment_block("vibrance", [0, 0, 0], [255, 255, 255])?,
+        ),
+        "black-white" => (
+            "Black & White",
+            pictura_render::default_adjustment_block("black-white", [0, 0, 0], [255, 255, 255])?,
+        ),
         _ => return None,
     };
 
