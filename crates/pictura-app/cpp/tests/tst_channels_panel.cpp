@@ -1,8 +1,12 @@
 #include <QtTest/QtTest>
 
 #include "frame.h"
+#include "image_view.h"
 #include "panels/channels_panel.h"
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
+
+#include <QtCore/QTemporaryDir>
+#include <QtWidgets/QToolButton>
 
 #include "qt_test_support.h"
 
@@ -13,7 +17,8 @@ private slots:
     void initTestCase();
     void cleanup();
     void rowsAndThumbnails();
-    void togglingIsLocalOnly();
+    void eyesHideChannelsOnTheCanvas();
+    void alphaChannelsAndFooter();
     void refreshKeepsRows();
     void grayscaleDocumentShowsSingleGrayRow();
     void thumbnailsTrackDocument();
@@ -63,22 +68,103 @@ void ChannelsPanelTest::rowsAndThumbnails()
     }
 }
 
-void ChannelsPanelTest::togglingIsLocalOnly()
+// The RGB eyes hide channels on the canvas (#71): one hidden shows the other
+// two in colour, two hidden show the last as greyscale, the last cannot be
+// hidden, and the composite eye (on only when all are) shows them all again.
+void ChannelsPanelTest::eyesHideChannelsOnTheCanvas()
 {
-    const bool created = window_->newDocument(QStringLiteral("Toggle"), 16, 16,
-                                              QStringLiteral("rgb"), 8, QStringLiteral("white"));
+    QTemporaryDir dir;
+    QImage image(40, 40, QImage::Format_RGB32);
+    image.fill(QColor(100, 150, 200));
+    const QString path = dir.filePath(QStringLiteral("photo.png"));
+    QVERIFY(image.save(path) && window_->openDocumentAtPath(path));
+    window_->show();
+    QVERIFY(QTest::qWaitForWindowExposed(window_.get()));
     view_ = window_->activeView();
     panel_ = window_->findChild<pictura::ChannelsPanel*>(QStringLiteral("channelsPanel"));
-    QVERIFY2(created && view_ && panel_, "toggle fixture");
+    pictura::ImageView* canvas = window_->imageView();
+    QVERIFY(view_ && panel_ && canvas);
     panel_->setView(view_);
-    panel_->refresh();
+    QCOMPARE(panel_->channelShortcutForTest(0), QStringLiteral("Ctrl+2"));
+    QCOMPARE(panel_->channelShortcutForTest(3), QStringLiteral("Ctrl+5"));
 
-    QVERIFY2(panel_->channelVisibleForTest(1), "red starts visible");
+    const auto centre = [canvas]() {
+        const QPointF p = canvas->imageToWidget(QPointF(20, 20));
+        return QColor(canvas->grab().toImage().pixel(p.toPoint()));
+    };
+    QCOMPARE(centre(), QColor(100, 150, 200));
+
     panel_->toggleChannelForTest(1);
-    QVERIFY2(!panel_->channelVisibleForTest(1), "red toggled off");
-    QVERIFY2(panel_->channelVisibleForTest(0) && panel_->channelVisibleForTest(2)
-                 && panel_->channelVisibleForTest(3),
-             "only red flipped");
+    QVERIFY(!panel_->channelVisibleForTest(1) && !panel_->channelVisibleForTest(0));
+    QCOMPARE(canvas->channelMask(), 0x6);
+    QCOMPARE(centre(), QColor(0, 150, 200));
+
+    panel_->toggleChannelForTest(2);
+    QCOMPARE(canvas->channelMask(), 0x4);
+    QCOMPARE(centre(), QColor(200, 200, 200));
+    panel_->toggleChannelForTest(3);
+    QVERIFY2(panel_->channelVisibleForTest(3), "the last visible channel stays");
+    QCOMPARE(canvas->channelMask(), 0x4);
+
+    panel_->toggleChannelForTest(0);
+    QCOMPARE(canvas->channelMask(), 0x7);
+    for (int i = 0; i < 4; ++i) {
+        QVERIFY(panel_->channelVisibleForTest(i));
+    }
+    QCOMPARE(centre(), QColor(100, 150, 200));
+
+    // Another document shows all its channels.
+    panel_->toggleChannelForTest(1);
+    QVERIFY(window_->newDocument(QStringLiteral("Other"), 16, 16, QStringLiteral("rgb"), 8,
+                                 QStringLiteral("white")));
+    panel_->setView(window_->activeView());
+    QVERIFY(panel_->channelVisibleForTest(1));
+    QCOMPARE(window_->imageView()->channelMask(), 0x7);
+}
+
+// Alpha channels: New Channel (black) and Delete, Save Selection as Channel,
+// and Load Channel as Selection, each from the footer.
+void ChannelsPanelTest::alphaChannelsAndFooter()
+{
+    QVERIFY(window_->newDocument(QStringLiteral("Alpha"), 16, 16, QStringLiteral("rgb"), 8,
+                                 QStringLiteral("white")));
+    view_ = window_->activeView();
+    panel_ = window_->findChild<pictura::ChannelsPanel*>(QStringLiteral("channelsPanel"));
+    QVERIFY(view_ && panel_);
+    panel_->setView(view_);
+    const auto button = [this](const char* name) {
+        return panel_->findChild<QToolButton*>(QLatin1String(name));
+    };
+    QToolButton* add = button("channelsNew");
+    QToolButton* remove = button("channelsDelete");
+    QToolButton* save = button("channelsSaveSelection");
+    QToolButton* load = button("channelsLoadSelection");
+    QVERIFY(add && remove && save && load);
+    QVERIFY(add->isEnabled() && !remove->isEnabled() && !save->isEnabled());
+
+    add->click();
+    QCOMPARE(panel_->channelCountForTest(), 5);
+    QCOMPARE(panel_->channelNameForTest(4), QStringLiteral("Alpha 1"));
+    QCOMPARE(panel_->channelShortcutForTest(4), QStringLiteral("Ctrl+6"));
+    QVERIFY(!panel_->channelEyeEnabledForTest(4));
+    QCOMPARE(view_->history_label(view_->history_index()), QStringLiteral("New Channel"));
+    QVERIFY(remove->isEnabled());
+    remove->click();
+    QCOMPARE(panel_->channelCountForTest(), 4);
+    QCOMPARE(view_->history_label(view_->history_index()), QStringLiteral("Delete Channel"));
+
+    QVERIFY(view_->select_rect(2, 2, 6, 6, QStringLiteral("new"), 0.0));
+    panel_->refresh();
+    QVERIFY(save->isEnabled());
+    save->click();
+    QCOMPARE(panel_->channelNameForTest(4), QStringLiteral("Alpha 1"));
+    view_->deselect();
+    panel_->selectChannelForTest(4);
+    QVERIFY(load->isEnabled());
+    load->click();
+    QVERIFY(view_->has_selection());
+    QCOMPARE(view_->selection_coverage(4, 4), 255);
+    QCOMPARE(view_->selection_coverage(12, 12), 0);
 }
 
 void ChannelsPanelTest::refreshKeepsRows()
