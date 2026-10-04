@@ -7,7 +7,8 @@ use crate::color::{
 };
 use crate::common::{map_float, validate};
 use crate::tonal::{
-    brightness_contrast, curves, desaturate, exposure, gradient_map, levels, posterize, threshold,
+    brightness_contrast, curves, desaturate, equalize, exposure, gradient_map, levels, posterize,
+    threshold,
 };
 use crate::types::{AdjustError, Adjustment};
 
@@ -35,6 +36,10 @@ pub fn apply(adjustment: &Adjustment, buf: &mut PixelBuffer) -> Result<(), Adjus
         Adjustment::Threshold(level) => threshold(*level, buf, n),
         Adjustment::Desaturate => {
             desaturate(buf, n);
+            Ok(())
+        }
+        Adjustment::Equalize => {
+            equalize(buf, n);
             Ok(())
         }
         Adjustment::GradientMap(p) => gradient_map(p, buf, n),

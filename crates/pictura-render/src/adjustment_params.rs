@@ -365,7 +365,7 @@ fn layout(data: &AdjustmentData, adjustment: &Adjustment) -> Option<Layout> {
         Adjustment::SolidFill(_) => note("Solid Color"),
         Adjustment::GradientFill(_) => note("Gradient Fill"),
         Adjustment::PatternFill(_) => note("Pattern Fill"),
-        Adjustment::Desaturate | Adjustment::Auto(_) => None,
+        Adjustment::Desaturate | Adjustment::Equalize | Adjustment::Auto(_) => None,
     }
 }
 

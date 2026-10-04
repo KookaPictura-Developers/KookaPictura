@@ -46,7 +46,8 @@ pub use view_pyramid::{Planes, PyramidLevel, ViewPyramid, SMALLEST_SIDE, TILE};
 mod composite_native;
 pub use composite_native::{composite_native, refresh_native_composite};
 pub use pictura_adjust::{
-    ExposureGamma, GradientFillParams, GradientKind, GradientStop, PatternFillParams,
+    Adjustment, AutoKind, ExposureGamma, GradientFillParams, GradientKind, GradientStop,
+    PatternFillParams,
 };
 
 mod color_balance;
@@ -58,6 +59,8 @@ pub use channel_mixer::encode_channel_mixer;
 mod curves;
 pub use curves::encode_curves;
 
+mod adjustment_defaults;
+pub use adjustment_defaults::{default_adjustment_block, ADJUSTMENT_DIALOG_KINDS};
 mod adjustment_params;
 pub use adjustment_params::{
     adjustment_editor, curve_points, reset_adjustment, set_adjustment_param, set_curve_points,
@@ -93,7 +96,7 @@ pub use gpu::{
 };
 
 mod filter;
-pub use filter::{apply_filter, apply_filter_region, preview_apron};
+pub use filter::{apply_adjustment_region, apply_filter, apply_filter_region, preview_apron};
 
 pub mod locks;
 
