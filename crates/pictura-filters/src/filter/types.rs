@@ -1,8 +1,8 @@
 use crate::{
-    BrushType, ContourEdge, DiffuseMode, ExtrudeType, GrainType, HalftoneType, LensType,
-    LightDirection, Lighting, MezzotintType, NoiseDistribution, PolarKind, Quality, RadialMethod,
-    RippleSize, SharpenRemove, ShearFill, SpherizeMode, StrokeDirection, TextureOptions, TileFill,
-    TonalFade, WaveType, WindMethod, ZigZagStyle,
+    BrushType, ContourEdge, DiffuseMode, ExtrudeType, GrainType, HalftoneType, HdrToningParams,
+    LensType, LightDirection, Lighting, MezzotintType, NoiseDistribution, PolarKind, Quality,
+    RadialMethod, RippleSize, SharpenRemove, ShearFill, SpherizeMode, StrokeDirection,
+    TextureOptions, TileFill, TonalFade, WaveType, WindMethod, ZigZagStyle,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -473,4 +473,5 @@ pub enum Filter {
         shadow: TonalFade,
         highlight: TonalFade,
     },
+    HdrToning(HdrToningParams),
 }

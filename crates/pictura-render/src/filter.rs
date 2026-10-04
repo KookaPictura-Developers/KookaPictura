@@ -241,6 +241,7 @@ pub fn preview_apron(filter: &Filter) -> i32 {
         | Filter::UnsharpMask { radius, .. }
         | Filter::HighPass { radius }
         | Filter::SmartSharpen { radius, .. } => radius.ceil(),
+        Filter::HdrToning(p) => p.radius.ceil(),
         Filter::BoxBlur { radius }
         | Filter::SurfaceBlur { radius, .. }
         | Filter::Median { radius }

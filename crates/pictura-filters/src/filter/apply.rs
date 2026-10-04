@@ -1,8 +1,8 @@
 use pictura_core::PixelBuffer;
 
 use crate::{
-    artistic, blur, brush_strokes, distort, noise, oil_paint, other, pixelate, render, sharpen,
-    sketch, stylize, texture, validate, FilterError,
+    artistic, blur, brush_strokes, distort, hdr_toning, noise, oil_paint, other, pixelate, render,
+    sharpen, sketch, stylize, texture, validate, FilterError,
 };
 
 use super::Filter;
@@ -548,5 +548,6 @@ pub fn apply(filter: &Filter, buf: &mut PixelBuffer) -> Result<(), FilterError> 
             *shadow,
             *highlight,
         ),
+        Filter::HdrToning(params) => hdr_toning::hdr_toning(buf, params),
     }
 }

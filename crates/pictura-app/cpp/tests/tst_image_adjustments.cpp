@@ -8,13 +8,16 @@
 #include "adjustment_dialog.h"
 #include "commands.h"
 #include "frame.h"
+#include "hdr_toning_dialog.h"
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/image_adjust.cxxqt.h"
 
 #include <QtCore/QTemporaryDir>
 #include <QtGui/QAction>
 #include <QtWidgets/QComboBox>
+#include <QtWidgets/QDoubleSpinBox>
 #include <QtWidgets/QSlider>
+#include <QtWidgets/QSpinBox>
 
 #include "qt_test_support.h"
 
@@ -38,6 +41,7 @@ private slots:
     void menuIsLiveOnAnOpenedImage();
     void dialogPreviewsCancelsAndApplies();
     void colorLookupPresetRebuildsTheLook();
+    void hdrToningPresetsPopulateControls();
     void directCommandsRespectTheSelection();
 
 private:
@@ -97,7 +101,8 @@ void ImageAdjustmentsTest::menuIsLiveOnAnOpenedImage()
          {"Brightness/Contrast", "Levels", "Curves", "Exposure", "Vibrance", "Hue/Saturation",
           "Color Balance", "Black & White", "Photo Filter", "Channel Mixer", "Invert",
           "Posterize", "Threshold", "Gradient Map", "Selective Color", "Shadows/Highlights",
-          "Color Lookup", "Desaturate", "Equalize", "Auto Tone", "Auto Contrast", "Auto Color"}) {
+          "Color Lookup", "Desaturate", "Equalize", "Auto Tone", "Auto Contrast", "Auto Color",
+          "HDR Toning"}) {
         QAction* action = leaf(QString::fromUtf8(name));
         QVERIFY2(action && action->isEnabled(), name);
     }
@@ -151,6 +156,31 @@ void ImageAdjustmentsTest::colorLookupPresetRebuildsTheLook()
         dialog.reject();
     }
     QCOMPARE(view_->composite_argb(5, 5), before);
+}
+
+void ImageAdjustmentsTest::hdrToningPresetsPopulateControls()
+{
+    QVERIFY(openImage(QColor(100, 150, 200)));
+    pictura::HdrToningDialog dialog(view_, QRect());
+    auto* preset = qobject_cast<QComboBox*>(dialog.controlForTest(QStringLiteral("hdrPreset")));
+    auto* radius = qobject_cast<QSpinBox*>(dialog.controlForTest(QStringLiteral("hdrRadius")));
+    auto* strength = qobject_cast<QDoubleSpinBox*>(dialog.controlForTest(QStringLiteral("hdrStrength")));
+    auto* detail = qobject_cast<QSpinBox*>(dialog.controlForTest(QStringLiteral("hdrDetail")));
+    auto* saturation = qobject_cast<QSpinBox*>(dialog.controlForTest(QStringLiteral("hdrSaturation")));
+    QVERIFY(preset && radius && strength && detail && saturation);
+    // The 17 presets plus Custom.
+    QCOMPARE(dialog.presetCount(), 18);
+    QCOMPARE(preset->currentText(), QStringLiteral("Custom"));
+
+    preset->setCurrentIndex(1); // City Twilight
+    QCOMPARE(radius->value(), 383);
+    QCOMPARE(strength->value(), 1.14);
+    QCOMPARE(saturation->value(), -3);
+
+    // Editing a value drops the preset back to Custom.
+    detail->setValue(7);
+    QCOMPARE(preset->currentText(), QStringLiteral("Custom"));
+    dialog.reject();
 }
 
 void ImageAdjustmentsTest::directCommandsRespectTheSelection()

@@ -123,11 +123,23 @@ pub(super) fn apply_filter_active_region(
         ));
         return None;
     };
-    let region = apply_op_active_region(rust, &ActiveOp::Filter(filter), commit, preview_region)?;
+    let region = apply_filter_obj_active_region(rust, filter, commit, preview_region)?;
     if commit {
         rust.last_filter = Some((kind.to_string(), params.to_vec()));
     }
     Some(region)
+}
+
+/// As [`apply_filter_active_region`], but from a resolved [`pictura_filters::Filter`]
+/// instead of a kind/params pair. Filters that are not in the parameterised
+/// mapper (HDR Toning) reach the same snapshot/preview/commit core this way.
+pub(super) fn apply_filter_obj_active_region(
+    rust: &mut PictureViewRust,
+    filter: pictura_filters::Filter,
+    commit: bool,
+    preview_region: Option<pictura_core::PsdRect>,
+) -> Option<Option<pictura_core::PsdRect>> {
+    apply_op_active_region(rust, &ActiveOp::Filter(filter), commit, preview_region)
 }
 
 /// A destructive edit of the active pixel layer: a filter, or an Image >

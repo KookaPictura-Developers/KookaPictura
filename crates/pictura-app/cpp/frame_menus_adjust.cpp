@@ -4,6 +4,7 @@
 #include "frame_includes.h"
 
 #include "adjustment_dialog.h"
+#include "hdr_toning_dialog.h"
 
 #include "pictura_app/src/cxxqt_object/filter_tools.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/image_adjust.cxxqt.h"
@@ -46,7 +47,7 @@ constexpr Entry kDirect[] = {
 
 } // namespace
 
-// ponytail: HDR Toning, Match Color, and Replace Color stay disabled stubs.
+// ponytail: Match Color and Replace Color stay disabled stubs.
 void PicturaMainWindow::wireImageAdjustments()
 {
     const auto ready = [this]() {
@@ -95,6 +96,28 @@ void PicturaMainWindow::wireImageAdjustments()
             });
             registry_->setEnabledProvider(id, ready);
         }
+    }
+
+    // HDR Toning is a neighborhood operator, not a pointwise adjustment, so it
+    // runs through the filter preview/apply path via its own dialog.
+    {
+        const QString leaf = QStringLiteral("HDR Toning");
+        const QString id =
+            commandIdForPath({QStringLiteral("Image"), QStringLiteral("Adjustments"), leaf});
+        registry_->setImplemented(id, true);
+        registry_->setLabelProvider(id, [leaf]() { return leaf + QStringLiteral("…"); });
+        registry_->setHandler(id, [this]() {
+            PictureView* view = activeView();
+            ImageView* canvas = imageView();
+            const QRect visible = canvas ? canvas->visibleDocumentRect().toAlignedRect() : QRect();
+            if (view && filter_target_ready(*view)
+                && HdrToningDialog::get(this, view, visible)) {
+                refresh();
+            } else if (view) {
+                reportFilterRefusal(view);
+            }
+        });
+        registry_->setEnabledProvider(id, ready);
     }
 }
 
