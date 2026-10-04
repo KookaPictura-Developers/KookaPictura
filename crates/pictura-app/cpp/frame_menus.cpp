@@ -1118,17 +1118,6 @@ void PicturaMainWindow::registerHandlers()
             return owner && owner->isPanelVisible(panel);
         });
     }
-    // Type > Panels > Character / Paragraph open (never close) their panel.
-    for (const char* name : {"Character", "Paragraph"}) {
-        const QString title = QLatin1String(name);
-        const QString id = commandIdForPath({QStringLiteral("Type"), QStringLiteral("Panels"), title});
-        const QString panel = title.toLower() + QStringLiteral("Panel");
-        registry_->setImplemented(id, true);
-        registry_->setHandler(id, [this, panel]() {
-            PanelColumn* owner = columnForPanel(panel);
-            (owner ? owner : panelColumn_)->showPanel(panel, true);
-        });
-    }
 
     registry_->setHandler(command_ids::HelpAbout, [this]() {
         QMessageBox::about(
