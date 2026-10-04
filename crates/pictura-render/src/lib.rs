@@ -46,8 +46,8 @@ pub use view_pyramid::{Planes, PyramidLevel, ViewPyramid, SMALLEST_SIDE, TILE};
 mod composite_native;
 pub use composite_native::{composite_native, refresh_native_composite};
 pub use pictura_adjust::{
-    Adjustment, AutoKind, ExposureGamma, GradientFillParams, GradientKind, GradientStop,
-    PatternFillParams,
+    replace_color_mask, Adjustment, AutoKind, ExposureGamma, GradientFillParams, GradientKind,
+    GradientStop, PatternFillParams, ReplaceColorParams, ReplaceColorSample,
 };
 
 mod color_balance;
@@ -72,7 +72,12 @@ pub use pictura_adjust::{SelectiveColorMethod, SelectiveRange};
 pub use selective_color::encode_selective_color;
 
 mod color_lookup;
-pub use color_lookup::{encode_color_lookup, identity_cube};
+pub use color_lookup::{
+    color_lookup_preset_index, encode_color_lookup, identity_cube, set_color_lookup_preset,
+};
+
+mod color_lookup_presets;
+pub use color_lookup_presets::{preset_cube, COLOR_LOOKUP_PRESETS};
 
 mod vector_mask;
 
@@ -96,7 +101,13 @@ pub use gpu::{
 };
 
 mod filter;
-pub use filter::{apply_adjustment_region, apply_filter, apply_filter_region, preview_apron};
+pub use filter::{
+    apply_adjustment_region, apply_filter, apply_filter_region, filter_preserves_opacity,
+    preview_apron,
+};
+
+mod smart_filter;
+pub use smart_filter::{apply_smart_filter_chain, decode_smart_filter, SmartFilterOp};
 
 pub mod locks;
 
@@ -111,25 +122,26 @@ pub use document_ops::{
     can_convert_to_smart_object, can_create_clipping_mask, can_distribute,
     can_edit_smart_object_contents, can_merge_scope, can_merge_target, can_move_path_to,
     can_rasterize_smart_object, can_release_clipping_mask, can_replace_smart_object_contents,
-    clear_layer, convert_depth_exposure_gamma, convert_to_smart_object, copy_layer, copy_merged,
-    coverage_bounds, create_clipping_mask, crop_document, delete_cropped_pixels,
-    delete_hidden_layers, delete_paths, distribute_layers, duplicate_layer, duplicate_paths,
-    flatten, flatten_rows, flip_document, group_layer, group_paths, identity_mesh, is_background,
-    is_fill_content_layer, is_shape_layer, is_visible_in_panel, layer_from_background,
-    layer_live_shape, layer_shape_paths, layer_via_copy, layer_via_cut, merge_scope, move_path,
-    move_path_to, move_selection_content, neutral_color, next_layer_name, open_as_smart_object,
-    parent_path, paste_clip, perspective_crop, perspective_crop_refusal, perspective_crop_size,
-    place_smart_object, rasterize_all_layers, rasterize_fill_content, rasterize_smart_object,
-    release_clipping_mask, remove_slice, rename_path, replace_smart_object_contents,
-    resize_canvas_document, resize_document, resize_shape, resolve_path, resolve_path_mut,
-    resolve_slices, rotate_document, select_similar, set_blend_paths, set_color_paths,
-    set_fill_paths, set_layer_live_shape, set_layer_shape_paths, set_lock_paths, set_opacity_paths,
-    set_shape_fill, set_shape_stroke, set_slice, set_visible_paths, shape_bounds, shape_coverage,
-    shape_fill, shape_fill_color, shape_stroke, smart_object_source_bytes, style_mesh,
-    transform_layer, transform_layer_quad, transform_layer_warp, translate_layer,
-    translate_layer_active, translate_layer_index, translate_layer_rect, ungroup_layer,
-    ungroup_paths, AlignEdge, Clip, LayerTransform, MergeError, MergeOutcome, MergeScope,
-    NewLayerSpec, PasteMode, ShapeStroke, Slice, WarpMesh, WarpParams, WarpStyle,
+    clear_layer, convert_depth_exposure_gamma, convert_for_smart_filters, convert_to_smart_object,
+    copy_layer, copy_merged, coverage_bounds, create_clipping_mask, crop_document,
+    delete_cropped_pixels, delete_hidden_layers, delete_paths, distribute_layers, duplicate_layer,
+    duplicate_paths, flatten, flatten_rows, flip_document, group_layer, group_paths, identity_mesh,
+    is_background, is_fill_content_layer, is_shape_layer, is_visible_in_panel,
+    layer_from_background, layer_live_shape, layer_shape_paths, layer_via_copy, layer_via_cut,
+    merge_scope, move_path, move_path_to, move_selection_content, neutral_color, next_layer_name,
+    open_as_smart_object, parent_path, paste_clip, perspective_crop, perspective_crop_refusal,
+    perspective_crop_size, place_smart_object, rasterize_all_layers, rasterize_fill_content,
+    rasterize_smart_object, release_clipping_mask, remove_slice, rename_path,
+    replace_smart_object_contents, resize_canvas_document, resize_document, resize_shape,
+    resolve_path, resolve_path_mut, resolve_slices, rotate_document, select_similar,
+    set_blend_paths, set_color_paths, set_fill_paths, set_layer_live_shape, set_layer_shape_paths,
+    set_lock_paths, set_opacity_paths, set_shape_fill, set_shape_stroke, set_slice,
+    set_visible_paths, shape_bounds, shape_coverage, shape_fill, shape_fill_color, shape_stroke,
+    smart_object_source_bytes, style_mesh, transform_layer, transform_layer_quad,
+    transform_layer_warp, translate_layer, translate_layer_active, translate_layer_index,
+    translate_layer_rect, ungroup_layer, ungroup_paths, AlignEdge, Clip, LayerTransform,
+    MergeError, MergeOutcome, MergeScope, NewLayerSpec, PasteMode, ShapeStroke, Slice, WarpMesh,
+    WarpParams, WarpStyle,
 };
 
 mod text_render;

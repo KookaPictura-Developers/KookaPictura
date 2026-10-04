@@ -52,6 +52,11 @@ void PicturaMainWindow::retargetDock()
     if (colorRangeDialog_ && colorRangeDialog_->view() != view) {
         colorRangeDialog_->reject();
     }
+    // Replace Color holds the same raw view; retargeting must cancel it before
+    // its view is left behind.
+    if (replaceColorDialog_ && replaceColorDialog_->view() != view) {
+        replaceColorDialog_->reject();
+    }
     if (pathsPanel_) {
         pathsPanel_->setView(view);
         pathsPanel_->refresh();

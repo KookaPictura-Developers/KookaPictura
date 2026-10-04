@@ -10,10 +10,11 @@
 //! Source: https://github.com/perfecto25/photorust
 
 use pictura_filters::{
-    BrushType, ContourEdge, ExtrudeType, Filter, GrainType, HalftoneType, LensType, LightDirection,
-    MezzotintType, NoiseDistribution, PolarKind, Quality, RadialMethod, RippleSize, SharpenRemove,
-    ShearFill, SpherizeMode, StrokeDirection, TextureOptions, TextureSurface, TileFill, TonalFade,
-    WaveType, WindMethod, ZigZagStyle,
+    BrushType, ContourEdge, DiffuseMode, ExtrudeType, Filter, GrainType, HalftoneType, LensType,
+    LightDirection, LightType, Lighting, MezzotintType, NoiseDistribution, PolarKind, Quality,
+    RadialMethod, RippleSize, SharpenRemove, ShearFill, SpherizeMode, StrokeDirection,
+    TextureChannel, TextureOptions, TextureSurface, TileFill, TonalFade, WaveType, WindMethod,
+    ZigZagStyle,
 };
 
 /// Refuse a non-empty parameter list that does not match the kind's arity.
@@ -172,6 +173,19 @@ const LENS_TYPES: [LensType; 4] = [
 ];
 const RADIAL_METHODS: [RadialMethod; 2] = [RadialMethod::Spin, RadialMethod::Zoom];
 const QUALITIES: [Quality; 3] = [Quality::Draft, Quality::Good, Quality::Best];
+const LIGHT_TYPES: [LightType; 3] = [LightType::Spot, LightType::Point, LightType::Infinite];
+const TEXTURE_CHANNELS: [TextureChannel; 4] = [
+    TextureChannel::None,
+    TextureChannel::Red,
+    TextureChannel::Green,
+    TextureChannel::Blue,
+];
+const DIFFUSE_MODES: [DiffuseMode; 4] = [
+    DiffuseMode::Normal,
+    DiffuseMode::DarkenOnly,
+    DiffuseMode::LightenOnly,
+    DiffuseMode::Anisotropic,
+];
 
 /// Every supported kind and its exact slot count. This is the guard that
 /// keeps the Rust mapping and `cpp/filter_commands.cpp` in lock-step.
@@ -198,6 +212,8 @@ pub(super) const FILTER_ARITIES: &[(&str, usize)] = &[
     ("emboss", 3),
     ("find-edges", 0),
     ("solarize", 0),
+    ("diffuse", 1),
+    ("glowing-edges", 3),
     ("mosaic", 1),
     ("crystallize", 2),
     ("facet", 0),
@@ -218,6 +234,7 @@ pub(super) const FILTER_ARITIES: &[(&str, usize)] = &[
     ("difference-clouds", 8),
     ("fibers", 9),
     ("lens-flare", 4),
+    ("lighting-effects", 19),
     ("colored-pencil", 10),
     ("cutout", 3),
     ("dry-brush", 4),
@@ -412,6 +429,20 @@ pub(super) fn filter_from_kind_params(kind: &str, params: &[f64]) -> Option<Filt
             arity!(params, 0);
             Filter::Solarize
         }
+        "diffuse" => {
+            arity!(params, 1);
+            Filter::Diffuse {
+                mode: pick(&DIFFUSE_MODES, params, 0, 0),
+            }
+        }
+        "glowing-edges" => {
+            arity!(params, 3);
+            Filter::GlowingEdges {
+                width: u32v(params, 0, 2),
+                brightness: u32v(params, 1, 6),
+                smoothness: u32v(params, 2, 1),
+            }
+        }
         "mosaic" => {
             arity!(params, 1);
             Filter::Mosaic {
@@ -565,6 +596,27 @@ pub(super) fn filter_from_kind_params(kind: &str, params: &[f64]) -> Option<Filt
                 brightness: f(params, 0, 100.0),
                 center: (f(params, 1, 0.5), f(params, 2, 0.5)),
                 lens: pick(&LENS_TYPES, params, 3, 0),
+            }
+        }
+        "lighting-effects" => {
+            arity!(params, 19);
+            Filter::Lighting {
+                lighting: Lighting {
+                    kind: pick(&LIGHT_TYPES, params, 0, 0),
+                    color: rgb(params, 1, [255, 255, 255]),
+                    intensity: f(params, 4, 25.0) as f32,
+                    hotspot: f(params, 5, 44.0) as f32,
+                    colorize: rgb(params, 6, [255, 255, 255]),
+                    ambience: f(params, 9, 0.0) as f32,
+                    exposure: f(params, 10, 0.0) as f32,
+                    gloss: f(params, 11, 0.0) as f32,
+                    metallic: f(params, 12, 0.0) as f32,
+                    texture: pick(&TEXTURE_CHANNELS, params, 13, 0),
+                    height: f(params, 14, 50.0) as f32,
+                    center: (f(params, 15, 0.5) as f32, f(params, 16, 0.5) as f32),
+                    size: f(params, 17, 0.45) as f32,
+                    angle: f(params, 18, 45.0) as f32,
+                },
             }
         }
         "colored-pencil" => {
@@ -1034,150 +1086,5 @@ fn tonal_fade(params: &[f64], base: usize, d: TonalFade) -> TonalFade {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn every_kind_defaults_from_empty_and_rejects_wrong_arity() {
-        for (kind, n) in FILTER_ARITIES {
-            assert!(
-                filter_from_kind_params(kind, &[]).is_some(),
-                "{kind} must default from an empty slot list"
-            );
-            let slots = vec![0.0f64; *n];
-            assert!(
-                filter_from_kind_params(kind, &slots).is_some(),
-                "{kind} must accept exactly {n} slots"
-            );
-            let mut too_many = slots.clone();
-            too_many.push(0.0);
-            assert!(
-                filter_from_kind_params(kind, &too_many).is_none(),
-                "{kind} must refuse {} slots",
-                n + 1
-            );
-            if *n > 1 {
-                let mut too_few = slots.clone();
-                too_few.pop();
-                assert!(
-                    filter_from_kind_params(kind, &too_few).is_none(),
-                    "{kind} must refuse {} slots",
-                    n - 1
-                );
-            }
-        }
-        assert!(filter_from_kind_params("bogus", &[]).is_none());
-    }
-
-    #[test]
-    fn parameter_values_override_defaults() {
-        assert_eq!(
-            filter_from_kind_params("gaussian-blur", &[12.5]),
-            Some(Filter::GaussianBlur { radius: 12.5 })
-        );
-        assert_eq!(
-            filter_from_kind_params("add-noise", &[50.0, 1.0, 1.0, 7.0]),
-            Some(Filter::AddNoise {
-                amount: 50.0,
-                distribution: NoiseDistribution::Gaussian,
-                monochromatic: true,
-                seed: 7,
-            })
-        );
-        assert_eq!(
-            filter_from_kind_params("radial-blur", &[1.0, 20.0, 2.0]),
-            Some(Filter::RadialBlur {
-                method: RadialMethod::Zoom,
-                amount: 20.0,
-                quality: Quality::Best,
-            })
-        );
-        // Wind direction is a Choice index: 0 = "From the Right", 1 = "From the Left".
-        assert_eq!(
-            filter_from_kind_params("wind", &[2.0, 0.0]),
-            Some(Filter::Wind {
-                method: WindMethod::Stagger,
-                from_right: true,
-            })
-        );
-        assert_eq!(
-            filter_from_kind_params("wind", &[2.0, 1.0]),
-            Some(Filter::Wind {
-                method: WindMethod::Stagger,
-                from_right: false,
-            })
-        );
-    }
-
-    #[test]
-    fn multi_slot_offsets_decode_correctly() {
-        // rgb group at base 1.
-        assert_eq!(
-            filter_from_kind_params("pointillize", &[3.0, 10.0, 20.0, 30.0, 9.0]),
-            Some(Filter::Pointillize {
-                cell_size: 3,
-                background: [10, 20, 30],
-                seed: 9,
-            })
-        );
-        // A 5-slot TextureOptions block.
-        assert_eq!(
-            filter_from_kind_params("texturizer", &[1.0, 55.0, 7.0, 3.0, 1.0]),
-            Some(Filter::Texturizer {
-                texture: TextureOptions {
-                    surface: TextureSurface::Burlap,
-                    scaling: 55,
-                    relief: 7,
-                    light_direction: 3,
-                    invert: true,
-                },
-            })
-        );
-        // The 7-slot shear curve and fill.
-        assert_eq!(
-            filter_from_kind_params("shear", &[0.25, 0.5, 0.75, 0.85, 1.5, 2.5, 0.0]),
-            Some(Filter::Shear {
-                curve: vec![(0.25, 0.5), (0.75, 0.85), (1.5, 2.5)],
-                fill: ShearFill::WrapAround,
-            })
-        );
-        // Wave wavelength/amplitude/scale pairs.
-        assert_eq!(
-            filter_from_kind_params("wave", &[4.0, 6.0, 8.0, 2.0, 3.0, 1.0, 50.0, 75.0, 11.0]),
-            Some(Filter::Wave {
-                generators: 4,
-                wavelength: (6.0, 8.0),
-                amplitude: (2.0, 3.0),
-                kind: WaveType::Triangle,
-                scale: (50.0, 75.0),
-                seed: 11,
-                repeat_edge: true,
-            })
-        );
-        // Smart Sharpen shadow (6..9) and highlight (9..12) TonalFade blocks.
-        assert_eq!(
-            filter_from_kind_params(
-                "smart-sharpen",
-                &[50.0, 2.0, 30.0, 1.0, 45.0, 1.0, 10.0, 20.0, 3.0, 40.0, 50.0, 4.0],
-            ),
-            Some(Filter::SmartSharpen {
-                amount: 50.0,
-                radius: 2.0,
-                reduce_noise: 30.0,
-                remove: SharpenRemove::LensBlur,
-                angle: 45.0,
-                more_accurate: true,
-                shadow: TonalFade {
-                    amount: 10,
-                    width: 20,
-                    radius: 3,
-                },
-                highlight: TonalFade {
-                    amount: 40,
-                    width: 50,
-                    radius: 4,
-                },
-            })
-        );
-    }
-}
+#[path = "filter_map_tests.rs"]
+mod tests;

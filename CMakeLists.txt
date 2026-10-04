@@ -93,7 +93,9 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/color_settings_dialog.cpp
     crates/pictura-app/cpp/color_picker_dialog.cpp
     crates/pictura-app/cpp/color_range_dialog.cpp
+    crates/pictura-app/cpp/replace_color_dialog.cpp
     crates/pictura-app/cpp/adjustment_dialog.cpp
+    crates/pictura-app/cpp/hdr_toning_dialog.cpp
     crates/pictura-app/cpp/print_dialog.cpp
     crates/pictura-app/cpp/export_as_dialog.cpp
     crates/pictura-app/cpp/image_view.cpp
@@ -224,6 +226,8 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/file_info_dialog.h
     crates/pictura-app/cpp/profile_dialog.h
     crates/pictura-app/cpp/hdr_conversion_dialog.h
+    crates/pictura-app/cpp/hdr_toning_dialog.h
+    crates/pictura-app/cpp/replace_color_dialog.h
     crates/pictura-app/cpp/pictura_raw_dialog.h
     crates/pictura-app/cpp/warp_preset_dialog.h
     crates/pictura-app/cpp/color_settings_dialog.h

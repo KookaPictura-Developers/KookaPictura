@@ -1,3 +1,5 @@
+use crate::replace_color::ReplaceColorParams;
+
 #[derive(Debug, thiserror::Error)]
 pub enum AdjustError {
     #[error("unsupported: {0}")]
@@ -85,6 +87,16 @@ pub struct ChannelMixerParams {
 pub struct VibranceParams {
     pub vibrance: i16,
     pub saturation: i16,
+}
+
+/// Shadows/Highlights (`shdH`): the two always-visible amount sliders in
+/// `0..=100`. A pointwise approximation of CS6's local operator (see
+/// `docs/04-image-ops/adjustments/shadow-highlight.md`); the surround blur and
+/// advanced options are not modelled.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ShadowsHighlightsParams {
+    pub shadows_amount: f64,
+    pub highlights_amount: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -228,6 +240,9 @@ pub enum Adjustment {
     PhotoFilter(PhotoFilterParams),
     ChannelMixer(ChannelMixerParams),
     Vibrance(VibranceParams),
+    /// Image > Adjustments > Shadows/Highlights: lifts shadows and pulls
+    /// highlights by amount, without a local surround.
+    ShadowsHighlights(ShadowsHighlightsParams),
     ColorBalance(ColorBalanceParams),
     SelectiveColor(SelectiveColorParams),
     Auto(AutoKind),
@@ -254,4 +269,8 @@ pub enum Adjustment {
     /// Color Lookup (`clrL`): samples a parsed 3-D lookup, or is a no-op when
     /// [`ColorLookupParams::lookup`] is `None`.
     ColorLookup(ColorLookupParams),
+    /// Image > Adjustments > Replace Color (#164): an HSL shift feathered by
+    /// each pixel's colour match to the sampled colours. Dialog-only, so it
+    /// has no PSD encoding; native-depth apply refuses it.
+    ReplaceColor(ReplaceColorParams),
 }

@@ -125,8 +125,7 @@ void FilterMenuTest::stubEntriesStayDisabled()
     pictura::CommandRegistry* registry = window_->registry();
     QVERIFY(registry != nullptr);
     for (const pictura::CommandInfo& info : registry->describe()) {
-        if (info.id == filterId(QStringLiteral("Noise"), QStringLiteral("Reduce Noise"))
-            || info.id == filterId(QStringLiteral("Stylize"), QStringLiteral("Glowing Edges"))) {
+        if (info.id == filterId(QStringLiteral("Noise"), QStringLiteral("Reduce Noise"))) {
             QVERIFY2(!info.implemented, qPrintable(info.id));
             QVERIFY2(!info.enabled, qPrintable(info.id));
         }
@@ -148,8 +147,11 @@ void FilterMenuTest::dialogCollectsParameterSlots()
         {QStringLiteral("Distort"), QStringLiteral("Shear"), 7},
         {QStringLiteral("Render"), QStringLiteral("Clouds"), 8},
         {QStringLiteral("Render"), QStringLiteral("Lens Flare"), 4},
+        {QStringLiteral("Render"), QStringLiteral("Lighting Effects"), 19},
         {QStringLiteral("Noise"), QStringLiteral("Add Noise"), 4},
+        {QStringLiteral("Stylize"), QStringLiteral("Diffuse"), 1},
         {QStringLiteral("Stylize"), QStringLiteral("Extrude"), 6},
+        {QStringLiteral("Stylize"), QStringLiteral("Glowing Edges"), 3},
         {QStringLiteral("Sharpen"), QStringLiteral("Smart Sharpen"), 12},
     };
     for (const Case& c : cases) {

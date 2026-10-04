@@ -97,11 +97,129 @@ fn malformed(what: &str) -> PsdError {
     PsdError::Invalid(format!("Pictura Raw filter descriptor: {what}"))
 }
 
+/// The index of the preserved `SoLd`/`SoLE` config block, preferring `SoLd`.
+fn config_block_index(layer: &Layer) -> Option<usize> {
+    layer
+        .extra_blocks
+        .iter()
+        .position(|b| &b.key == b"SoLd")
+        .or_else(|| layer.extra_blocks.iter().position(|b| &b.key == b"SoLE"))
+}
+
+/// Parse a preserved config block into its descriptor, validating the signature.
+fn parse_config(layer: &Layer, block_idx: usize) -> Result<DescValue, PsdError> {
+    let data = &layer.extra_blocks[block_idx].data;
+    let mut r = Reader::new(data);
+    let signature = r.take(4)?.to_vec();
+    if signature != b"soLD" && signature != b"soLE" {
+        return Err(PsdError::Unsupported(format!(
+            "smart object layer data signature {:?}",
+            String::from_utf8_lossy(&signature)
+        )));
+    }
+    let _outer_version = r.u32()?;
+    descriptor::read_descriptor(&mut r)
+}
+
+/// Re-serialize a descriptor onto the block's `soLD`/`soLE` + version prefix,
+/// padded to the same 4-byte boundary as `insert_into_config`.
+fn serialize_config(data: &[u8], desc: &DescValue) -> Vec<u8> {
+    let mut new_data = data[..8].to_vec();
+    new_data.extend_from_slice(&descriptor::write_descriptor(desc));
+    while !new_data.len().is_multiple_of(4) {
+        new_data.push(0);
+    }
+    new_data
+}
+
+/// Store rewritten block bytes on the layer and keep the typed view's
+/// `config_descriptor` consistent.
+fn store_config(layer: &mut Layer, block_idx: usize, data: Vec<u8>) {
+    layer.extra_blocks[block_idx].data = data.clone();
+    if let Some(so) = layer.smart_object.as_mut() {
+        so.config_descriptor = data;
+    }
+}
+
+/// Mutable access to the `filterFX` object's items inside a descriptor.
+fn filter_fx_mut(desc: &mut DescValue) -> Option<&mut Vec<(Vec<u8>, DescValue)>> {
+    let DescValue::Object { items, .. } = desc else {
+        return None;
+    };
+    let DescValue::Object {
+        items: filter_fx, ..
+    } = get_object_item_mut(items, b"filterFX")?
+    else {
+        return None;
+    };
+    Some(filter_fx)
+}
+
+/// Mutable access to one `filterFXList` entry's items.
+fn filter_entry_mut(desc: &mut DescValue, index: usize) -> Option<&mut Vec<(Vec<u8>, DescValue)>> {
+    let filter_fx = filter_fx_mut(desc)?;
+    let DescValue::List(list) = get_object_item_mut(filter_fx, b"filterFXList")? else {
+        return None;
+    };
+    let DescValue::Object { items: entry, .. } = list.get_mut(index)? else {
+        return None;
+    };
+    Some(entry)
+}
+
+/// Set the `enab` flag of the smart filter at `filter_index` on `layer`.
+///
+/// A preserved `SoLd`/`SoLE` descriptor is rewritten in place (every unmodeled
+/// key survives); the typed view is synced in both cases. Without a preserved
+/// block only the typed view changes and the writer authors the block on save.
+pub fn set_smart_filter_enabled(
+    layer: &mut Layer,
+    filter_index: usize,
+    enabled: bool,
+) -> Result<(), PsdError> {
+    if let Some(block_idx) = config_block_index(layer) {
+        let mut desc = parse_config(layer, block_idx)?;
+        if let Some(entry) = filter_entry_mut(&mut desc, filter_index) {
+            set_object_item(entry, b"enab", DescValue::Bool(enabled));
+            let data = serialize_config(&layer.extra_blocks[block_idx].data, &desc);
+            store_config(layer, block_idx, data);
+        }
+    }
+    if let Some(filter) = layer
+        .smart_object
+        .as_mut()
+        .and_then(|so| so.smart_filters.get_mut(filter_index))
+    {
+        filter.enabled = enabled;
+    }
+    Ok(())
+}
+
+/// Enable or disable the whole smart-filter group on `layer`.
+///
+/// A preserved `SoLd`/`SoLE` descriptor's `filterFX.enab` is rewritten in place;
+/// the typed view is synced in both cases. Without a preserved block only the
+/// typed view changes and the writer authors the block on save.
+pub fn set_smart_filters_enabled(layer: &mut Layer, enabled: bool) -> Result<(), PsdError> {
+    if let Some(block_idx) = config_block_index(layer) {
+        let mut desc = parse_config(layer, block_idx)?;
+        if let Some(filter_fx) = filter_fx_mut(&mut desc) {
+            set_object_item(filter_fx, b"enab", DescValue::Bool(enabled));
+            let data = serialize_config(&layer.extra_blocks[block_idx].data, &desc);
+            store_config(layer, block_idx, data);
+        }
+    }
+    if let Some(so) = layer.smart_object.as_mut() {
+        so.smart_filters_enabled = enabled;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::descriptor::get_object_item;
-    use pictura_core::LayerBlock;
+    use pictura_core::{LayerBlock, SmartFilter, SmartObject};
     use std::path::PathBuf;
 
     fn object(items: Vec<(&[u8], DescValue)>) -> DescValue {
@@ -174,6 +292,69 @@ mod tests {
         );
         assert_eq!(get_object_item(&items, b"Cr12"), Some(&DescValue::Long(12)));
         assert_eq!(get_object_item(&items, b"Vibr"), Some(&DescValue::Long(13)));
+    }
+
+    #[test]
+    fn fixture_toggle_enab_round_trips_and_syncs_the_typed_view() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../assets/test_with_smart_object02.psd");
+        let Ok(bytes) = std::fs::read(&path) else {
+            eprintln!("skipping: {} not found", path.display());
+            return;
+        };
+        let mut doc = crate::read_psd(&bytes).expect("fixture parses");
+        let layer = doc
+            .layers
+            .iter_mut()
+            .find(|l| l.name == "Layer 1 copy")
+            .expect("Layer 1 copy present");
+
+        set_smart_filter_enabled(layer, 0, false).expect("toggle the filter");
+        set_smart_filters_enabled(layer, false).expect("toggle the group");
+
+        let so = layer.smart_object.as_ref().expect("smart object");
+        assert!(
+            !so.smart_filters[0].enabled,
+            "typed filter follows the edit"
+        );
+        assert!(!so.smart_filters_enabled, "typed group follows the edit");
+
+        let written = crate::write_psd(&doc).expect("fixture writes");
+        let back = crate::read_psd(&written).expect("written fixture re-reads");
+        let so = back
+            .layers
+            .iter()
+            .find(|l| l.name == "Layer 1 copy")
+            .and_then(|l| l.smart_object.as_ref())
+            .expect("smart object survives a write");
+        assert!(!so.smart_filters[0].enabled, "per-filter enab persists");
+        assert!(!so.smart_filters_enabled, "group enab persists");
+    }
+
+    #[test]
+    fn toggle_without_a_preserved_block_updates_only_the_typed_view() {
+        let mut layer = Layer {
+            smart_object: Some(SmartObject {
+                smart_filters: vec![SmartFilter {
+                    filter_id: 2683,
+                    name: "Camera Raw Filter".to_string(),
+                    enabled: true,
+                    options: Vec::new(),
+                }],
+                smart_filters_enabled: true,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        set_smart_filter_enabled(&mut layer, 0, false).expect("typed toggle");
+        set_smart_filters_enabled(&mut layer, false).expect("typed group toggle");
+        let so = layer.smart_object.as_ref().unwrap();
+        assert!(!so.smart_filters[0].enabled);
+        assert!(!so.smart_filters_enabled);
+        assert!(
+            layer.extra_blocks.is_empty(),
+            "no block is authored in memory"
+        );
     }
 
     #[test]

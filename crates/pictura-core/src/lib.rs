@@ -591,7 +591,7 @@ pub struct SmartFilter {
 /// The raw config descriptor and the document-level linked record are preserved
 /// separately and remain the source of truth for re-emission; this view only
 /// exposes what the engine can resolve.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SmartObject {
     /// The `Idnt`/`PlLd` uuid that links the layer config to its record.
     pub uuid: String,
@@ -613,6 +613,41 @@ pub struct SmartObject {
     /// Smart filters derived from the descriptor's `filterFX` list. The raw
     /// `config_descriptor` bytes remain the source of truth for re-emission.
     pub smart_filters: Vec<SmartFilter>,
+    /// The `filterFXStyle.filterMaskEnable` group flag.
+    pub filter_mask_enabled: bool,
+    /// The `filterFXStyle.filterMaskLinked` group flag.
+    pub filter_mask_linked: bool,
+    /// The `filterFXStyle.filterMaskExtendWithWhite` group flag.
+    pub filter_mask_extend_with_white: bool,
+    /// The `filterFXStyle.enab` group flag: whether the whole smart-filter
+    /// stack is enabled. Defaults to `true`.
+    pub smart_filters_enabled: bool,
+    /// The smart-filter mask, session-only. Masks pixels are not decoded yet,
+    /// so this stays `None`; the preserved bytes carry the mask on disk.
+    pub filter_mask: Option<LayerMask>,
+}
+
+impl Default for SmartObject {
+    fn default() -> Self {
+        Self {
+            uuid: String::new(),
+            filename: String::new(),
+            filetype: [0; 4],
+            creator: [0; 4],
+            kind: SmartObjectKind::default(),
+            config_descriptor: Vec::new(),
+            payload: None,
+            crs_xmp: None,
+            crs: None,
+            smart_filters: Vec::new(),
+            // PSD defaults: mask enabled and extending white; not linked.
+            filter_mask_enabled: true,
+            filter_mask_linked: false,
+            filter_mask_extend_with_white: true,
+            smart_filters_enabled: true,
+            filter_mask: None,
+        }
+    }
 }
 
 /// A raster layer mask. `data` is `None` until the channel image is decoded.

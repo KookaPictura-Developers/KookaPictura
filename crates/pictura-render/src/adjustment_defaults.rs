@@ -7,13 +7,13 @@ use pictura_codec::DescValue;
 use pictura_core::AdjustmentData;
 
 use crate::{
-    encode_brightness_contrast, encode_channel_mixer, encode_color_balance, encode_curves,
-    encode_gradient_map, encode_hue_saturation, encode_photo_filter, encode_posterize,
-    encode_selective_color, encode_threshold,
+    encode_brightness_contrast, encode_channel_mixer, encode_color_balance, encode_color_lookup,
+    encode_curves, encode_gradient_map, encode_hue_saturation, encode_photo_filter,
+    encode_posterize, encode_selective_color, encode_threshold, identity_cube,
 };
 
 /// The Image > Adjustments dialog kinds, in menu order, as `(kind, title)`.
-pub const ADJUSTMENT_DIALOG_KINDS: [(&str, &str); 14] = [
+pub const ADJUSTMENT_DIALOG_KINDS: [(&str, &str); 16] = [
     ("brightness-contrast", "Brightness/Contrast"),
     ("levels", "Levels"),
     ("curves", "Curves"),
@@ -28,6 +28,8 @@ pub const ADJUSTMENT_DIALOG_KINDS: [(&str, &str); 14] = [
     ("threshold", "Threshold"),
     ("gradient-map", "Gradient Map"),
     ("selective-color", "Selective Color"),
+    ("shadows-highlights", "Shadows/Highlights"),
+    ("color-lookup", "Color Lookup"),
 ];
 
 fn descriptor(key: [u8; 4], items: Vec<(&[u8], DescValue)>) -> AdjustmentData {
@@ -39,6 +41,17 @@ fn descriptor(key: [u8; 4], items: Vec<(&[u8], DescValue)>) -> AdjustmentData {
     AdjustmentData {
         key,
         data: pictura_codec::write_descriptor(&obj),
+    }
+}
+
+/// `shdH`: two big-endian `u16` amounts, Shadows then Highlights, each
+/// `0..=100`.
+pub fn encode_shadows_highlights(shadows: u16, highlights: u16) -> AdjustmentData {
+    let mut data = shadows.to_be_bytes().to_vec();
+    data.extend_from_slice(&highlights.to_be_bytes());
+    AdjustmentData {
+        key: *b"shdH",
+        data,
     }
 }
 
@@ -128,6 +141,8 @@ pub fn default_adjustment_block(
             SelectiveColorMethod::Relative,
             &[SelectiveRange::default(); 9],
         ),
+        "shadows-highlights" => encode_shadows_highlights(0, 0),
+        "color-lookup" => encode_color_lookup(&identity_cube(), "None"),
         _ => return None,
     })
 }

@@ -17,6 +17,7 @@ mod hdr_toning;
 mod lut;
 mod native;
 mod pictura_raw;
+mod replace_color;
 mod tonal;
 mod types;
 
@@ -28,10 +29,12 @@ pub use hdr_toning::{exposure_gamma, ExposureGamma};
 pub use lut::parse_cube;
 pub use native::apply_native;
 pub use pictura_raw::render_pictura_raw;
+pub use replace_color::{replace_color_mask, ReplaceColorParams, ReplaceColorSample};
 pub use types::{
     AdjustError, Adjustment, AutoKind, BlackWhiteParams, BrightnessContrastParams,
     ChannelMixerParams, ColorBalanceParams, ColorLookupKind, ColorLookupParams, CurvesParams,
     ExposureParams, GradientFillParams, GradientKind, GradientMapParams, GradientStop,
     HueSaturationParams, LevelsParams, Lut3d, PatternFillParams, PhotoFilterParams,
-    SelectiveColorMethod, SelectiveColorParams, SelectiveRange, VibranceParams,
+    SelectiveColorMethod, SelectiveColorParams, SelectiveRange, ShadowsHighlightsParams,
+    VibranceParams,
 };

@@ -191,7 +191,13 @@ pub(crate) fn author_sold_block(
     ]);
     // A converted embedded object may carry a smart filter (Pictura Raw) that
     // the writer authors into the same `SoLd` descriptor.
-    if let Some(filter_fx) = crate::pictura_raw::author_filter_fx(&so.smart_filters) {
+    if let Some(filter_fx) = crate::pictura_raw::author_filter_fx(
+        &so.smart_filters,
+        so.smart_filters_enabled,
+        so.filter_mask_enabled,
+        so.filter_mask_linked,
+        so.filter_mask_extend_with_white,
+    ) {
         if let DescValue::Object { items, .. } = &mut descriptor {
             items.push((b"filterFX".to_vec(), filter_fx));
         }

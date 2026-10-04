@@ -753,6 +753,21 @@ void LayersPanel::altClickBelowRowForTest(const QString& path)
     QApplication::sendEvent(tree_->viewport(), &press);
 }
 
+bool LayersPanel::clickSmartFilterEyeForTest(const QString& path)
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || !tree_ || !delegate_) {
+        return false;
+    }
+    const QRect vr = tree_->visualRect(index);
+    const QRect eye = delegate_->eyeRect(QRect(0, 0, vr.width(), vr.height()));
+    const QPointF at(vr.left() + eye.center().x(), vr.center().y());
+    QMouseEvent press(QEvent::MouseButtonPress, at, tree_->viewport()->mapToGlobal(at),
+                      Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(tree_->viewport(), &press);
+    return true;
+}
+
 bool LayersPanel::rowShapeForTest(const QString& path) const
 {
     return model_ && model_->indexForPath(path).data(LayerRowShapeRole).toBool();

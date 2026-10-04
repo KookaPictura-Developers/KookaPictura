@@ -1,8 +1,8 @@
 use pictura_core::PixelBuffer;
 
 use crate::{
-    artistic, blur, brush_strokes, distort, noise, oil_paint, other, pixelate, render, sharpen,
-    sketch, stylize, texture, validate, FilterError,
+    artistic, blur, brush_strokes, distort, hdr_toning, noise, oil_paint, other, pixelate, render,
+    sharpen, sketch, stylize, texture, validate, FilterError,
 };
 
 use super::Filter;
@@ -60,6 +60,12 @@ pub fn apply(filter: &Filter, buf: &mut PixelBuffer) -> Result<(), FilterError> 
         } => stylize::emboss(buf, *angle, *height, *amount),
         Filter::FindEdges => stylize::find_edges(buf),
         Filter::Solarize => stylize::solarize(buf),
+        Filter::Diffuse { mode } => stylize::diffuse(buf, *mode),
+        Filter::GlowingEdges {
+            width,
+            brightness,
+            smoothness,
+        } => stylize::glowing_edges(buf, *width, *brightness, *smoothness),
         Filter::Mosaic { cell_size } => pixelate::mosaic(buf, *cell_size),
         Filter::Crystallize { cell_size, seed } => pixelate::crystallize(buf, *cell_size, *seed),
         Filter::Facet => pixelate::facet(buf),
@@ -131,6 +137,7 @@ pub fn apply(filter: &Filter, buf: &mut PixelBuffer) -> Result<(), FilterError> 
             center,
             lens,
         } => render::lens_flare(buf, *brightness, *center, *lens),
+        Filter::Lighting { lighting } => render::lighting_effects(buf, lighting),
         Filter::Cutout {
             levels,
             edge_simplicity,
@@ -541,5 +548,6 @@ pub fn apply(filter: &Filter, buf: &mut PixelBuffer) -> Result<(), FilterError> 
             *shadow,
             *highlight,
         ),
+        Filter::HdrToning(params) => hdr_toning::hdr_toning(buf, params),
     }
 }
