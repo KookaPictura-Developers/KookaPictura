@@ -28,7 +28,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Svg Network)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Svg Network PrintSupport)
 
 # Enables BUILD_TESTING (default ON); the Qt Test suites live under cpp/tests.
 include(CTest)
@@ -93,6 +93,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/color_settings_dialog.cpp
     crates/pictura-app/cpp/color_picker_dialog.cpp
     crates/pictura-app/cpp/color_range_dialog.cpp
+    crates/pictura-app/cpp/print_dialog.cpp
     crates/pictura-app/cpp/export_as_dialog.cpp
     crates/pictura-app/cpp/image_view.cpp
     crates/pictura-app/cpp/image_view_overlays.cpp
@@ -274,7 +275,8 @@ target_include_directories(pictura_shell PUBLIC
 # The Rust static lib embeds `pictura-color` (Little CMS 2); a staticlib does not
 # propagate its native link dependencies, so the C++ link needs `-llcms2`.
 find_library(LCMS2_LIBRARY NAMES lcms2 REQUIRED)
-target_link_libraries(pictura_shell PUBLIC pictura_app Qt6::Svg Qt6::Network "${LCMS2_LIBRARY}")
+target_link_libraries(pictura_shell PUBLIC pictura_app Qt6::Svg Qt6::Network Qt6::PrintSupport
+    "${LCMS2_LIBRARY}")
 
 # Compile the Qt resource once: the executable and every Qt Test binary link
 # this object library instead of each embedding its own copy of the .qrc.

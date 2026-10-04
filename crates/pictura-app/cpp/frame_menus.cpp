@@ -123,6 +123,17 @@ void PicturaMainWindow::registerHandlers()
     registry_->setHandler(command_ids::FileSaveAs, [this]() { saveAsWithDialog(); });
     registry_->setHandler(command_ids::FileExportAs,
                           [this]() { exportAsFromView(this, activeView()); });
+    // File > Print… and Print One Copy (WF-013).
+    for (const char* leaf : {"Print…", "Print One Copy"}) {
+        const QString id = commandIdForPath({QStringLiteral("File"), QString::fromUtf8(leaf)});
+        const bool once = QByteArray(leaf) == "Print One Copy";
+        registry_->setImplemented(id, true);
+        registry_->setHandler(id, [this, once]() {
+            once ? printOneCopyFromView(this, activeView()) : printFromView(this, activeView());
+        });
+        registry_->setEnabledProvider(
+            id, [this]() { return activeView() && activeView()->has_document(); });
+    }
     registry_->setHandler(command_ids::FileSaveForWeb, [this]() {
         saveForWebFromView(this, activeView(), documentName(activeDocumentIndex()));
     });
