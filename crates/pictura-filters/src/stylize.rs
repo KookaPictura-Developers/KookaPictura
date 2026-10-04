@@ -281,9 +281,14 @@ pub fn glowing_edges(
     smoothness: u32,
 ) -> Result<(), FilterError> {
     let n = validate(buf)?;
-    let smoothness = smoothness.clamp(*GLOW_SMOOTHNESS.start(), *GLOW_SMOOTHNESS.end());
-    let width = width.clamp(*GLOW_WIDTH.start(), *GLOW_WIDTH.end());
-    let brightness = brightness.clamp(*GLOW_BRIGHTNESS.start(), *GLOW_BRIGHTNESS.end());
+    if !GLOW_WIDTH.contains(&width)
+        || !GLOW_BRIGHTNESS.contains(&brightness)
+        || !GLOW_SMOOTHNESS.contains(&smoothness)
+    {
+        return Err(FilterError::InvalidParams(format!(
+            "glowing edges width {width} brightness {brightness} smoothness {smoothness} out of range"
+        )));
+    }
 
     let mut smoothed = buf.clone();
     gaussian_blur_planes(&mut smoothed, smoothness as f64 * GLOW_SMOOTHING as f64);
@@ -626,5 +631,27 @@ mod tests {
         let n = out.pixel_count();
         assert_ne!(out.data, before);
         assert_eq!(out.data[3 * n..], before[3 * n..], "alpha untouched");
+    }
+
+    #[test]
+    fn glowing_edges_rejects_out_of_range_params_without_mutation() {
+        let base = patch(16, 16);
+        for (w, b, s) in [
+            (0u32, 6u32, 1u32),
+            (15, 6, 1),
+            (2, 21, 1),
+            (2, 6, 0),
+            (2, 6, 16),
+        ] {
+            let mut out = base.clone();
+            assert!(
+                matches!(
+                    glowing_edges(&mut out, w, b, s),
+                    Err(FilterError::InvalidParams(_))
+                ),
+                "expected rejection for width={w} brightness={b} smoothness={s}"
+            );
+            assert_eq!(out, base, "rejected parameters must not modify the buffer");
+        }
     }
 }

@@ -6,4 +6,3 @@
 # recorded LOC — a file that grows is a violation.
 crates/pictura-app/cpp/selftest.cpp 6449
 crates/pictura-app/src/cxxqt_object.rs 1227
-crates/pictura-app/src/cxxqt_object/filter_map.rs 1235

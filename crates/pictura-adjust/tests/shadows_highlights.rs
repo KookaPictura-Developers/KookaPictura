@@ -63,6 +63,17 @@ fn lifts_shadows_and_pulls_highlights() {
 }
 
 #[test]
+fn amount_100_lifts_black_by_the_full_gain() {
+    let mut b = buf3(&[[0, 0, 0]]);
+    apply(&params(100.0, 0.0), &mut b).unwrap();
+    assert_eq!(
+        px3(&b, 0),
+        [89, 89, 89],
+        "0.35 * 255 rounds to 89, not the old ~35"
+    );
+}
+
+#[test]
 fn zero_is_a_noop_and_alpha_is_kept() {
     let mut b = buf4(&[[20, 30, 10, 77], [230, 240, 245, 128]]);
     let orig = b.clone();

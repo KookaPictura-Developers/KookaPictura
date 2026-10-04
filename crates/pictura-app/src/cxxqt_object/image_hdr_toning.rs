@@ -29,10 +29,11 @@ pub mod ffi {
 
     #[namespace = "pictura"]
     extern "Rust" {
-        /// Preview HDR Toning's Local Adaptation on the active layer over the
-        /// document rect `(x, y, w, h)` (the whole layer when `w` is not
-        /// positive), re-applied from the pre-preview pixels; no history.
-        /// False when refused.
+        /// Preview HDR Toning's Local Adaptation on the active layer,
+        /// re-applied from the pre-preview pixels; no history. The whole layer
+        /// is previewed regardless of `(x, y, w, h)`, because the operator's
+        /// global pivot makes a cropped section differ from the commit. False
+        /// when refused.
         #[allow(clippy::too_many_arguments)]
         fn hdr_toning_preview(
             view: Pin<&mut PictureView>,
@@ -133,23 +134,19 @@ fn hdr_toning_preview(
     highlight: f64,
     vibrance: f64,
     saturation: f64,
-    x: i32,
-    y: i32,
-    w: i32,
-    h: i32,
+    _x: i32,
+    _y: i32,
+    _w: i32,
+    _h: i32,
 ) -> bool {
-    let section = (w > 0 && h > 0).then_some(PsdRect {
-        top: y,
-        left: x,
-        bottom: y + h,
-        right: x + w,
-    });
+    // The global pivot makes a cropped section differ from the commit, so a
+    // preview always runs the whole layer, still without recording history.
     run(
         view,
         params(
             radius, strength, gamma, exposure, detail, shadow, highlight, vibrance, saturation,
         ),
-        section,
+        None,
         None,
     )
 }

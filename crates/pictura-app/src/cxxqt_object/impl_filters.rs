@@ -336,6 +336,35 @@ mod tests {
             .to_vec()
     }
 
+    /// A 256×256 layer large enough that a section preview's apron does not
+    /// span the whole layer, so a crop changes a positional filter's result.
+    fn big_state() -> PictureViewRust {
+        let mut doc = Document::new(
+            256,
+            256,
+            pictura_core::ColorMode::Rgb,
+            pictura_core::BitDepth::Eight,
+        );
+        let mut layer = pixel_layer("px", 256, 256, (40, 120, 200));
+        for (c, ch) in layer.channels.iter_mut().filter(|c| c.id >= 0).enumerate() {
+            let plane: Vec<u8> = (0..256 * 256)
+                .map(|i| {
+                    let x = i % 256;
+                    let y = i / 256;
+                    ((x * 7 + y * 13 + c * 53) % 256) as u8
+                })
+                .collect();
+            ch.data = plane.into();
+        }
+        doc.layers = vec![layer];
+        PictureViewRust {
+            doc: Some(doc),
+            active_layer: Some("0".to_string()),
+            gpu_compute: false,
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn wrong_arity_is_refused_without_mutation() {
         let mut rust = state();
@@ -453,5 +482,54 @@ mod tests {
         let mut fresh = state();
         apply_filter_active(&mut fresh, "gaussian-blur", &[3.0], true).expect("commit");
         assert_eq!(red(&rust), red(&fresh), "no double application");
+    }
+
+    #[test]
+    fn positional_kinds_preview_the_whole_layer() {
+        use super::super::filter_tools::filter_preview_needs_whole_layer;
+
+        let viewport = pictura_core::PsdRect {
+            top: 200,
+            left: 200,
+            bottom: 232,
+            right: 232,
+        };
+        for (kind, params) in [("diffuse", vec![0.0f64]), ("lighting-effects", Vec::new())] {
+            assert!(filter_preview_needs_whole_layer(kind), "{kind}");
+
+            // A cropped section preview does not match the commit...
+            let mut cropped = big_state();
+            apply_filter_active_region(&mut cropped, kind, &params, false, Some(viewport))
+                .expect("section preview");
+
+            // ...so the bridge escalates the kind to a whole-layer preview.
+            let section = (!filter_preview_needs_whole_layer(kind)).then_some(viewport);
+            let mut preview = big_state();
+            apply_filter_active_region(&mut preview, kind, &params, false, section)
+                .expect("whole-layer preview");
+
+            let mut commit = big_state();
+            apply_filter_active_region(&mut commit, kind, &params, true, None).expect("commit");
+
+            let (preview_px, commit_px, cropped_px) = (red(&preview), red(&commit), red(&cropped));
+            let w = 256usize;
+            let mut cropped_differs = false;
+            for y in viewport.top..viewport.bottom {
+                for x in viewport.left..viewport.right {
+                    let i = y as usize * w + x as usize;
+                    assert_eq!(
+                        preview_px[i], commit_px[i],
+                        "{kind} whole-layer preview != commit at ({x},{y})"
+                    );
+                    if cropped_px[i] != commit_px[i] {
+                        cropped_differs = true;
+                    }
+                }
+            }
+            assert!(
+                cropped_differs,
+                "{kind}: a cropped preview unexpectedly matched the commit"
+            );
+        }
     }
 }

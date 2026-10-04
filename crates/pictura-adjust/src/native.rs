@@ -241,11 +241,11 @@ fn shadows_highlights_native(
         let l = i as f64 / 255.0;
         let st = (1.0 - 2.0 * l).clamp(0.0, 1.0);
         let sw = st * st * (3.0 - 2.0 * st);
-        let shadow_delta = sw * sa * 0.35;
+        let shadow_delta = sw * (sa / 100.0) * 0.35;
         let ht = ((l - 0.5) * 2.0).clamp(0.0, 1.0);
         let hw = ht * ht * (3.0 - 2.0 * ht);
-        let highlight_delta = hw * ha * 0.30;
-        *slot = (shadow_delta - highlight_delta) / 255.0;
+        let highlight_delta = hw * (ha / 100.0) * 0.30;
+        *slot = shadow_delta - highlight_delta;
     }
     map(samples, width, height, channels, move |[r, g, b]| {
         let y = luma(r * 255.0, g * 255.0, b * 255.0);
