@@ -672,33 +672,6 @@ fn filter_confines_to_selection_and_skips_adjustment_layer() {
 }
 
 #[test]
-fn adjustment_layer_covers_every_kind_and_rejects_unknown() {
-    const KINDS: [&str; 16] = [
-        "invert",
-        "posterize",
-        "threshold",
-        "brightness-contrast",
-        "levels",
-        "curves",
-        "exposure",
-        "vibrance",
-        "hue-saturation",
-        "color-balance",
-        "black-white",
-        "photo-filter",
-        "channel-mixer",
-        "selective-color",
-        "color-lookup",
-        "gradient-map",
-    ];
-    for kind in KINDS {
-        let layer = adjustment_layer(kind, None).unwrap_or_else(|| panic!("{kind} should map"));
-        assert!(layer.adjustment.is_some(), "{kind} carries adjustment data");
-    }
-    assert!(adjustment_layer("bogus", None).is_none());
-}
-
-#[test]
 fn parse_resample_maps_known_and_rejects_unknown() {
     use pictura_render::Resample;
 

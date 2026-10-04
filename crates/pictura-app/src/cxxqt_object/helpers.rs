@@ -677,9 +677,37 @@ pub(crate) mod paint_timing {
 
 #[cfg(test)]
 mod tests {
+    use super::adjustment_layer;
     use super::TileSet;
     use pictura_core::PsdRect;
     use pictura_render::TILE;
+
+    #[test]
+    fn adjustment_layer_covers_every_kind_and_rejects_unknown() {
+        const KINDS: [&str; 16] = [
+            "invert",
+            "posterize",
+            "threshold",
+            "brightness-contrast",
+            "levels",
+            "curves",
+            "exposure",
+            "vibrance",
+            "hue-saturation",
+            "color-balance",
+            "black-white",
+            "photo-filter",
+            "channel-mixer",
+            "selective-color",
+            "color-lookup",
+            "gradient-map",
+        ];
+        for kind in KINDS {
+            let layer = adjustment_layer(kind, None).unwrap_or_else(|| panic!("{kind} should map"));
+            assert!(layer.adjustment.is_some(), "{kind} carries adjustment data");
+        }
+        assert!(adjustment_layer("bogus", None).is_none());
+    }
 
     fn r(top: i32, left: i32, w: i32, h: i32) -> PsdRect {
         PsdRect {
