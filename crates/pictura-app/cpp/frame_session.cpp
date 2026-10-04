@@ -45,6 +45,14 @@ void PicturaMainWindow::retargetDock()
     if (channelsPanel_) {
         channelsPanel_->setView(view);
     }
+    if (characterPanel_) {
+        characterPanel_->setView(view);
+        characterPanel_->refresh();
+    }
+    if (paragraphPanel_) {
+        paragraphPanel_->setView(view);
+        paragraphPanel_->refresh();
+    }
     if (notesPanel_) {
         notesPanel_->setView(view);
     }

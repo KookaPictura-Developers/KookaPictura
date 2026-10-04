@@ -11,6 +11,7 @@
 
 #include "pictura_app/src/cxxqt_object/type_tools.cxxqt.h"
 
+#include <QtCore/QDataStream>
 #include <QtGui/QClipboard>
 #include <QtGui/QFontDatabase>
 #include <QtGui/QFontInfo>
@@ -53,6 +54,48 @@ QImage seed()
     return image;
 }
 
+// A stable digest of the layer-rect pixels, so a cancel can be compared
+// bit-for-bit.
+quint64 layerPixelHash(const Fixture& f, const QString& path)
+{
+    const QRect rect = layerRect(f, path);
+    quint64 hash = 1469598103934665603ULL;
+    for (int y = rect.top(); y <= rect.bottom(); ++y) {
+        for (int x = rect.left(); x <= rect.right(); ++x) {
+            const quint32 rgba = f.view->sample_argb(x, y);
+            for (int byte = 0; byte < 4; ++byte) {
+                hash ^= (rgba >> (8 * byte)) & 0xffu;
+                hash *= 1099511628211ULL;
+            }
+        }
+    }
+    return hash;
+}
+
+QByteArray characterFingerprint(const pictura::CharacterSetting& c)
+{
+    QByteArray bytes;
+    QDataStream stream(&bytes, QIODevice::WriteOnly);
+    stream << c.font_style << c.size << c.leading_mode << c.leading_value << c.kerning_mode
+           << c.kerning_value << c.tracking << c.horizontal_scale << c.vertical_scale
+           << c.baseline_shift << c.anti_alias << c.color << c.all_caps << c.small_caps
+           << c.superscript << c.subscript << c.underline << c.strikethrough
+           << c.fractional_widths;
+    return bytes;
+}
+
+QByteArray paragraphFingerprint(const pictura::ParagraphSetting& p)
+{
+    QByteArray bytes;
+    QDataStream stream(&bytes, QIODevice::WriteOnly);
+    stream << p.justify << p.word_spacing_min << p.word_spacing_desired << p.word_spacing_max
+           << p.letter_spacing_min << p.letter_spacing_desired << p.letter_spacing_max
+           << p.glyph_spacing_min << p.glyph_spacing_desired << p.glyph_spacing_max
+           << p.start_indent << p.end_indent << p.first_line_indent << p.space_before
+           << p.space_after << p.hanging << p.hyphenate << p.direction << p.composer;
+    return bytes;
+}
+
 } // namespace
 
 class TypeToolsTest : public QObject {
@@ -68,6 +111,9 @@ private slots:
     void textEditModel();
     void editLikeATextField();
     void barRestylesTheSelectedLayer();
+    void characterAttributeEdits();
+    void manualOverrideSurvivesStyleApply();
+    void reopenKeepsAntiAlias();
     void verticalTypeTool();
     void typeMaskTools();
     void typeOptionsBar();
@@ -548,6 +594,161 @@ void TypeToolsTest::barRestylesTheSelectedLayer()
     // family its spaceless name happens to match.
     pictura::registerTypeFont(QStringLiteral("monospace"));
     QCOMPARE(pictura::familyForFontName(QStringLiteral("monospace")), QStringLiteral("monospace"));
+    f.tools->setTypeOptions(saved);
+}
+
+void TypeToolsTest::characterAttributeEdits()
+{
+    pictura::PicturaMainWindow& frame = *window_;
+    Fixture f(frame, seed(), QStringLiteral("pictura_type_attrs"));
+    QVERIFY2(f.ok(), "type fixture");
+    showFrame();
+    frame.setActiveTool(pictura::ToolId::HorizontalType);
+    const pictura::TypeOptions saved = f.tools->typeOptions();
+    pictura::TypeOptions o = saved;
+    o.size = 30.0;
+    f.tools->setTypeOptions(o);
+    f.drag({QPointF(10, 60)});
+    QTest::keyClicks(f.canvas, QStringLiteral("Attr"));
+    QTest::keyClick(f.canvas, Qt::Key_Return, Qt::ControlModifier);
+    const QString path = typeLayer(f);
+    QVERIFY2(!path.isEmpty(), "a type layer");
+    const int base = f.view->history_index();
+    const QString family = pictura::type_layer_font(*f.view, path);
+    const QString text = pictura::type_layer_text(*f.view, path);
+
+    // A non-default character attribute records exactly one state...
+    const pictura::TypeSetting placement = pictura::type_layer_setting(*f.view, path);
+    const pictura::ParagraphSetting paragraph = pictura::type_layer_paragraph_setting(*f.view, path);
+    pictura::CharacterSetting character = pictura::type_layer_character_setting(*f.view, path);
+    QCOMPARE(character.tracking, 0.0);
+    QCOMPARE(character.horizontal_scale, 100.0);
+    character.tracking = 120.0;
+    character.horizontal_scale = 50.0;
+    QVERIFY(
+        pictura::type_update_layer(*f.view, path, text, family, placement, character, paragraph));
+    QVERIFY2(f.committedOnce(base, "Edit Type Layer"), "one Edit Type Layer state");
+
+    // ...and the re-authored layer reopens with it intact (6.4).
+    const pictura::CharacterSetting set = pictura::type_layer_character_setting(*f.view, path);
+    QCOMPARE(set.tracking, 120.0);
+    QCOMPARE(set.horizontal_scale, 50.0);
+
+    // One undo restores the previous values (6.3).
+    QVERIFY(f.view->undo());
+    const pictura::CharacterSetting back = pictura::type_layer_character_setting(*f.view, path);
+    QCOMPARE(back.tracking, 0.0);
+    QCOMPARE(back.horizontal_scale, 100.0);
+
+    // The Type tool reopens it (hide then Esc): unchanged, no state.
+    const int restoredBase = f.view->history_index();
+    const quint64 beforePixels = layerPixelHash(f, path);
+    const QByteArray beforeCharacter =
+        characterFingerprint(pictura::type_layer_character_setting(*f.view, path));
+    const QByteArray beforeParagraph =
+        paragraphFingerprint(pictura::type_layer_paragraph_setting(*f.view, path));
+    f.drag({QPointF(layerRect(f, path).center())});
+    QVERIFY(f.tools->textActive());
+    QCOMPARE(pictura::type_layer_character_setting(*f.view, path).tracking, 0.0);
+    QTest::keyClick(f.canvas, Qt::Key_Escape);
+    QCOMPARE(f.view->history_index(), restoredBase);
+    QCOMPARE(layerPixelHash(f, path), beforePixels);
+    QCOMPARE(characterFingerprint(pictura::type_layer_character_setting(*f.view, path)),
+             beforeCharacter);
+    QCOMPARE(paragraphFingerprint(pictura::type_layer_paragraph_setting(*f.view, path)),
+             beforeParagraph);
+    f.tools->setTypeOptions(saved);
+}
+
+// A manual attribute edit records only the changed field as an override, so a
+// later style application keeps it while still updating the fields the user did
+// not touch (spec `type-style-model`, "Applying a style keeps an existing
+// manual override").
+void TypeToolsTest::manualOverrideSurvivesStyleApply()
+{
+    pictura::PicturaMainWindow& frame = *window_;
+    Fixture f(frame, seed(), QStringLiteral("pictura_type_override"));
+    QVERIFY2(f.ok(), "type fixture");
+    showFrame();
+    frame.setActiveTool(pictura::ToolId::HorizontalType);
+    const pictura::TypeOptions saved = f.tools->typeOptions();
+    pictura::TypeOptions o = saved;
+    o.family = QStringLiteral("Liberation Sans");
+    o.size = 30.0;
+    f.tools->setTypeOptions(o);
+    f.drag({QPointF(10, 60)});
+    QTest::keyClicks(f.canvas, QStringLiteral("Attr"));
+    QTest::keyClick(f.canvas, Qt::Key_Return, Qt::ControlModifier);
+    const QString path = typeLayer(f);
+    QVERIFY2(!path.isEmpty(), "a type layer");
+
+    // Through the real edit path, change tracking only; size stays inherited.
+    const QString text = pictura::type_layer_text(*f.view, path);
+    const QString family = pictura::type_layer_font(*f.view, path);
+    const pictura::TypeSetting placement = pictura::type_layer_setting(*f.view, path);
+    const pictura::ParagraphSetting paragraph =
+        pictura::type_layer_paragraph_setting(*f.view, path);
+    pictura::CharacterSetting character =
+        pictura::type_layer_character_setting(*f.view, path);
+    character.tracking = 120.0;
+    QVERIFY(pictura::type_update_layer(*f.view, path, text, family, placement, character,
+                                       paragraph));
+
+    // A style that sets size, but not the manually changed tracking.
+    pictura::CharacterSetting style = pictura::type_default_character_setting();
+    style.size = 48.0;
+    QVERIFY(pictura::type_create_character_style(*f.view, QStringLiteral("Override Probe"),
+                                                 family, style));
+    QVERIFY(pictura::type_apply_style(*f.view, path, QStringLiteral("Override Probe"), false));
+
+    const pictura::CharacterSetting applied =
+        pictura::type_layer_character_setting(*f.view, path);
+    QCOMPARE(applied.tracking, 120.0); // the manual override survives
+    QCOMPARE(applied.size, 48.0);      // the untouched field follows the style
+    f.tools->setTypeOptions(saved);
+}
+
+void TypeToolsTest::reopenKeepsAntiAlias()
+{
+    pictura::PicturaMainWindow& frame = *window_;
+    Fixture f(frame, seed(), QStringLiteral("pictura_type_antialias"));
+    QVERIFY2(f.ok(), "type fixture");
+    showFrame();
+    frame.setActiveTool(pictura::ToolId::HorizontalType);
+    const pictura::TypeOptions saved = f.tools->typeOptions();
+    pictura::TypeOptions o = saved;
+    o.size = 30.0;
+    o.antialias = 0; // None, not the default Sharp
+    f.tools->setTypeOptions(o);
+    f.drag({QPointF(10, 60)});
+    QTest::keyClicks(f.canvas, QStringLiteral("AA"));
+    QTest::keyClick(f.canvas, Qt::Key_Return, Qt::ControlModifier);
+    const QString path = typeLayer(f);
+    QVERIFY2(!path.isEmpty(), "a type layer");
+    QCOMPARE(pictura::type_layer_character_setting(*f.view, path).anti_alias, 0);
+
+    // Selecting the layer seeds the bar's combo from the stored method.
+    frame.setActiveTool(pictura::ToolId::Move);
+    frame.setActiveTool(pictura::ToolId::HorizontalType);
+    QCOMPARE(f.tools->typeOptions().antialias, 0);
+
+    // Reopen and commit without touching the combo: still None.
+    const int base = f.view->history_index();
+    f.drag({QPointF(layerRect(f, path).center())});
+    QVERIFY(f.tools->textActive());
+    QTest::keyClick(f.canvas, Qt::Key_End);
+    QTest::keyClicks(f.canvas, QStringLiteral("!"));
+    QTest::keyClick(f.canvas, Qt::Key_Return, Qt::ControlModifier);
+    QCOMPARE(f.view->history_index(), base + 1);
+    QCOMPARE(pictura::type_layer_character_setting(*f.view, path).anti_alias, 0);
+
+    // Esc leaves it as it was.
+    f.drag({QPointF(layerRect(f, path).center())});
+    QVERIFY(f.tools->textActive());
+    QTest::keyClicks(f.canvas, QStringLiteral("?"));
+    QTest::keyClick(f.canvas, Qt::Key_Escape);
+    QCOMPARE(f.view->history_index(), base + 1);
+    QCOMPARE(pictura::type_layer_character_setting(*f.view, path).anti_alias, 0);
     f.tools->setTypeOptions(saved);
 }
 

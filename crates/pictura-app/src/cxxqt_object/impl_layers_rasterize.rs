@@ -130,9 +130,9 @@ impl qobject::PictureView {
                     let fill = style.rgba();
                     Some(super::qobject::render_text_rgba(
                         family,
-                        style.font_size,
+                        style.character.size,
                         &tool.text,
-                        style.justification as i32,
+                        i32::from(style.paragraph.justify.index()),
                         fill[0],
                         fill[1],
                         fill[2],

@@ -1,18 +1,22 @@
 #include "character_panel.h"
 
 #include "color_picker_dialog.h"
-#include "options_bar.h"
-#include "tools.h"
+#include "type_fonts.h"
 
-#include <QtCore/QLocale>
+#include "pictura_app/src/cxxqt_object.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/type_tools.cxxqt.h"
+
 #include <QtCore/QSignalBlocker>
-#include <QtGui/QDoubleValidator>
+#include <QtGui/QFont>
+#include <QtGui/QPainter>
+#include <QtGui/QPixmap>
+#include <QtWidgets/QCheckBox>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QDoubleSpinBox>
 #include <QtWidgets/QFontComboBox>
-#include <QtWidgets/QGridLayout>
-#include <QtWidgets/QLabel>
-#include <QtWidgets/QLineEdit>
+#include <QtWidgets/QFormLayout>
+#include <QtWidgets/QGroupBox>
+#include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QSpinBox>
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QVBoxLayout>
@@ -21,18 +25,24 @@ namespace pictura {
 
 namespace {
 
-QString sizeText(double size)
+QIcon swatchIcon(const QColor& color)
 {
-    return QString::number(size, 'g', 6);
+    QPixmap pixmap(16, 16);
+    pixmap.fill(color);
+    QPainter painter(&pixmap);
+    painter.setPen(QColor(0, 0, 0, 160));
+    painter.drawRect(pixmap.rect().adjusted(0, 0, -1, -1));
+    return QIcon(pixmap);
 }
 
-// A control CS6 has but the type model does not: shown for shape, disabled.
-template <typename T>
-T* unmodelled(T* widget, const QString& tip)
+QDoubleSpinBox* spin(QWidget* parent, const QString& name, double lo, double hi, int decimals)
 {
-    widget->setEnabled(false);
-    widget->setToolTip(tip + QStringLiteral(" — not implemented yet"));
-    return widget;
+    auto* box = new QDoubleSpinBox(parent);
+    box->setObjectName(name);
+    box->setRange(lo, hi);
+    box->setDecimals(decimals);
+    box->setKeyboardTracking(false);
+    return box;
 }
 
 } // namespace
@@ -40,157 +50,226 @@ T* unmodelled(T* widget, const QString& tip)
 CharacterPanel::CharacterPanel(QWidget* parent)
     : QWidget(parent)
 {
-    auto* root = new QVBoxLayout(this);
-    root->setContentsMargins(6, 6, 6, 6);
-    root->setSpacing(5);
+    auto* layout = new QVBoxLayout(this);
+    layout->setContentsMargins(4, 4, 4, 4);
 
-    family_ = new QFontComboBox(this);
+    auto* font = new QGroupBox(tr("Font"), this);
+    auto* fontForm = new QFormLayout(font);
+    family_ = new QFontComboBox(font);
     family_->setObjectName(QStringLiteral("characterFamily"));
-    family_->setToolTip(QStringLiteral("Set the font family"));
-    // A font combo asks for a very wide minimum; the panel column must not scroll.
-    family_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-    family_->setMinimumContentsLength(10);
-    root->addWidget(family_);
+    fontForm->addRow(tr("Family"), family_);
+    size_ = spin(font, QStringLiteral("characterSize"), 0.0, 1296.0, 1);
+    fontForm->addRow(tr("Size"), size_);
+    leadingMode_ = new QComboBox(font);
+    leadingMode_->setObjectName(QStringLiteral("characterLeadingMode"));
+    leadingMode_->addItems({tr("Auto"), tr("Fixed")});
+    leading_ = spin(font, QStringLiteral("characterLeading"), 0.0, 5000.0, 1);
+    auto* leadingRow = new QWidget(font);
+    auto* leadingLayout = new QHBoxLayout(leadingRow);
+    leadingLayout->setContentsMargins(0, 0, 0, 0);
+    leadingLayout->addWidget(leadingMode_);
+    leadingLayout->addWidget(leading_);
+    fontForm->addRow(tr("Leading"), leadingRow);
+    kerningMode_ = new QComboBox(font);
+    kerningMode_->setObjectName(QStringLiteral("characterKerningMode"));
+    kerningMode_->addItems({tr("Metrics"), tr("Manual")});
+    kerning_ = new QSpinBox(font);
+    kerning_->setObjectName(QStringLiteral("characterKerning"));
+    kerning_->setRange(-1000, 10000);
+    auto* kerningRow = new QWidget(font);
+    auto* kerningLayout = new QHBoxLayout(kerningRow);
+    kerningLayout->setContentsMargins(0, 0, 0, 0);
+    kerningLayout->addWidget(kerningMode_);
+    kerningLayout->addWidget(kerning_);
+    fontForm->addRow(tr("Kerning"), kerningRow);
+    tracking_ = spin(font, QStringLiteral("characterTracking"), -1000.0, 10000.0, 1);
+    fontForm->addRow(tr("Tracking"), tracking_);
+    horizontalScale_ = spin(font, QStringLiteral("characterHorizontalScale"), 1.0, 1000.0, 1);
+    fontForm->addRow(tr("Horizontal Scale"), horizontalScale_);
+    verticalScale_ = spin(font, QStringLiteral("characterVerticalScale"), 1.0, 1000.0, 1);
+    fontForm->addRow(tr("Vertical Scale"), verticalScale_);
+    baselineShift_ = spin(font, QStringLiteral("characterBaselineShift"), -1000.0, 1000.0, 1);
+    fontForm->addRow(tr("Baseline Shift"), baselineShift_);
+    antiAlias_ = new QComboBox(font);
+    antiAlias_->setObjectName(QStringLiteral("characterAntiAlias"));
+    antiAlias_->addItems({tr("None"), tr("Sharp"), tr("Crisp"), tr("Strong"), tr("Smooth")});
+    fontForm->addRow(tr("Anti-aliasing"), antiAlias_);
+    colorButton_ = new QToolButton(font);
+    colorButton_->setObjectName(QStringLiteral("characterColor"));
+    colorButton_->setAutoRaise(true);
+    colorButton_->setIconSize(QSize(16, 16));
+    fontForm->addRow(tr("Color"), colorButton_);
+    layout->addWidget(font);
 
-    auto* style = new QComboBox(this);
-    style->addItem(QStringLiteral("Regular"));
-    root->addWidget(unmodelled(style, QStringLiteral("Font style")));
-
-    auto* grid = new QGridLayout();
-    grid->setSpacing(4);
-    grid->setContentsMargins(0, 4, 0, 0);
-    // Fields may shrink below their hint so the panel never widens the column.
-    const auto addField = [&](int row, int col, const QString& label, QWidget* field) {
-        field->setMinimumWidth(48);
-        grid->addWidget(new QLabel(label, this), row, col * 2);
-        grid->addWidget(field, row, col * 2 + 1);
+    auto* toggles = new QGroupBox(tr("OpenType"), this);
+    auto* togglesLayout = new QVBoxLayout(toggles);
+    const auto makeToggle = [this, toggles, togglesLayout](const QString& name, const QString& text) {
+        auto* box = new QCheckBox(text, toggles);
+        box->setObjectName(name);
+        togglesLayout->addWidget(box);
+        return box;
     };
+    allCaps_ = makeToggle(QStringLiteral("characterAllCaps"), tr("All Caps"));
+    smallCaps_ = makeToggle(QStringLiteral("characterSmallCaps"), tr("Small Caps"));
+    superscript_ = makeToggle(QStringLiteral("characterSuperscript"), tr("Superscript"));
+    subscript_ = makeToggle(QStringLiteral("characterSubscript"), tr("Subscript"));
+    underline_ = makeToggle(QStringLiteral("characterUnderline"), tr("Underline"));
+    strikethrough_ = makeToggle(QStringLiteral("characterStrikethrough"), tr("Strikethrough"));
+    layout->addWidget(toggles);
+    layout->addStretch(1);
 
-    size_ = new QComboBox(this);
-    size_->setObjectName(QStringLiteral("characterSize"));
-    size_->setToolTip(QStringLiteral("Set the font size (px)"));
-    size_->setEditable(true);
-    size_->setInsertPolicy(QComboBox::NoInsert);
-    auto* validator = new QDoubleValidator(1.0, 1296.0, 1, size_);
-    validator->setNotation(QDoubleValidator::StandardNotation);
-    size_->setValidator(validator);
-    for (const int px : typeSizes()) {
-        size_->addItem(QString::number(px));
-    }
-    addField(0, 0, QStringLiteral("Size:"), size_);
-
-    auto* leading = new QComboBox(this);
-    leading->addItem(QStringLiteral("(Auto)"));
-    addField(0, 1, QStringLiteral("Leading:"), unmodelled(leading, QStringLiteral("Leading")));
-
-    auto* kerning = new QComboBox(this);
-    kerning->addItem(QStringLiteral("Metrics"));
-    addField(1, 0, QStringLiteral("Kerning:"), unmodelled(kerning, QStringLiteral("Kerning")));
-
-    auto* tracking = new QSpinBox(this);
-    tracking->setRange(-1000, 10000);
-    addField(1, 1, QStringLiteral("Tracking:"), unmodelled(tracking, QStringLiteral("Tracking")));
-
-    auto* vScale = new QSpinBox(this);
-    vScale->setRange(0, 1000);
-    vScale->setValue(100);
-    vScale->setSuffix(QStringLiteral("%"));
-    addField(2, 0, QStringLiteral("Vert. Scale:"),
-             unmodelled(vScale, QStringLiteral("Vertical scale")));
-
-    auto* hScale = new QSpinBox(this);
-    hScale->setRange(0, 1000);
-    hScale->setValue(100);
-    hScale->setSuffix(QStringLiteral("%"));
-    addField(2, 1, QStringLiteral("Horiz. Scale:"),
-             unmodelled(hScale, QStringLiteral("Horizontal scale")));
-
-    auto* baseline = new QDoubleSpinBox(this);
-    baseline->setRange(-1000, 1000);
-    baseline->setSuffix(QStringLiteral(" pt"));
-    addField(3, 0, QStringLiteral("Baseline:"),
-             unmodelled(baseline, QStringLiteral("Baseline shift")));
-
-    color_ = new QToolButton(this);
-    color_->setObjectName(QStringLiteral("characterColor"));
-    color_->setToolTip(QStringLiteral("Set the text color"));
-    color_->setAutoRaise(true);
-    color_->setIconSize(QSize(16, 16));
-    addField(3, 1, QStringLiteral("Color:"), color_);
-
-    antialias_ = new QComboBox(this);
-    antialias_->setObjectName(QStringLiteral("characterAntialias"));
-    antialias_->setToolTip(QStringLiteral("Set the anti-aliasing method"));
-    antialias_->addItems({QStringLiteral("None"), QStringLiteral("Sharp")});
-    addField(4, 0, QStringLiteral("Anti-alias:"), antialias_);
-
-    grid->setColumnStretch(1, 1);
-    grid->setColumnStretch(3, 1);
-    root->addLayout(grid);
-    root->addStretch(1);
-}
-
-void CharacterPanel::setController(ToolController* controller)
-{
-    controller_ = controller;
-    if (!controller_) {
-        return;
-    }
-    const auto update = [this](auto edit) {
-        TypeOptions o = controller_->typeOptions();
-        edit(o);
-        controller_->setTypeOptions(o);
+    const auto commitField = [this](QDoubleSpinBox* box) {
+        connect(box, &QAbstractSpinBox::editingFinished, this, &CharacterPanel::apply);
     };
-    connect(controller_, &ToolController::typeOptionsChanged, this, &CharacterPanel::refresh);
-    connect(family_, &QFontComboBox::currentFontChanged, this, [update](const QFont& font) {
-        update([&font](TypeOptions& o) { o.family = font.family(); });
+    commitField(size_);
+    commitField(leading_);
+    commitField(tracking_);
+    commitField(horizontalScale_);
+    commitField(verticalScale_);
+    commitField(baselineShift_);
+    connect(kerning_, &QAbstractSpinBox::editingFinished, this, &CharacterPanel::apply);
+    connect(antiAlias_, &QComboBox::currentIndexChanged, this, &CharacterPanel::apply);
+    connect(family_, &QFontComboBox::currentFontChanged, this, &CharacterPanel::apply);
+    connect(leadingMode_, &QComboBox::currentIndexChanged, this, [this](int mode) {
+        leading_->setEnabled(hasTypeLayer() && mode == 1);
+        apply();
     });
-    // As on the options bar, a size applies on a pick or Enter, not per keystroke.
-    connect(size_, &QComboBox::activated, this, &CharacterPanel::applySize);
-    connect(size_->lineEdit(), &QLineEdit::editingFinished, this, &CharacterPanel::applySize);
-    // The swatch sets the foreground, which the text colour follows.
-    connect(color_, &QToolButton::clicked, this, [this]() {
-        const QColor picked = ColorPickerDialog::getColor(controller_->typeOptions().color, this,
-                                                          QStringLiteral("Text Color"));
+    connect(kerningMode_, &QComboBox::currentIndexChanged, this, [this](int mode) {
+        kerning_->setEnabled(hasTypeLayer() && mode == 1);
+        apply();
+    });
+    for (QCheckBox* box : {allCaps_, smallCaps_, superscript_, subscript_, underline_,
+                           strikethrough_}) {
+        connect(box, &QCheckBox::toggled, this, &CharacterPanel::apply);
+    }
+    connect(colorButton_, &QToolButton::clicked, this, [this]() {
+        const QColor picked =
+            ColorPickerDialog::getColor(color_, this, tr("Text Color"));
         if (picked.isValid()) {
-            controller_->setForeground(picked);
+            color_ = picked;
+            updateColorIcon();
+            apply();
         }
     });
-    connect(antialias_, &QComboBox::currentIndexChanged, this,
-            [update](int i) { update([i](TypeOptions& o) { o.antialias = i == 1; }); });
+
     refresh();
 }
 
-void CharacterPanel::refresh()
+bool CharacterPanel::hasTypeLayer() const
 {
-    if (!controller_) {
-        return;
+    if (!view_ || !view_->has_document()) {
+        return false;
     }
-    const TypeOptions o = controller_->typeOptions();
-    const QSignalBlocker blockFamily(family_);
-    const QSignalBlocker blockAntialias(antialias_);
-    family_->setCurrentFont(QFont(o.family));
-    size_->setEditText(sizeText(o.size));
-    color_->setIcon(typeSwatchIcon(o.color));
-    antialias_->setCurrentIndex(o.antialias ? 1 : 0);
+    const QString path = view_->active_layer_path();
+    return !path.isEmpty() && view_->layer_is_type(path);
 }
 
-void CharacterPanel::applySize()
+void CharacterPanel::setView(PictureView* view)
 {
-    if (!controller_) {
-        return;
-    }
-    bool ok = false;
-    const double v = QLocale::c().toDouble(size_->currentText(), &ok);
-    if (!ok || v < 1.0 || v > 1296.0) {
-        size_->setEditText(sizeText(controller_->typeOptions().size));
-        return;
-    }
-    if (v != controller_->typeOptions().size) {
-        TypeOptions o = controller_->typeOptions();
-        o.size = v;
-        controller_->setTypeOptions(o);
-    }
+    view_ = view;
+    refresh();
 }
+
+QSize CharacterPanel::minimumSizeHint() const
+{
+    return QSize(0, QWidget::minimumSizeHint().height());
+}
+
+void CharacterPanel::updateColorIcon() { colorButton_->setIcon(swatchIcon(color_)); }
+
+void CharacterPanel::refresh()
+{
+    const bool type = hasTypeLayer();
+    const QString path = type ? view_->active_layer_path() : QString();
+    const CharacterSetting c = type ? type_layer_character_setting(*view_, path)
+                                    : type_default_character_setting();
+    const QString family = type ? familyForFontName(type_layer_font(*view_, path)) : QString();
+
+    const QSignalBlocker blockFamily(family_);
+    const QSignalBlocker blockSize(size_);
+    const QSignalBlocker blockLeadingMode(leadingMode_);
+    const QSignalBlocker blockLeading(leading_);
+    const QSignalBlocker blockKerningMode(kerningMode_);
+    const QSignalBlocker blockKerning(kerning_);
+    const QSignalBlocker blockTracking(tracking_);
+    const QSignalBlocker blockHorizontal(horizontalScale_);
+    const QSignalBlocker blockVertical(verticalScale_);
+    const QSignalBlocker blockBaseline(baselineShift_);
+    const QSignalBlocker blockAntiAlias(antiAlias_);
+    const QSignalBlocker blockAllCaps(allCaps_);
+    const QSignalBlocker blockSmallCaps(smallCaps_);
+    const QSignalBlocker blockSuper(superscript_);
+    const QSignalBlocker blockSub(subscript_);
+    const QSignalBlocker blockUnderline(underline_);
+    const QSignalBlocker blockStrike(strikethrough_);
+
+    if (!family.isEmpty()) {
+        family_->setCurrentFont(QFont(family));
+    }
+    size_->setValue(c.size);
+    leadingMode_->setCurrentIndex(c.leading_mode == 1 ? 1 : 0);
+    leading_->setValue(c.leading_value);
+    kerningMode_->setCurrentIndex(c.kerning_mode == 2 ? 1 : 0);
+    kerning_->setValue(c.kerning_value);
+    tracking_->setValue(c.tracking);
+    horizontalScale_->setValue(c.horizontal_scale);
+    verticalScale_->setValue(c.vertical_scale);
+    baselineShift_->setValue(c.baseline_shift);
+    antiAlias_->setCurrentIndex(c.anti_alias);
+    color_ = QColor::fromRgba(c.color);
+    updateColorIcon();
+    allCaps_->setChecked(c.all_caps);
+    smallCaps_->setChecked(c.small_caps);
+    superscript_->setChecked(c.superscript);
+    subscript_->setChecked(c.subscript);
+    underline_->setChecked(c.underline);
+    strikethrough_->setChecked(c.strikethrough);
+
+    for (QWidget* widget : QList<QWidget*>{family_, size_, leadingMode_, tracking_,
+                                           horizontalScale_, verticalScale_, baselineShift_,
+                                           antiAlias_, colorButton_, allCaps_, smallCaps_,
+                                           superscript_, subscript_, underline_, strikethrough_}) {
+        widget->setEnabled(type);
+    }
+    leading_->setEnabled(type && c.leading_mode == 1);
+    kerningMode_->setEnabled(type);
+    kerning_->setEnabled(type && c.kerning_mode == 2);
+}
+
+void CharacterPanel::apply()
+{
+    if (!hasTypeLayer()) {
+        return;
+    }
+    const QString path = view_->active_layer_path();
+    CharacterSetting c = type_layer_character_setting(*view_, path);
+    c.size = size_->value();
+    c.leading_mode = leadingMode_->currentIndex() == 1 ? 1 : 0;
+    c.leading_value = leading_->value();
+    c.kerning_mode = kerningMode_->currentIndex() == 1 ? 2 : 0;
+    c.kerning_value = kerning_->value();
+    c.tracking = tracking_->value();
+    c.horizontal_scale = horizontalScale_->value();
+    c.vertical_scale = verticalScale_->value();
+    c.baseline_shift = baselineShift_->value();
+    c.anti_alias = antiAlias_->currentIndex();
+    c.color = color_.rgba();
+    c.all_caps = allCaps_->isChecked();
+    c.small_caps = smallCaps_->isChecked();
+    c.superscript = superscript_->isChecked();
+    c.subscript = subscript_->isChecked();
+    c.underline = underline_->isChecked();
+    c.strikethrough = strikethrough_->isChecked();
+
+    const QString family = family_->currentFont().family();
+    registerTypeFont(family);
+    const TypeSetting setting = type_layer_setting(*view_, path);
+    const ParagraphSetting paragraph = type_layer_paragraph_setting(*view_, path);
+    type_update_layer(*view_, path, type_layer_text(*view_, path), family, setting, c, paragraph);
+}
+
+bool CharacterPanel::editingEnabledForTest() const { return size_->isEnabled(); }
+
+void CharacterPanel::commitForTest() { apply(); }
 
 } // namespace pictura

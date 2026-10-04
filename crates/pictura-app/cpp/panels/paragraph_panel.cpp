@@ -1,127 +1,167 @@
 #include "paragraph_panel.h"
 
-#include "options_bar.h"
-#include "tools.h"
+#include "type_fonts.h"
 
-#include <QtWidgets/QButtonGroup>
+#include "pictura_app/src/cxxqt_object.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/type_tools.cxxqt.h"
+
+#include <QtCore/QSignalBlocker>
 #include <QtWidgets/QCheckBox>
+#include <QtWidgets/QComboBox>
 #include <QtWidgets/QDoubleSpinBox>
-#include <QtWidgets/QGridLayout>
-#include <QtWidgets/QHBoxLayout>
-#include <QtWidgets/QLabel>
-#include <QtWidgets/QToolButton>
+#include <QtWidgets/QFormLayout>
+#include <QtWidgets/QGroupBox>
 #include <QtWidgets/QVBoxLayout>
 
 namespace pictura {
 
 namespace {
 
-// The options bar's glyph tint, so the two sets of alignment buttons match.
-const QColor kGlyph(0xd4, 0xd4, 0xd4);
-
-// Laid out left, centre, right as CS6 does; the button ids are the
-// justification (0 left, 1 right, 2 centre).
-constexpr int kOrder[] = {0, 2, 1};
-constexpr const char* kNames[] = {"paragraphAlignLeft", "paragraphAlignRight",
-                                  "paragraphAlignCenter"};
+QDoubleSpinBox* spin(QWidget* parent, const QString& name, double lo, double hi, int decimals)
+{
+    auto* box = new QDoubleSpinBox(parent);
+    box->setObjectName(name);
+    box->setRange(lo, hi);
+    box->setDecimals(decimals);
+    box->setKeyboardTracking(false);
+    return box;
+}
 
 } // namespace
 
 ParagraphPanel::ParagraphPanel(QWidget* parent)
     : QWidget(parent)
 {
-    auto* root = new QVBoxLayout(this);
-    root->setContentsMargins(6, 6, 6, 6);
-    root->setSpacing(6);
+    auto* layout = new QVBoxLayout(this);
+    layout->setContentsMargins(4, 4, 4, 4);
 
-    auto* row = new QHBoxLayout();
-    row->setSpacing(2);
-    align_ = new QButtonGroup(this);
-    for (const int justification : kOrder) {
-        auto* button = new QToolButton(this);
-        button->setObjectName(QLatin1String(kNames[justification]));
-        button->setCheckable(true);
-        button->setAutoRaise(true);
-        button->setIconSize(QSize(20, 20));
-        align_->addButton(button, justification);
-        row->addWidget(button);
-    }
-    auto* justify = new QToolButton(this);
-    justify->setText(QStringLiteral("≡"));
-    justify->setAutoRaise(true);
-    justify->setEnabled(false);
-    justify->setToolTip(QStringLiteral("Justify all lines — not implemented yet"));
-    row->addWidget(justify);
-    row->addStretch(1);
-    root->addLayout(row);
+    auto* paragraphs = new QGroupBox(tr("Paragraph"), this);
+    auto* form = new QFormLayout(paragraphs);
+    justify_ = new QComboBox(paragraphs);
+    justify_->setObjectName(QStringLiteral("paragraphJustify"));
+    justify_->addItems({tr("Left"), tr("Right"), tr("Center"), tr("Justify Last Left"),
+                        tr("Justify Last Right"), tr("Justify Last Center"), tr("Justify All")});
+    form->addRow(tr("Alignment"), justify_);
+    startIndent_ = spin(paragraphs, QStringLiteral("paragraphStartIndent"), -5000.0, 5000.0, 1);
+    form->addRow(tr("Left Indent"), startIndent_);
+    endIndent_ = spin(paragraphs, QStringLiteral("paragraphEndIndent"), -5000.0, 5000.0, 1);
+    form->addRow(tr("Right Indent"), endIndent_);
+    firstLineIndent_ =
+        spin(paragraphs, QStringLiteral("paragraphFirstLineIndent"), -5000.0, 5000.0, 1);
+    form->addRow(tr("First Line Indent"), firstLineIndent_);
+    spaceBefore_ = spin(paragraphs, QStringLiteral("paragraphSpaceBefore"), 0.0, 5000.0, 1);
+    form->addRow(tr("Space Before"), spaceBefore_);
+    spaceAfter_ = spin(paragraphs, QStringLiteral("paragraphSpaceAfter"), 0.0, 5000.0, 1);
+    form->addRow(tr("Space After"), spaceAfter_);
+    hanging_ = new QCheckBox(tr("Hanging Punctuation"), paragraphs);
+    hanging_->setObjectName(QStringLiteral("paragraphHanging"));
+    form->addRow(QString(), hanging_);
+    hyphenate_ = new QCheckBox(tr("Hyphenate"), paragraphs);
+    hyphenate_->setObjectName(QStringLiteral("paragraphHyphenate"));
+    form->addRow(QString(), hyphenate_);
+    composer_ = new QComboBox(paragraphs);
+    composer_->setObjectName(QStringLiteral("paragraphComposer"));
+    composer_->addItems({tr("Single-line"), tr("Every-line")});
+    form->addRow(tr("Composer"), composer_);
+    layout->addWidget(paragraphs);
+    layout->addStretch(1);
 
-    auto* grid = new QGridLayout();
-    grid->setSpacing(4);
-    // One field per row keeps the panel inside the column's minimum width.
-    const auto addField = [&](int row, const QString& label, const QString& tip) {
-        auto* field = new QDoubleSpinBox(this);
-        field->setRange(-1296, 1296);
-        field->setSuffix(QStringLiteral(" pt"));
-        field->setEnabled(false);
-        field->setToolTip(tip + QStringLiteral(" — not implemented yet"));
-        grid->addWidget(new QLabel(label, this), row, 0);
-        grid->addWidget(field, row, 1);
+    const auto commit = [this](QDoubleSpinBox* box) {
+        connect(box, &QAbstractSpinBox::editingFinished, this, &ParagraphPanel::apply);
     };
-    addField(0, QStringLiteral("Indent Left:"), QStringLiteral("Indent left margin"));
-    addField(1, QStringLiteral("Indent Right:"), QStringLiteral("Indent right margin"));
-    addField(2, QStringLiteral("First Line:"), QStringLiteral("Indent first line"));
-    addField(3, QStringLiteral("Space Before:"), QStringLiteral("Add space before paragraph"));
-    addField(4, QStringLiteral("Space After:"), QStringLiteral("Add space after paragraph"));
-    grid->setColumnStretch(1, 1);
-    root->addLayout(grid);
-
-    auto* hyphenate = new QCheckBox(QStringLiteral("Hyphenate"), this);
-    hyphenate->setEnabled(false);
-    hyphenate->setToolTip(QStringLiteral("Hyphenate — needs paragraph text, not implemented yet"));
-    root->addWidget(hyphenate);
-    root->addStretch(1);
+    commit(startIndent_);
+    commit(endIndent_);
+    commit(firstLineIndent_);
+    commit(spaceBefore_);
+    commit(spaceAfter_);
+    connect(justify_, &QComboBox::currentIndexChanged, this, &ParagraphPanel::apply);
+    connect(composer_, &QComboBox::currentIndexChanged, this, &ParagraphPanel::apply);
+    connect(hanging_, &QCheckBox::toggled, this, &ParagraphPanel::apply);
+    connect(hyphenate_, &QCheckBox::toggled, this, &ParagraphPanel::apply);
 
     refresh();
 }
 
-void ParagraphPanel::setController(ToolController* controller)
+bool ParagraphPanel::hasTypeLayer() const
 {
-    controller_ = controller;
-    if (!controller_) {
-        return;
+    if (!view_ || !view_->has_document()) {
+        return false;
     }
-    connect(controller_, &ToolController::typeOptionsChanged, this, &ParagraphPanel::refresh);
-    connect(controller_, &ToolController::activeToolChanged, this, &ParagraphPanel::refresh);
-    connect(align_, &QButtonGroup::idClicked, this, [this](int justification) {
-        TypeOptions o = controller_->typeOptions();
-        o.justification = justification;
-        controller_->setTypeOptions(o);
-    });
+    const QString path = view_->active_layer_path();
+    return !path.isEmpty() && view_->layer_is_type(path);
+}
+
+void ParagraphPanel::setView(PictureView* view)
+{
+    view_ = view;
     refresh();
+}
+
+QSize ParagraphPanel::minimumSizeHint() const
+{
+    return QSize(0, QWidget::minimumSizeHint().height());
 }
 
 void ParagraphPanel::refresh()
 {
-    const ToolId tool = controller_ ? controller_->activeTool() : ToolId::HorizontalType;
-    const bool vertical = tool == ToolId::VerticalType || tool == ToolId::VerticalTypeMask;
-    const bool first = align_->button(0)->icon().isNull();
-    if (first || vertical != vertical_) {
-        vertical_ = vertical;
-        const QStringList tips = vertical_
-            ? QStringList{QStringLiteral("Top align text"), QStringLiteral("Bottom align text"),
-                          QStringLiteral("Center text")}
-            : QStringList{QStringLiteral("Left align text"), QStringLiteral("Right align text"),
-                          QStringLiteral("Center text")};
-        for (const int justification : kOrder) {
-            QAbstractButton* button = align_->button(justification);
-            button->setIcon(typeAlignIcon(justification, vertical_, kGlyph));
-            button->setToolTip(tips.at(justification));
-        }
-    }
-    const int justification = controller_ ? controller_->typeOptions().justification : 0;
-    if (QAbstractButton* button = align_->button(justification)) {
-        button->setChecked(true);
+    const bool type = hasTypeLayer();
+    const QString path = type ? view_->active_layer_path() : QString();
+    const ParagraphSetting p = type ? type_layer_paragraph_setting(*view_, path)
+                                    : type_default_paragraph_setting();
+
+    const QSignalBlocker blockJustify(justify_);
+    const QSignalBlocker blockStart(startIndent_);
+    const QSignalBlocker blockEnd(endIndent_);
+    const QSignalBlocker blockFirst(firstLineIndent_);
+    const QSignalBlocker blockBefore(spaceBefore_);
+    const QSignalBlocker blockAfter(spaceAfter_);
+    const QSignalBlocker blockHanging(hanging_);
+    const QSignalBlocker blockHyphenate(hyphenate_);
+    const QSignalBlocker blockComposer(composer_);
+
+    justify_->setCurrentIndex(qBound(0, p.justify, 6));
+    startIndent_->setValue(p.start_indent);
+    endIndent_->setValue(p.end_indent);
+    firstLineIndent_->setValue(p.first_line_indent);
+    spaceBefore_->setValue(p.space_before);
+    spaceAfter_->setValue(p.space_after);
+    hanging_->setChecked(p.hanging);
+    hyphenate_->setChecked(p.hyphenate);
+    composer_->setCurrentIndex(p.composer == 1 ? 1 : 0);
+
+    for (QWidget* widget : QList<QWidget*>{justify_, startIndent_, endIndent_, firstLineIndent_,
+                                           spaceBefore_, spaceAfter_, hanging_, hyphenate_,
+                                           composer_}) {
+        widget->setEnabled(type);
     }
 }
+
+void ParagraphPanel::apply()
+{
+    if (!hasTypeLayer()) {
+        return;
+    }
+    const QString path = view_->active_layer_path();
+    ParagraphSetting p = type_layer_paragraph_setting(*view_, path);
+    p.justify = justify_->currentIndex();
+    p.start_indent = startIndent_->value();
+    p.end_indent = endIndent_->value();
+    p.first_line_indent = firstLineIndent_->value();
+    p.space_before = spaceBefore_->value();
+    p.space_after = spaceAfter_->value();
+    p.hanging = hanging_->isChecked();
+    p.hyphenate = hyphenate_->isChecked();
+    p.composer = composer_->currentIndex() == 1 ? 1 : 0;
+
+    const QString family = familyForFontName(type_layer_font(*view_, path));
+    registerTypeFont(family);
+    const TypeSetting setting = type_layer_setting(*view_, path);
+    const CharacterSetting character = type_layer_character_setting(*view_, path);
+    type_update_layer(*view_, path, type_layer_text(*view_, path), family, setting, character, p);
+}
+
+bool ParagraphPanel::editingEnabledForTest() const { return justify_->isEnabled(); }
+
+void ParagraphPanel::commitForTest() { apply(); }
 
 } // namespace pictura
