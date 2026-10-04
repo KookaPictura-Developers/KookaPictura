@@ -8,7 +8,7 @@ use crate::color::{
 use crate::common::{map_float, validate};
 use crate::tonal::{
     brightness_contrast, curves, desaturate, equalize, exposure, gradient_map, levels, posterize,
-    threshold,
+    shadows_highlights, threshold,
 };
 use crate::types::{AdjustError, Adjustment};
 
@@ -25,6 +25,7 @@ pub fn apply(adjustment: &Adjustment, buf: &mut PixelBuffer) -> Result<(), Adjus
         Adjustment::PhotoFilter(p) => photo_filter(p, buf, n),
         Adjustment::ChannelMixer(p) => channel_mixer(p, buf, n),
         Adjustment::Vibrance(p) => vibrance(p, buf, n),
+        Adjustment::ShadowsHighlights(p) => shadows_highlights(p, buf, n),
         Adjustment::ColorBalance(p) => color_balance(p, buf, n),
         Adjustment::SelectiveColor(p) => selective_color(p, buf, n),
         Adjustment::Auto(kind) => auto(*kind, buf, n),

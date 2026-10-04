@@ -9,9 +9,10 @@
 //! Brightness/Contrast's legacy flag, Black & White's tint — survives the edit
 //! and a later save. Curves alone is re-encoded from its decoded points.
 //!
-//! ponytail: Gradient Map, Color Lookup, and fill layers have no controls;
-//! Channel Mixer's Monochrome, Hue/Saturation's Colorize and ranges, and Black &
-//! White's tint are not editable here.
+//! ponytail: Gradient Map and fill layers have no controls; Channel Mixer's
+//! Monochrome, Hue/Saturation's Colorize and ranges, and Black & White's tint
+//! are not editable here. Color Lookup edits only its preset (the embedded
+//! `.CUBE` is rebuilt, not patched).
 
 use pictura_adjust::Adjustment;
 use pictura_codec::DescValue;
@@ -79,6 +80,10 @@ enum Field {
     Rgb16(usize),
     /// A descriptor `long` item, written when absent.
     DescLong(&'static [u8]),
+    /// A Color Lookup named preset: the index of the block's `Nm  ` name in
+    /// [`crate::color_lookup_presets::COLOR_LOOKUP_PRESETS`]. Not written here;
+    /// [`set_adjustment_param`] rebuilds the block instead.
+    Preset,
 }
 
 struct Spec {
@@ -175,6 +180,19 @@ fn layout(data: &AdjustmentData, adjustment: &Adjustment) -> Option<Layout> {
                     "Saturation",
                     DescLong(b"Strt"),
                     (-100.0, 100.0),
+                    0.0,
+                ),
+            ],
+        ),
+        Adjustment::ShadowsHighlights(_) => plain(
+            "Shadows/Highlights",
+            vec![
+                slider("shadowAmount", "Shadows Amount", U16(0), (0.0, 100.0), 0.0),
+                slider(
+                    "highlightAmount",
+                    "Highlights Amount",
+                    U16(2),
+                    (0.0, 100.0),
                     0.0,
                 ),
             ],
@@ -361,7 +379,20 @@ fn layout(data: &AdjustmentData, adjustment: &Adjustment) -> Option<Layout> {
             Some("Invert has no settings."),
         )),
         Adjustment::GradientMap(_) => note("Gradient Map"),
-        Adjustment::ColorLookup(_) => note("Color Lookup"),
+        Adjustment::ColorLookup(_) => Some((
+            "Color Lookup",
+            Vec::new(),
+            vec![Spec {
+                key: "preset".into(),
+                label: "Preset".into(),
+                field: Preset,
+                kind: ParamKind::Choice(&crate::color_lookup_presets::COLOR_LOOKUP_PRESETS),
+                group: None,
+                default: 0.0,
+            }],
+            false,
+            None,
+        )),
         Adjustment::SolidFill(_) => note("Solid Color"),
         Adjustment::GradientFill(_) => note("Gradient Fill"),
         Adjustment::PatternFill(_) => note("Pattern Fill"),
@@ -406,6 +437,7 @@ fn read(data: &AdjustmentData, field: Field) -> Option<f64> {
                 _ => return None,
             }
         }
+        Field::Preset => crate::color_lookup::color_lookup_preset_index(data)? as f64,
     })
 }
 
@@ -444,6 +476,8 @@ fn write(data: &mut AdjustmentData, field: Field, value: f64) -> Option<()> {
             *d = pictura_codec::write_descriptor(&obj);
             Some(())
         }
+        // Rebuilt wholesale by `set_adjustment_param`, never patched in place.
+        Field::Preset => None,
     }
 }
 
@@ -487,6 +521,11 @@ pub fn set_adjustment_param(
     value: f64,
 ) -> Option<AdjustmentData> {
     let adjustment = decode_adjustment(data)?;
+    // A Color Lookup preset is not a scalar field: rebuild the embedded `.CUBE`.
+    if key == "preset" && matches!(adjustment, Adjustment::ColorLookup(_)) {
+        let last = (crate::color_lookup_presets::COLOR_LOOKUP_PRESETS.len() - 1) as f64;
+        return crate::set_color_lookup_preset(data, value.clamp(0.0, last).round() as usize);
+    }
     let (_, _, specs, _, _) = layout(data, &adjustment)?;
     let spec = specs.into_iter().find(|s| s.key == key)?;
     let value = match spec.kind {

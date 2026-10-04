@@ -33,5 +33,6 @@ pub use types::{
     ChannelMixerParams, ColorBalanceParams, ColorLookupKind, ColorLookupParams, CurvesParams,
     ExposureParams, GradientFillParams, GradientKind, GradientMapParams, GradientStop,
     HueSaturationParams, LevelsParams, Lut3d, PatternFillParams, PhotoFilterParams,
-    SelectiveColorMethod, SelectiveColorParams, SelectiveRange, VibranceParams,
+    SelectiveColorMethod, SelectiveColorParams, SelectiveRange, ShadowsHighlightsParams,
+    VibranceParams,
 };

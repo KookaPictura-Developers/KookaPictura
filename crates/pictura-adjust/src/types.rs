@@ -87,6 +87,16 @@ pub struct VibranceParams {
     pub saturation: i16,
 }
 
+/// Shadows/Highlights (`shdH`): the two always-visible amount sliders in
+/// `0..=100`. A pointwise approximation of CS6's local operator (see
+/// `docs/04-image-ops/adjustments/shadow-highlight.md`); the surround blur and
+/// advanced options are not modelled.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ShadowsHighlightsParams {
+    pub shadows_amount: f64,
+    pub highlights_amount: f64,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ColorBalanceParams {
     /// Per-band `[cyan-red, magenta-green, yellow-blue]` shifts, -100…+100.
@@ -228,6 +238,9 @@ pub enum Adjustment {
     PhotoFilter(PhotoFilterParams),
     ChannelMixer(ChannelMixerParams),
     Vibrance(VibranceParams),
+    /// Image > Adjustments > Shadows/Highlights: lifts shadows and pulls
+    /// highlights by amount, without a local surround.
+    ShadowsHighlights(ShadowsHighlightsParams),
     ColorBalance(ColorBalanceParams),
     SelectiveColor(SelectiveColorParams),
     Auto(AutoKind),

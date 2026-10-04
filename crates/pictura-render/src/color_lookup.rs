@@ -14,6 +14,7 @@ use pictura_adjust::{Adjustment, ColorLookupKind, ColorLookupParams};
 use pictura_codec::DescValue;
 use pictura_core::AdjustmentData;
 
+use crate::color_lookup_presets::{preset_cube, COLOR_LOOKUP_PRESETS};
 use crate::composite::{be_u16, desc_item};
 
 /// `clrL`: a payload whose 2-byte version is not 1, whose descriptor does not
@@ -131,6 +132,33 @@ pub fn identity_cube() -> Vec<u8> {
     s.into_bytes()
 }
 
+/// The [`COLOR_LOOKUP_PRESETS`] index of `d`'s stored `Nm  ` name, or `None`
+/// when `d` does not carry a preset name (a hand-authored file, or a block that
+/// is not a Color Lookup).
+pub fn color_lookup_preset_index(d: &AdjustmentData) -> Option<usize> {
+    let obj = pictura_codec::read_descriptor(d.data.get(2..)?).ok()?;
+    let name = match desc_item(&obj, b"Nm  ")? {
+        DescValue::Text(s) => s.as_str(),
+        _ => return None,
+    };
+    COLOR_LOOKUP_PRESETS.iter().position(|p| *p == name)
+}
+
+/// A Color Lookup block `d` with its lookup replaced by preset `index`'s
+/// generated cube. `None` when `d` does not decode to a Color Lookup or `index`
+/// is out of range.
+pub fn set_color_lookup_preset(d: &AdjustmentData, index: usize) -> Option<AdjustmentData> {
+    if !matches!(
+        crate::decode_adjustment(d),
+        Some(Adjustment::ColorLookup(_))
+    ) {
+        return None;
+    }
+    let name = *COLOR_LOOKUP_PRESETS.get(index)?;
+    let out = encode_color_lookup(&preset_cube(name)?, name);
+    crate::decode_adjustment(&out).map(|_| out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -229,5 +257,18 @@ mod tests {
             }
             other => panic!("expected a tdta raw value, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn set_preset_rebuilds_and_rejects_bad_input() {
+        let encoded = encode_color_lookup(&identity_cube(), "None");
+        assert_eq!(color_lookup_preset_index(&encoded), Some(0));
+        let changed = set_color_lookup_preset(&encoded, 1).expect("preset 1 applies");
+        assert_eq!(color_lookup_preset_index(&changed), Some(1));
+        assert_ne!(changed.data, encoded.data);
+        assert!(set_color_lookup_preset(&encoded, COLOR_LOOKUP_PRESETS.len()).is_none());
+        let mut other = encoded.clone();
+        other.key = *b"levl";
+        assert!(set_color_lookup_preset(&other, 0).is_none());
     }
 }

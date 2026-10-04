@@ -33,6 +33,8 @@ constexpr Entry kDialogs[] = {
     {"threshold", "Threshold"},
     {"gradient-map", "Gradient Map"},
     {"selective-color", "Selective Color"},
+    {"shadows-highlights", "Shadows/Highlights"},
+    {"color-lookup", "Color Lookup"},
 };
 
 // The commands that apply at once.
@@ -44,8 +46,7 @@ constexpr Entry kDirect[] = {
 
 } // namespace
 
-// ponytail: Color Lookup, Shadows/Highlights, HDR Toning, Match Color, and
-// Replace Color stay disabled stubs.
+// ponytail: HDR Toning, Match Color, and Replace Color stay disabled stubs.
 void PicturaMainWindow::wireImageAdjustments()
 {
     const auto ready = [this]() {

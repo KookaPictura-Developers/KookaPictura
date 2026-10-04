@@ -5,7 +5,7 @@ use crate::common::{
 };
 use crate::types::{
     AdjustError, BrightnessContrastParams, CurvesParams, ExposureParams, GradientMapParams,
-    GradientStop, LevelsParams,
+    GradientStop, LevelsParams, ShadowsHighlightsParams,
 };
 
 // ---------------------------------------------------------------------------
@@ -154,6 +154,52 @@ pub(crate) fn exposure(
         *slot = (linear_to_srgb(lin).clamp(0.0, 1.0) * 255.0).round() as u8;
     }
     map_lut(buf, n, &lut);
+    Ok(())
+}
+
+/// Shadows/Highlights: a pointwise approximation of CS6's local operator.
+///
+/// ponytail: no surround blur, tonal width, or advanced options — each pixel is
+/// lifted/darkened from its own luma. The 0.35/0.30 gains stand in for Adobe's
+/// closed amount→gain mapping. Upgrade with a CS6 grey-ramp baseline.
+pub(crate) fn shadows_highlights(
+    p: &ShadowsHighlightsParams,
+    buf: &mut PixelBuffer,
+    n: usize,
+) -> Result<(), AdjustError> {
+    let sa = p.shadows_amount;
+    let ha = p.highlights_amount;
+    if !sa.is_finite()
+        || !ha.is_finite()
+        || !(0.0..=100.0).contains(&sa)
+        || !(0.0..=100.0).contains(&ha)
+    {
+        return Err(AdjustError::InvalidParams(
+            "shadows/highlights amounts must be within 0..=100".into(),
+        ));
+    }
+    if sa == 0.0 && ha == 0.0 {
+        return Ok(());
+    }
+    let mut lut = [0.0f64; 256];
+    for (i, slot) in lut.iter_mut().enumerate() {
+        let l = i as f64 / 255.0;
+        let st = (1.0 - 2.0 * l).clamp(0.0, 1.0);
+        let sw = st * st * (3.0 - 2.0 * st);
+        let shadow_delta = sw * sa * 0.35;
+        let ht = ((l - 0.5) * 2.0).clamp(0.0, 1.0);
+        let hw = ht * ht * (3.0 - 2.0 * ht);
+        let highlight_delta = hw * ha * 0.30;
+        *slot = shadow_delta - highlight_delta;
+    }
+    let (r, g, b) = planes_mut(buf, n);
+    for ((rv, gv), bv) in r.iter_mut().zip(g.iter_mut()).zip(b.iter_mut()) {
+        let y = luma(*rv as f64, *gv as f64, *bv as f64);
+        let delta = lut[y.round().clamp(0.0, 255.0) as usize];
+        *rv = (*rv as f64 + delta).round().clamp(0.0, 255.0) as u8;
+        *gv = (*gv as f64 + delta).round().clamp(0.0, 255.0) as u8;
+        *bv = (*bv as f64 + delta).round().clamp(0.0, 255.0) as u8;
+    }
     Ok(())
 }
 

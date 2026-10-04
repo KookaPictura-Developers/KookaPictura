@@ -1,6 +1,7 @@
 use pictura_adjust::{
     Adjustment, BlackWhiteParams, BrightnessContrastParams, ExposureParams, GradientMapParams,
-    GradientStop, HueSaturationParams, LevelsParams, PhotoFilterParams, VibranceParams,
+    GradientStop, HueSaturationParams, LevelsParams, PhotoFilterParams, ShadowsHighlightsParams,
+    VibranceParams,
 };
 use pictura_codec::DescValue;
 use pictura_core::{
@@ -427,8 +428,9 @@ fn composite_smart_source(canvas: &mut Canvas, layer: &Layer, doc: &Document) ->
 /// Supported keys: `nvrt`/`invr` (Invert, no payload), `post` (Posterize),
 /// `thrs` (Threshold), `brit` (Brightness/Contrast), `levl` (Levels, composite
 /// record), `hue2`/`hue ` (Hue/Saturation), `expA` (Exposure), `vibA`
-/// (Vibrance), `blwh` (Black & White), `phfl` (Photo Filter, versions 2/3),
-/// `grdm` (Gradient Map, versions 1/3), `blnc` (Color Balance), `mixr`
+/// (Vibrance), `shdH` (Shadows/Highlights), `blwh` (Black & White), `phfl`
+/// (Photo Filter, versions 2/3), `grdm` (Gradient Map, versions 1/3), `blnc`
+/// (Color Balance), `mixr`
 /// (Channel Mixer), `curv` (Curves), `selc` (Selective Color), `SoCo`
 /// (solid-color fill content, either the 4-byte in-house RGBA tuple or the
 /// standard PSD descriptor), `GdFl` (gradient fill content), `PtFl`
@@ -449,6 +451,7 @@ pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
         b"expA" => decode_exposure(&data.data),
         b"phfl" => decode_photo_filter(&data.data),
         b"vibA" => decode_vibrance(&data.data),
+        b"shdH" => decode_shadows_highlights(&data.data),
         b"blwh" => decode_black_white(&data.data),
         b"gdrm" | b"grdm" => decode_gradient_map(&data.data),
         b"blnc" => crate::color_balance::decode_color_balance(&data.data),
@@ -659,6 +662,21 @@ fn decode_vibrance(d: &[u8]) -> Option<Adjustment> {
     Some(Adjustment::Vibrance(VibranceParams {
         vibrance: vibrance as i16,
         saturation: saturation as i16,
+    }))
+}
+
+/// `shdH`: two big-endian `u16` amounts, Shadows then Highlights, each
+/// `0..=100`. An out-of-range amount is rejected so a corrupt file cannot render
+/// a different adjustment.
+fn decode_shadows_highlights(d: &[u8]) -> Option<Adjustment> {
+    let shadows = be_u16(d, 0)?;
+    let highlights = be_u16(d, 2)?;
+    if shadows > 100 || highlights > 100 {
+        return None;
+    }
+    Some(Adjustment::ShadowsHighlights(ShadowsHighlightsParams {
+        shadows_amount: shadows as f64,
+        highlights_amount: highlights as f64,
     }))
 }
 

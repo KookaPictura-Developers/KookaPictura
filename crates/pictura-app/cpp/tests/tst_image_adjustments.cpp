@@ -13,6 +13,7 @@
 
 #include <QtCore/QTemporaryDir>
 #include <QtGui/QAction>
+#include <QtWidgets/QComboBox>
 #include <QtWidgets/QSlider>
 
 #include "qt_test_support.h"
@@ -36,6 +37,7 @@ private slots:
     void cleanup();
     void menuIsLiveOnAnOpenedImage();
     void dialogPreviewsCancelsAndApplies();
+    void colorLookupPresetRebuildsTheLook();
     void directCommandsRespectTheSelection();
 
 private:
@@ -94,8 +96,8 @@ void ImageAdjustmentsTest::menuIsLiveOnAnOpenedImage()
     for (const char* name :
          {"Brightness/Contrast", "Levels", "Curves", "Exposure", "Vibrance", "Hue/Saturation",
           "Color Balance", "Black & White", "Photo Filter", "Channel Mixer", "Invert",
-          "Posterize", "Threshold", "Gradient Map", "Selective Color", "Desaturate", "Equalize",
-          "Auto Tone", "Auto Contrast", "Auto Color"}) {
+          "Posterize", "Threshold", "Gradient Map", "Selective Color", "Shadows/Highlights",
+          "Color Lookup", "Desaturate", "Equalize", "Auto Tone", "Auto Contrast", "Auto Color"}) {
         QAction* action = leaf(QString::fromUtf8(name));
         QVERIFY2(action && action->isEnabled(), name);
     }
@@ -132,6 +134,22 @@ void ImageAdjustmentsTest::dialogPreviewsCancelsAndApplies()
     QCOMPARE(view_->history_count(), history + 1);
     QCOMPARE(view_->history_label(view_->history_index()), QStringLiteral("Hue/Saturation"));
     QVERIFY(view_->undo());
+    QCOMPARE(view_->composite_argb(5, 5), before);
+}
+
+void ImageAdjustmentsTest::colorLookupPresetRebuildsTheLook()
+{
+    QVERIFY(openImage(QColor(100, 150, 200)));
+    const QRgb before = view_->composite_argb(5, 5);
+    {
+        pictura::AdjustmentDialog dialog(view_, block("color-lookup"), QRect());
+        auto* preset = qobject_cast<QComboBox*>(dialog.controlForTest(QStringLiteral("preset")));
+        QVERIFY(preset);
+        QCOMPARE(preset->count(), 7);
+        preset->setCurrentIndex(1); // Warm Contrast, not the identity
+        QVERIFY(view_->composite_argb(5, 5) != before);
+        dialog.reject();
+    }
     QCOMPARE(view_->composite_argb(5, 5), before);
 }
 

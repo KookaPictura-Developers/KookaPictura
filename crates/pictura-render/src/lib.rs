@@ -72,7 +72,12 @@ pub use pictura_adjust::{SelectiveColorMethod, SelectiveRange};
 pub use selective_color::encode_selective_color;
 
 mod color_lookup;
-pub use color_lookup::{encode_color_lookup, identity_cube};
+pub use color_lookup::{
+    color_lookup_preset_index, encode_color_lookup, identity_cube, set_color_lookup_preset,
+};
+
+mod color_lookup_presets;
+pub use color_lookup_presets::{preset_cube, COLOR_LOOKUP_PRESETS};
 
 mod vector_mask;
 
