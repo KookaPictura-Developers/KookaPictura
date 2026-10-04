@@ -659,6 +659,11 @@ void PicturaMainWindow::removeDocument(int index)
         return;
     }
     const DocEntry entry = docs_.takeAt(index);
+    // Replace Color is non-modal and holds the raw view; cancel it before the
+    // view is deleted, or its preview teardown would touch freed memory.
+    if (replaceColorDialog_ && replaceColorDialog_->view() == entry.view) {
+        replaceColorDialog_->reject();
+    }
     for (int i = editSessions_.size() - 1; i >= 0; --i) {
         const SmartObjectEditSession& session = editSessions_.at(i);
         if (session.editor == entry.view || session.origin == entry.view) {

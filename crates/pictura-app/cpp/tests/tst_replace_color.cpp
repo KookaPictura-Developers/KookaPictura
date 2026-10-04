@@ -25,6 +25,7 @@ private slots:
     void initTestCase();
     void cleanup();
     void samplesAndApplies();
+    void rejectsWhenDocumentChangesOrCloses();
 
 private:
     bool openImage(const QColor& color);
@@ -124,6 +125,39 @@ void ReplaceColorTest::samplesAndApplies()
     QCoreApplication::processEvents();
     QCOMPARE(view_->composite_argb(5, 5), changed);
     QCOMPARE(view_->history_count(), history + 1);
+}
+
+void ReplaceColorTest::rejectsWhenDocumentChangesOrCloses()
+{
+    QVERIFY(openImage(QColor(100, 150, 200)));
+    window_->registry()->refresh();
+    QAction* action = leaf();
+    QVERIFY(action && action->isEnabled());
+    action->trigger();
+    QCoreApplication::processEvents();
+    auto* tools = window_->findChild<pictura::ToolController*>();
+    QVERIFY(window_->findChild<pictura::ReplaceColorDialog*>() && tools);
+    QVERIFY(tools->canvasSamplerActive());
+
+    // Switching documents retargets the dock and must cancel the dialog before
+    // it is left holding the previous document's raw view.
+    QVERIFY(window_->newDocument(QStringLiteral("Second"), 20, 20, QStringLiteral("rgb"), 8,
+                                 QStringLiteral("white")));
+    QCoreApplication::processEvents();
+    QVERIFY(!window_->findChild<pictura::ReplaceColorDialog*>());
+    QVERIFY(!tools->canvasSamplerActive());
+
+    // Closing the dialog's document must cancel it too.
+    window_->registry()->refresh();
+    QVERIFY(action->isEnabled());
+    action->trigger();
+    QCoreApplication::processEvents();
+    QVERIFY(window_->findChild<pictura::ReplaceColorDialog*>());
+    QVERIFY(tools->canvasSamplerActive());
+    QVERIFY(window_->closeDocument(window_->activeDocumentIndex(), false));
+    QCoreApplication::processEvents();
+    QVERIFY(!window_->findChild<pictura::ReplaceColorDialog*>());
+    QVERIFY(!tools->canvasSamplerActive());
 }
 
 QTEST_MAIN(ReplaceColorTest)

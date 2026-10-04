@@ -2,7 +2,6 @@
 
 #include <QtCore/QPoint>
 #include <QtCore/QPointF>
-#include <QtCore/QRect>
 #include <QtCore/QString>
 #include <QtCore/QVector>
 #include <QtGui/QColor>
@@ -18,6 +17,7 @@ class QToolButton;
 
 namespace pictura {
 
+class ImageView;
 class PictureView;
 class ToolController;
 
@@ -29,7 +29,7 @@ class ReplaceColorDialog : public QDialog {
     Q_OBJECT
 
 public:
-    ReplaceColorDialog(PictureView* view, ToolController* tools, const QRect& visible,
+    ReplaceColorDialog(PictureView* view, ToolController* tools, ImageView* canvas,
                        QWidget* parent = nullptr);
     ~ReplaceColorDialog() override;
 
@@ -64,7 +64,7 @@ private:
 
     PictureView* view_ = nullptr;
     ToolController* tools_ = nullptr;
-    QRect visible_;
+    ImageView* canvas_ = nullptr;
     QVector<Sample> samples_;
     PickMode mode_ = PickMode::Replace;
     bool previewing_ = false;

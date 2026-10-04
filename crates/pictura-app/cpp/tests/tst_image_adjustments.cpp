@@ -42,6 +42,7 @@ private slots:
     void dialogPreviewsCancelsAndApplies();
     void colorLookupPresetRebuildsTheLook();
     void hdrToningPresetsPopulateControls();
+    void hdrToningRefusedApplyDoesNotAccept();
     void directCommandsRespectTheSelection();
 
 private:
@@ -168,9 +169,9 @@ void ImageAdjustmentsTest::hdrToningPresetsPopulateControls()
     auto* detail = qobject_cast<QSpinBox*>(dialog.controlForTest(QStringLiteral("hdrDetail")));
     auto* saturation = qobject_cast<QSpinBox*>(dialog.controlForTest(QStringLiteral("hdrSaturation")));
     QVERIFY(preset && radius && strength && detail && saturation);
-    // The 17 presets plus Custom.
+    // The 17 presets plus Custom, opening on the control defaults (preset 0).
     QCOMPARE(dialog.presetCount(), 18);
-    QCOMPARE(preset->currentText(), QStringLiteral("Custom"));
+    QCOMPARE(preset->currentText(), QStringLiteral("Default"));
 
     preset->setCurrentIndex(1); // City Twilight
     QCOMPARE(radius->value(), 383);
@@ -181,6 +182,15 @@ void ImageAdjustmentsTest::hdrToningPresetsPopulateControls()
     detail->setValue(7);
     QCOMPARE(preset->currentText(), QStringLiteral("Custom"));
     dialog.reject();
+}
+
+void ImageAdjustmentsTest::hdrToningRefusedApplyDoesNotAccept()
+{
+    // A refused apply (here: no target view) must reject, so `get()` reports the
+    // failure and the frame does not refresh as if the toning landed.
+    pictura::HdrToningDialog dialog(nullptr, QRect());
+    dialog.accept();
+    QCOMPARE(dialog.result(), int(QDialog::Rejected));
 }
 
 void ImageAdjustmentsTest::directCommandsRespectTheSelection()

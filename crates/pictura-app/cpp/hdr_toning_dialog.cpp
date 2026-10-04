@@ -90,7 +90,7 @@ HdrToningDialog::HdrToningDialog(PictureView* view, const QRect& visible, QWidge
         preset_->addItem(QString::fromUtf8(preset.name));
     }
     preset_->addItem(QStringLiteral("Custom"));
-    preset_->setCurrentIndex(kPresetCount);
+    preset_->setCurrentIndex(0);
     preset_->setMinimumWidth(200);
     left->addLayout(labeledRow(QStringLiteral("Preset:"), preset_));
 
@@ -290,10 +290,13 @@ void HdrToningDialog::accept()
                             highlight_->value(), vibrance_->value(), saturation_->value(),
                             QStringLiteral("HDR Toning"))) {
         previewing_ = false;
-    } else {
-        cancelPreview();
+        QDialog::accept();
+        return;
     }
-    QDialog::accept();
+    // A refused apply must not report success: reject so `get()` is false and
+    // the caller reports the refusal instead of refreshing as if it landed.
+    cancelPreview();
+    QDialog::reject();
 }
 
 void HdrToningDialog::reject()

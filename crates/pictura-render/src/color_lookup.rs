@@ -145,14 +145,13 @@ pub fn color_lookup_preset_index(d: &AdjustmentData) -> Option<usize> {
 }
 
 /// A Color Lookup block `d` with its lookup replaced by preset `index`'s
-/// generated cube. `None` when `d` does not decode to a Color Lookup or `index`
-/// is out of range.
+/// generated cube. `None` when `d` does not decode to a `3DLUT` Color Lookup or
+/// `index` is out of range. An abstract-profile or device-link lookup is left
+/// untouched rather than flattened into a 3-D LUT.
 pub fn set_color_lookup_preset(d: &AdjustmentData, index: usize) -> Option<AdjustmentData> {
-    if !matches!(
-        crate::decode_adjustment(d),
-        Some(Adjustment::ColorLookup(_))
-    ) {
-        return None;
+    match crate::decode_adjustment(d) {
+        Some(Adjustment::ColorLookup(params)) if params.kind == ColorLookupKind::ThreeDLut => {}
+        _ => return None,
     }
     let name = *COLOR_LOOKUP_PRESETS.get(index)?;
     let out = encode_color_lookup(&preset_cube(name)?, name);
@@ -270,5 +269,26 @@ mod tests {
         let mut other = encoded.clone();
         other.key = *b"levl";
         assert!(set_color_lookup_preset(&other, 0).is_none());
+    }
+
+    #[test]
+    fn set_preset_refuses_non_three_d_lut_blocks() {
+        for value in [
+            b"abstractProfile".as_slice(),
+            b"deviceLinkProfile".as_slice(),
+        ] {
+            let block = AdjustmentData {
+                key: *b"clrL",
+                data: block_with_lookup_type(value),
+            };
+            assert!(
+                set_color_lookup_preset(&block, 1).is_none(),
+                "a {} block must be left unchanged",
+                String::from_utf8_lossy(value)
+            );
+        }
+        // The 3-D LUT path still rebuilds.
+        let encoded = encode_color_lookup(&identity_cube(), "None");
+        assert!(set_color_lookup_preset(&encoded, 1).is_some());
     }
 }

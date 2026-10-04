@@ -227,6 +227,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/profile_dialog.h
     crates/pictura-app/cpp/hdr_conversion_dialog.h
     crates/pictura-app/cpp/hdr_toning_dialog.h
+    crates/pictura-app/cpp/replace_color_dialog.h
     crates/pictura-app/cpp/pictura_raw_dialog.h
     crates/pictura-app/cpp/warp_preset_dialog.h
     crates/pictura-app/cpp/color_settings_dialog.h

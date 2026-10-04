@@ -1,6 +1,7 @@
 #include "replace_color_dialog.h"
 
 #include "icons.h"
+#include "image_view.h"
 #include "tools.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
@@ -55,11 +56,11 @@ void setSwatchColor(QLabel* label, const QColor& color)
 } // namespace
 
 ReplaceColorDialog::ReplaceColorDialog(PictureView* view, ToolController* tools,
-                                       const QRect& visible, QWidget* parent)
+                                       ImageView* canvas, QWidget* parent)
     : QDialog(parent)
     , view_(view)
     , tools_(tools)
-    , visible_(visible)
+    , canvas_(canvas)
 {
     setWindowTitle(QStringLiteral("Replace Color"));
     setObjectName(QStringLiteral("replaceColorDialog"));
@@ -286,12 +287,16 @@ void ReplaceColorDialog::applyPreview()
     }
     const bool neutral = hueSpin_->value() == 0 && saturationSpin_->value() == 0
         && lightnessSpin_->value() == 0;
+    // The visible section moves as the user pans or zooms, so read it live
+    // rather than the rect captured when the dialog opened.
+    const QRect visible =
+        canvas_ ? canvas_->visibleDocumentRect().toAlignedRect() : QRect();
     if (samples_.isEmpty() || neutral
         || !image_replace_color_preview(*view_, samplesString(), fuzziness_->value(),
                                         localized_->isChecked(), hueSpin_->value(),
                                         saturationSpin_->value(), lightnessSpin_->value(),
-                                        visible_.x(), visible_.y(), visible_.width(),
-                                        visible_.height())) {
+                                        visible.x(), visible.y(), visible.width(),
+                                        visible.height())) {
         cancelPreview();
         return;
     }

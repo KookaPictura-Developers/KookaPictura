@@ -142,9 +142,7 @@ void PicturaMainWindow::wireImageAdjustments()
                 replaceColorDialog_->activateWindow();
                 return;
             }
-            ImageView* canvas = imageView();
-            const QRect visible = canvas ? canvas->visibleDocumentRect().toAlignedRect() : QRect();
-            auto* dialog = new ReplaceColorDialog(view, tools_, visible, this);
+            auto* dialog = new ReplaceColorDialog(view, tools_, imageView(), this);
             dialog->setAttribute(Qt::WA_DeleteOnClose);
             replaceColorDialog_ = dialog;
             connect(dialog, &QDialog::finished, this, [this](int result) {

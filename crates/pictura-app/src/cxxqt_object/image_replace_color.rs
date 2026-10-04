@@ -174,6 +174,21 @@ fn run(
     true
 }
 
+/// Qt pads 8-bit scanlines to a 32-bit boundary; a tightly packed mask must be
+/// stretched to that stride or the `QImage` skews and reads past the buffer
+/// when `width` is not a multiple of four.
+fn grayscale_with_qt_stride(data: &[u8], width: usize, height: usize) -> Vec<u8> {
+    let stride = (width + 3) & !3;
+    if stride == width {
+        return data.to_vec();
+    }
+    let mut padded = vec![0u8; stride * height];
+    for y in 0..height {
+        padded[y * stride..y * stride + width].copy_from_slice(&data[y * width..(y + 1) * width]);
+    }
+    padded
+}
+
 fn image_replace_color_mask(
     view: &PictureView,
     samples: &QString,
@@ -201,11 +216,14 @@ fn image_replace_color_mask(
     if mask.width == 0 || mask.height == 0 {
         return QImage::default();
     }
+    let width = mask.width as usize;
+    let height = mask.height as usize;
+    let bytes = grayscale_with_qt_stride(mask.data.as_ref(), width, height);
     unsafe {
         QImage::from_raw_bytes(
-            mask.data.to_vec(),
-            mask.width as i32,
-            mask.height as i32,
+            bytes,
+            width as i32,
+            height as i32,
             QImageFormat::Format_Grayscale8,
         )
     }
@@ -259,4 +277,32 @@ fn image_replace_color_apply(
         None,
         Some("Replace Color"),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::grayscale_with_qt_stride;
+
+    #[test]
+    fn grayscale_rows_are_padded_to_a_four_byte_stride() {
+        let width = 154usize;
+        let height = 2usize;
+        let data: Vec<u8> = (0..width * height).map(|i| i as u8).collect();
+        let padded = grayscale_with_qt_stride(&data, width, height);
+        let stride = (width + 3) & !3;
+        assert_eq!(stride, 156);
+        assert_eq!(padded.len(), stride * height);
+        for y in 0..height {
+            assert_eq!(
+                &padded[y * stride..y * stride + width],
+                &data[y * width..(y + 1) * width]
+            );
+        }
+    }
+
+    #[test]
+    fn an_already_aligned_width_is_not_padded() {
+        let data: Vec<u8> = (0..12).collect();
+        assert_eq!(grayscale_with_qt_stride(&data, 4, 3), data);
+    }
 }
