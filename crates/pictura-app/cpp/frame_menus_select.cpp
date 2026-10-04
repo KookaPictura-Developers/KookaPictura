@@ -1,5 +1,7 @@
 #include "frame_includes.h"
 
+#include "pictura_app/src/cxxqt_object/color_range.cxxqt.h"
+
 #include <QtWidgets/QInputDialog>
 #include <QtWidgets/QLineEdit>
 
@@ -169,6 +171,38 @@ void PicturaMainWindow::registerSelectHandlers()
     registry_->setEnabledProvider(command_ids::SelectSimilarLayers, [this]() {
         return activeView() && activeView()->has_document() && layersPanel_
             && !layersPanel_->currentPath().isEmpty();
+    });
+
+    // Select > Color Range…: non-modal, so its eyedropper reaches the canvas;
+    // OK selects (or narrows a live selection) as one "Color Range" state.
+    const QString colorRange =
+        commandIdForPath({QStringLiteral("Select"), QStringLiteral("Color Range…")});
+    registry_->setImplemented(colorRange, true);
+    registry_->setHandler(colorRange, [this]() {
+        PictureView* view = activeView();
+        if (!view || !color_range_available(*view)) {
+            return;
+        }
+        if (colorRangeDialog_) {
+            colorRangeDialog_->raise();
+            colorRangeDialog_->activateWindow();
+            return;
+        }
+        auto* dialog = new ColorRangeDialog(view, tools_, this);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        colorRangeDialog_ = dialog;
+        connect(dialog, &QDialog::finished, this, [this, dialog, view](int result) {
+            if (result == QDialog::Accepted && activeView() == view
+                && color_range_apply(*view, dialog->range(), dialog->sampledColor().rgb() & 0xffffffu,
+                                     dialog->fuzziness(), dialog->inverted())) {
+                refresh();
+            }
+        });
+        dialog->show();
+    });
+    registry_->setEnabledProvider(colorRange, [this]() {
+        PictureView* view = activeView();
+        return view && color_range_available(*view);
     });
 }
 

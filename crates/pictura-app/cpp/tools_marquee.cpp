@@ -40,6 +40,12 @@ void ToolController::refreshCursor(Qt::KeyboardModifiers mods)
     if (!canvas_) {
         return;
     }
+    if (canvasSampler_) {
+        const ToolInfo& info = toolInfo(ToolId::Eyedropper);
+        const QCursor c = cursor(toolCursorId(ToolId::Eyedropper, Qt::NoModifier), info.hotspotX,
+                                 info.hotspotY);
+        return canvas_->setCursor(c.pixmap().isNull() ? QCursor(info.cursor) : c);
+    }
     PictureView* hoverView = view();
     const bool ctrlPreview = isSelectionTool(active_) && hoverView
         && mods.testFlag(Qt::ControlModifier) && hoverView->has_selection();

@@ -235,6 +235,9 @@ pub enum Adjustment {
     Posterize(u8),
     Threshold(u8),
     Desaturate,
+    /// Image > Adjustments > Equalize: spread the combined RGB histogram
+    /// evenly over 0..=255 (behavioural approximation; CS6's is unpublished).
+    Equalize,
     GradientMap(GradientMapParams),
     /// Gradient fill content (`GdFl`): a generative fill composited over the
     /// layer rect (see `pictura-render`'s `composite_gradient_fill`), refused

@@ -12,6 +12,8 @@ use std::collections::{HashSet, VecDeque};
 
 use pictura_core::{Channel, Layer, PixelBuffer};
 
+mod color_range;
+pub use color_range::{color_range, ColorRangeSelect};
 mod contour;
 pub use contour::contour;
 
@@ -513,32 +515,6 @@ pub fn similar(
     Ok(out)
 }
 
-/// Select pixels within `fuzziness` of `target` (soft coverage ramp).
-pub fn color_range(img: &PixelBuffer, target: [u8; 3], fuzziness: u8) -> Selection {
-    let n = img.width as usize * img.height as usize;
-    let f = fuzziness as f64;
-    let mut data = vec![0u8; n];
-    for (p, slot) in data.iter_mut().enumerate() {
-        let d = chebyshev(rgb_at(img, p), target) as f64;
-        *slot = if f <= 0.0 {
-            if d == 0.0 {
-                255
-            } else {
-                0
-            }
-        } else if d >= f {
-            0
-        } else {
-            ((1.0 - d / f) * 255.0).round().clamp(0.0, 255.0) as u8
-        };
-    }
-    Selection {
-        width: img.width,
-        height: img.height,
-        data,
-    }
-}
-
 fn blur(src: &[u8], w: usize, h: usize, sigma: f64) -> Vec<u8> {
     let radius = (sigma * 3.0).ceil().max(1.0) as isize;
     let mut kernel = Vec::with_capacity((2 * radius + 1) as usize);
@@ -1022,38 +998,6 @@ mod tests {
         let sel = Selection::none(5, 4);
         assert!(grow(&sel, &img, 0).is_err());
         assert!(similar(&sel, &img, 0).is_err());
-    }
-
-    #[test]
-    fn color_range_monotone_in_fuzziness() {
-        let img = rgb_image(16, 4, |x, _| {
-            let v = (x * 16) as u8;
-            [v, v, v]
-        });
-        let target = [0, 0, 0];
-        let count = |f: u8| {
-            color_range(&img, target, f)
-                .data
-                .iter()
-                .filter(|&&v| v > 0)
-                .count()
-        };
-        let mut previous = 0;
-        for f in [0u8, 10, 40, 100, 200, 255] {
-            let c = count(f);
-            assert!(c >= previous, "fuzziness {f} must not shrink the selection");
-            previous = c;
-        }
-        assert_eq!(
-            color_range(&img, target, 0).data[0],
-            255,
-            "exact hit at f=0"
-        );
-        assert_eq!(color_range(&img, target, 0).data[1], 0, "no hit at f=0");
-        assert!(color_range(&img, target, 40)
-            .data
-            .iter()
-            .any(|&v| v > 0 && v < 255));
     }
 
     #[test]

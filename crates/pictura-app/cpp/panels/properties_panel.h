@@ -1,14 +1,35 @@
 #pragma once
 
 #include <QtCore/QString>
+#include <QtCore/QStringList>
+#include <QtGui/QColor>
 #include <QtWidgets/QWidget>
 
+
+class QComboBox;
+class QFormLayout;
 class QLabel;
+class QStackedWidget;
+class QTimer;
+class QToolButton;
+class QVBoxLayout;
 
 namespace pictura {
 
+class AdjustmentControls;
 class PictureView;
 
+// Window > Properties (PAN-006). For an adjustment layer it builds the
+// adjustment's controls from the engine's per-kind descriptor
+// (`adjustment_page`), edits live on the canvas, and records one "Modify …
+// Layer" state per gesture (a slider release, a field or toggle change, or a
+// pause in a curve drag); the footer carries Clip to Layer, Reset, Toggle
+// Visibility, and Delete. Any other layer gets a read-only summary (kind, size,
+// position, blend, opacity, fill, mask, locks) — a post-CS6 page photorust
+// has, ported on request (#70). With no layer it reads No Properties.
+// Ported from photorust's PropertiesPanel; Kooka's panel column hosts it.
+// ponytail: no adjustment Presets menu, mask page, Previous State toggle, or
+// Auto-Select menu items; the controls an engine descriptor omits are absent.
 class PropertiesPanel : public QWidget {
     Q_OBJECT
 
@@ -18,11 +39,42 @@ public:
     void setView(PictureView* view);
     void refresh();
 
+    // The header: the adjustment's name, "Layer Properties", or "No Properties".
     QString messageForTest() const;
+    // The control editing `key`, for the Qt Test.
+    QWidget* controlForTest(const QString& key) const;
+    QString pathForTest() const { return path_; }
+    // Commit any pending live edit now (as the commit timer would).
+    void commitForTest() { commit(); }
 
 private:
+    // The selected layer's path and its Layers-panel row, or empty / -1.
+    QString activePath(int* row) const;
+    void showNothing();
+    void showLayer(int row);
+    void showAdjustment(const QStringList& page);
+    // Write one parameter live, then (re)arm the commit.
+    void push(const QString& key, double value);
+    void edited();
+    void commit();
+
     PictureView* view_ = nullptr;
-    QLabel* message_ = nullptr;
+    QString path_;
+    QString title_;
+    bool dirty_ = false;
+
+    QLabel* header_ = nullptr;
+    QStackedWidget* stack_ = nullptr;
+    QTimer* commitTimer_ = nullptr;
+
+    AdjustmentControls* controls_ = nullptr;
+    QWidget* footer_ = nullptr;
+    QToolButton* clip_ = nullptr;
+    QToolButton* visible_ = nullptr;
+
+    // Layer page.
+    QFormLayout* info_ = nullptr;
+    QWidget* layerPage_ = nullptr;
 };
 
 } // namespace pictura

@@ -123,6 +123,31 @@ pub(super) fn apply_filter_active_region(
         ));
         return None;
     };
+    let region = apply_op_active_region(rust, &ActiveOp::Filter(filter), commit, preview_region)?;
+    if commit {
+        rust.last_filter = Some((kind.to_string(), params.to_vec()));
+    }
+    Some(region)
+}
+
+/// A destructive edit of the active pixel layer: a filter, or an Image >
+/// Adjustments adjustment (colour only, no neighbourhood).
+pub(super) enum ActiveOp {
+    Filter(pictura_filters::Filter),
+    Adjustment(pictura_render::Adjustment),
+}
+
+/// Apply `op` to the active pixel layer within the selection, as a preview
+/// (re-applied from the pre-preview pixels, restricted to `preview_region`)
+/// or a commit. Returns the region to refresh; `None` with
+/// `filter_error` set when refused.
+pub(super) fn apply_op_active_region(
+    rust: &mut PictureViewRust,
+    op: &ActiveOp,
+    commit: bool,
+    preview_region: Option<pictura_core::PsdRect>,
+) -> Option<Option<pictura_core::PsdRect>> {
+    rust.filter_error = None;
     let (index, gpu_compute) = {
         let Some(doc) = rust.doc.as_ref() else {
             rust.filter_error = Some("there is no document".to_string());
@@ -189,35 +214,55 @@ pub(super) fn apply_filter_active_region(
     } else {
         None
     };
-    let region = (!layer_has_effects(layer)).then_some(layer.rect);
+    let region_out = (!layer_has_effects(layer)).then_some(layer.rect);
+    let filter = match op {
+        ActiveOp::Filter(filter) => filter,
+        ActiveOp::Adjustment(adjustment) => {
+            // A point operation: the visible section alone is exact.
+            let region = match preview_region {
+                Some(visible) if !commit => visible,
+                _ => layer.rect,
+            };
+            let applied =
+                pictura_render::apply_adjustment_region(layer, adjustment, mask.as_ref(), region);
+            return finish_op(rust, applied, commit, index, existing, snapshot, region_out);
+        }
+    };
     let applied = match preview_region {
         Some(visible) if !commit => {
             // Expand the visible rect by the filter's support so the viewport
             // is exact; the renderer clamps it to the layer.
-            let apron = pictura_render::preview_apron(&filter);
+            let apron = pictura_render::preview_apron(filter);
             let expanded = pictura_core::PsdRect {
                 top: visible.top - apron,
                 left: visible.left - apron,
                 bottom: visible.bottom + apron,
                 right: visible.right + apron,
             };
-            pictura_render::apply_filter_region(
-                layer,
-                &filter,
-                mask.as_ref(),
-                gpu_compute,
-                expanded,
-            )
+            pictura_render::apply_filter_region(layer, filter, mask.as_ref(), gpu_compute, expanded)
         }
-        _ => pictura_render::apply_filter(layer, &filter, mask.as_ref(), gpu_compute),
+        _ => pictura_render::apply_filter(layer, filter, mask.as_ref(), gpu_compute),
     };
+    finish_op(rust, applied, commit, index, existing, snapshot, region_out)
+}
+
+/// Record the outcome of [`apply_op_active_region`]: the error, or the open
+/// preview's baseline (cleared on a commit).
+fn finish_op(
+    rust: &mut PictureViewRust,
+    applied: Result<(), pictura_filters::FilterError>,
+    commit: bool,
+    index: usize,
+    existing: Option<pictura_core::Layer>,
+    snapshot: Option<pictura_core::Layer>,
+    region: Option<pictura_core::PsdRect>,
+) -> Option<Option<pictura_core::PsdRect>> {
     if let Err(error) = applied {
         rust.filter_error = Some(error.to_string());
         return None;
     }
     if commit {
         rust.filter_preview = None;
-        rust.last_filter = Some((kind.to_string(), params.to_vec()));
     } else {
         let original = existing.or(snapshot).expect("preview baseline");
         rust.filter_preview = Some(FilterPreview {
