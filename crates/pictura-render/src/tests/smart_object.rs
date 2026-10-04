@@ -1129,3 +1129,84 @@ fn apply_pictura_raw_refuses_without_mutation() {
     );
     assert_eq!(d, before);
 }
+
+#[test]
+fn smart_filter_chain_composites_the_filtered_source() {
+    let settings = PicturaRawSettings {
+        exposure: Some(1.0),
+        ..Default::default()
+    };
+    let plain = smart_layer(
+        "smart",
+        full(4, 4),
+        embedded(payload_of([200, 100, 50])),
+        Vec::new(),
+    );
+    let mut filtered = plain.clone();
+    pictura_codec::attach_pictura_raw_filter(&mut filtered, &settings).expect("filter attaches");
+    let so = filtered.smart_object.clone().unwrap();
+    assert_eq!(so.smart_filters.len(), 1);
+
+    let unfiltered = composite_rgba(&doc(4, 4, vec![plain]));
+    let out = composite_rgba(&doc(4, 4, vec![filtered]));
+    assert_ne!(out.data, unfiltered.data, "the chain changes the composite");
+
+    // The chain runs on the freshly rendered source, so the composite equals a
+    // direct camera-raw render of that source (over the transparent backdrop).
+    let src = render_smart_source(&so, full(4, 4), full(4, 4)).expect("source renders");
+    let expected = pictura_adjust::render_pictura_raw(&src, &settings).expect("raw renders");
+    assert_eq!(out.data, expected.data, "composite matches a source render");
+}
+
+#[test]
+fn disabled_smart_filter_matches_no_filter() {
+    let settings = PicturaRawSettings {
+        exposure: Some(2.0),
+        ..Default::default()
+    };
+    let plain = smart_layer(
+        "smart",
+        full(4, 4),
+        embedded(payload_of([10, 20, 30])),
+        Vec::new(),
+    );
+    let mut disabled = plain.clone();
+    pictura_codec::attach_pictura_raw_filter(&mut disabled, &settings).expect("filter attaches");
+    disabled.smart_object.as_mut().unwrap().smart_filters[0].enabled = false;
+
+    let a = composite_rgba(&doc(4, 4, vec![plain]));
+    let b = composite_rgba(&doc(4, 4, vec![disabled]));
+    assert_eq!(
+        a.data, b.data,
+        "a disabled filter is byte-identical to none"
+    );
+}
+
+#[test]
+fn smart_filter_chain_ignores_a_baked_proxy() {
+    let settings = PicturaRawSettings {
+        exposure: Some(1.0),
+        clarity: Some(20.0),
+        ..Default::default()
+    };
+    let layer = solid(
+        "Raster",
+        full(4, 4),
+        (200, 100, 50),
+        255,
+        BlendMode::Normal,
+        255,
+    );
+    let mut d = doc(4, 4, vec![layer]);
+    assert!(convert_to_smart_object(&mut d, "0"));
+    assert!(apply_pictura_raw(&mut d, "0", &settings));
+
+    let out = composite_rgba(&d);
+    let so = d.layers[0].smart_object.as_ref().unwrap();
+    let src = render_smart_source(so, full(4, 4), full(4, 4)).unwrap();
+    let expected = pictura_adjust::render_pictura_raw(&src, &settings).unwrap();
+    assert_eq!(
+        out.data, expected.data,
+        "the already-baked proxy is not filtered a second time"
+    );
+}

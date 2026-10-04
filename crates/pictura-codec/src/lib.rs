@@ -77,8 +77,8 @@ pub use metadata::{
 };
 pub use patterns::{decode_patterns, PatternPixels};
 pub use pictura_raw::{
-    attach_pictura_raw_filter, decode_pictura_raw_settings, encode_pictura_raw_fltr,
-    CAMERA_RAW_FILTER_ID, CAMERA_RAW_FILTER_NAME,
+    attach_pictura_raw_filter, attach_smart_filter, decode_pictura_raw_settings,
+    encode_pictura_raw_fltr, CAMERA_RAW_FILTER_ID, CAMERA_RAW_FILTER_NAME,
 };
 // Re-exported so the app's profile commands can name a `Profile` without adding
 // a direct dependency on `pictura-color`.

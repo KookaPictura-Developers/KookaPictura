@@ -117,6 +117,49 @@ fn authored_smart_object_round_trips() {
 }
 
 #[test]
+fn authored_smart_object_with_filter_round_trips() {
+    let settings = PicturaRawSettings {
+        temperature: Some(-20.0),
+        exposure: Some(0.5),
+        ..Default::default()
+    };
+    let options = crate::write_descriptor(&crate::encode_pictura_raw_fltr(&settings));
+    let mut so = embedded("source.psb", payload(0x55, 256));
+    so.smart_filters = vec![SmartFilter {
+        filter_id: crate::CAMERA_RAW_FILTER_ID,
+        name: crate::CAMERA_RAW_FILTER_NAME.to_string(),
+        enabled: false,
+        options,
+    }];
+    so.filter_mask_enabled = false;
+    so.filter_mask_linked = true;
+    so.filter_mask_extend_with_white = false;
+
+    let doc = doc_with(vec![smart_layer("Smart", so)]);
+    let back = read_psd(&write_psd(&doc).unwrap()).unwrap();
+    let so = back.layers[0]
+        .smart_object
+        .as_ref()
+        .expect("authored smart object resolves");
+
+    assert_eq!(so.smart_filters.len(), 1, "the filter survives write/read");
+    let filter = &so.smart_filters[0];
+    assert_eq!(filter.filter_id, crate::CAMERA_RAW_FILTER_ID);
+    assert_eq!(filter.name, crate::CAMERA_RAW_FILTER_NAME);
+    assert!(!filter.enabled, "the disabled flag survives");
+    assert_eq!(
+        crate::decode_pictura_raw_settings(&filter.options),
+        settings
+    );
+    assert!(!so.filter_mask_enabled, "group mask enable survives");
+    assert!(so.filter_mask_linked, "group mask linked survives");
+    assert!(
+        !so.filter_mask_extend_with_white,
+        "group extend-with-white survives"
+    );
+}
+
+#[test]
 fn authored_shared_payload_emits_one_record() {
     let data = payload(0xabcd, 1024);
     let doc = doc_with(vec![

@@ -49,7 +49,7 @@ fn resolve_layer(layer: &mut Layer, records: &[LinkedRecord]) {
 fn build_smart_object(layer: &Layer, records: &[LinkedRecord]) -> Option<SmartObject> {
     let block = find_config_block(&layer.extra_blocks)?;
     let raw = block.data.clone();
-    let (uuid, smart_filters) = match &block.key {
+    let (uuid, smart_filters, flags) = match &block.key {
         b"SoLd" | b"SoLE" => {
             let DescValue::Object { items, .. } = read_layer_data_descriptor(&raw).ok()? else {
                 return None;
@@ -58,9 +58,14 @@ fn build_smart_object(layer: &Layer, records: &[LinkedRecord]) -> Option<SmartOb
                 Some(DescValue::Text(id)) => id.trim_end_matches('\0').to_string(),
                 _ => return None,
             };
-            (uuid, parse_filter_fx(&items))
+            let (filters, flags) = parse_filter_fx(&items);
+            (uuid, filters, flags)
         }
-        b"plLd" | b"PlLd" => (read_placed_layer_uuid(&raw).ok()?, Vec::new()),
+        b"plLd" | b"PlLd" => (
+            read_placed_layer_uuid(&raw).ok()?,
+            Vec::new(),
+            FilterFxFlags::default(),
+        ),
         _ => return None,
     };
 
@@ -68,6 +73,9 @@ fn build_smart_object(layer: &Layer, records: &[LinkedRecord]) -> Option<SmartOb
         uuid: uuid.clone(),
         config_descriptor: raw,
         smart_filters,
+        filter_mask_enabled: flags.mask_enabled,
+        filter_mask_linked: flags.mask_linked,
+        filter_mask_extend_with_white: flags.extend_with_white,
         ..Default::default()
     };
     let Some(record) = records.iter().find(|r| r.uuid == uuid) else {
@@ -91,19 +99,45 @@ fn build_smart_object(layer: &Layer, records: &[LinkedRecord]) -> Option<SmartOb
     Some(so)
 }
 
+/// The group-level flags carried by a smart object's `filterFXStyle`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FilterFxFlags {
+    mask_enabled: bool,
+    mask_linked: bool,
+    extend_with_white: bool,
+}
+
+impl Default for FilterFxFlags {
+    fn default() -> Self {
+        // Match the writer's defaults for a missing `filterFXStyle`.
+        Self {
+            mask_enabled: true,
+            mask_linked: false,
+            extend_with_white: true,
+        }
+    }
+}
+
 /// Build the typed `SmartFilter` list from a parsed `SoLd`/`SoLE` descriptor:
-/// `filterFX` (Object) -> `filterFXList` (List of Objects) -> one entry each.
-fn parse_filter_fx(items: &[(Vec<u8>, DescValue)]) -> Vec<SmartFilter> {
+/// `filterFX` (Object) -> `filterFXList` (List of Objects) -> one entry each,
+/// plus the group-level `filterMask*` flags on the `filterFX` object.
+fn parse_filter_fx(items: &[(Vec<u8>, DescValue)]) -> (Vec<SmartFilter>, FilterFxFlags) {
     let Some(DescValue::Object {
         items: filter_fx, ..
     }) = get_object_item(items, b"filterFX")
     else {
-        return Vec::new();
+        return (Vec::new(), FilterFxFlags::default());
+    };
+    let flags = FilterFxFlags {
+        mask_enabled: bool_item(filter_fx, b"filterMaskEnable", true),
+        mask_linked: bool_item(filter_fx, b"filterMaskLinked", false),
+        extend_with_white: bool_item(filter_fx, b"filterMaskExtendWithWhite", true),
     };
     let Some(DescValue::List(list)) = get_object_item(filter_fx, b"filterFXList") else {
-        return Vec::new();
+        return (Vec::new(), flags);
     };
-    list.iter()
+    let filters = list
+        .iter()
         .filter_map(|value| {
             let DescValue::Object { items: item, .. } = value else {
                 return None;
@@ -132,7 +166,16 @@ fn parse_filter_fx(items: &[(Vec<u8>, DescValue)]) -> Vec<SmartFilter> {
                 options,
             })
         })
-        .collect()
+        .collect();
+    (filters, flags)
+}
+
+/// Read a bool item, falling back to `default` when missing or the wrong type.
+fn bool_item(items: &[(Vec<u8>, DescValue)], key: &[u8], default: bool) -> bool {
+    match get_object_item(items, key) {
+        Some(DescValue::Bool(value)) => *value,
+        _ => default,
+    }
 }
 
 /// The config tagged block, preferring the modern descriptors over the legacy

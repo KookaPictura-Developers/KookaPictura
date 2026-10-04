@@ -5,8 +5,8 @@ use pictura_adjust::{
 };
 use pictura_codec::DescValue;
 use pictura_core::{
-    AdjustmentData, BlendIf, BlendMode, Document, Layer, PixelBuffer, PsdRect, SmartObject,
-    SmartObjectKind,
+    AdjustmentData, BlendIf, BlendMode, Document, Layer, LayerMask, PixelBuffer, PsdRect,
+    SmartObject, SmartObjectKind,
 };
 
 pub(crate) use crate::blend::blend;
@@ -259,6 +259,7 @@ pub(crate) fn composite_layer_inner(
     } else if let Some(adjustment) = crate::fill::decode_layer_fill(layer) {
         composite_adjustment(canvas, layer, doc, &adjustment);
     } else if layer.adjustment.is_none()
+        && !crate::smart_filter::composite_smart_filtered_source(canvas, layer, doc)
         && !composite_smart_source(canvas, layer, doc)
         && !crate::text_render::composite_type_source(canvas, layer, doc)
     {
@@ -1072,9 +1073,15 @@ pub(crate) fn mask_alpha(layer: &Layer, x: i32, y: i32) -> u8 {
 
 /// The raster layer-mask sample at a canvas pixel; `255` when absent/disabled.
 pub(crate) fn raster_mask_alpha(layer: &Layer, x: i32, y: i32) -> u8 {
-    let Some(mask) = &layer.mask else {
-        return 255;
-    };
+    match layer.mask.as_ref() {
+        Some(mask) => mask_value(mask, x, y),
+        None => 255,
+    }
+}
+
+/// A raster mask's sample at a document pixel; `255` when disabled or with no
+/// decoded pixels, `default_color` outside its rect.
+pub(crate) fn mask_value(mask: &LayerMask, x: i32, y: i32) -> u8 {
     if mask.disabled {
         return 255;
     }

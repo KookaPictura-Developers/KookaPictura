@@ -13,7 +13,7 @@
 use pictura_core::{Layer, PicturaRawSettings, SmartFilter, SmartObjectKind};
 
 use crate::common::Reader;
-use crate::descriptor::{self, get_object_item_mut, set_object_item, DescValue};
+use crate::descriptor::{self, get_object_item, get_object_item_mut, set_object_item, DescValue};
 use crate::error::PsdError;
 
 // The two constants below, the `Fltr` class ID `Adobe Camera Raw Filter`, the
@@ -92,8 +92,13 @@ pub fn encode_pictura_raw_fltr(settings: &PicturaRawSettings) -> DescValue {
 
 /// The `filterFX` descriptor for a smart object's filter list, or `None` when
 /// the list is empty. Used by the writer to author an `SoLd` for a converted
-/// smart object and by [`attach_pictura_raw_filter`] to insert one.
-pub(crate) fn author_filter_fx(filters: &[SmartFilter]) -> Option<DescValue> {
+/// smart object and by [`attach_smart_filter`] to insert one.
+pub(crate) fn author_filter_fx(
+    filters: &[SmartFilter],
+    mask_enabled: bool,
+    mask_linked: bool,
+    extend_with_white: bool,
+) -> Option<DescValue> {
     let items: Vec<DescValue> = filters.iter().map(filter_item).collect();
     if items.is_empty() {
         return None;
@@ -103,9 +108,12 @@ pub(crate) fn author_filter_fx(filters: &[SmartFilter]) -> Option<DescValue> {
         vec![
             (b"enab", DescValue::Bool(true)),
             (b"validAtPosition", DescValue::Bool(true)),
-            (b"filterMaskEnable", DescValue::Bool(true)),
-            (b"filterMaskLinked", DescValue::Bool(false)),
-            (b"filterMaskExtendWithWhite", DescValue::Bool(true)),
+            (b"filterMaskEnable", DescValue::Bool(mask_enabled)),
+            (b"filterMaskLinked", DescValue::Bool(mask_linked)),
+            (
+                b"filterMaskExtendWithWhite",
+                DescValue::Bool(extend_with_white),
+            ),
             (b"filterFXList", DescValue::List(items)),
         ],
     ))
@@ -172,51 +180,22 @@ fn filter_item(filter: &SmartFilter) -> DescValue {
     )
 }
 
-/// Attach the camera-raw smart filter carrying `settings` to `layer`.
+/// Attach `filter` to `layer`'s smart object, replacing an existing filter with
+/// the same `filter_id` or appending a new one.
 ///
 /// Three cases, in order:
-/// 1. The layer already has a camera-raw smart filter: the settings' fields are
-///    written into its existing `Fltr` in place (unmodeled keys survive) when a
-///    preserved `SoLd`/`SoLE` block exists; without one, only the
-///    `SmartObject.smart_filters` entry is updated, since the writer authors the
-///    block from it on save.
-/// 2. A preserved `SoLd`/`SoLE` has a `filterFX` list without a camera-raw
-///    entry: the entry is appended; no list, one is created. Every other
-///    descriptor key survives.
-/// 3. An authored/parsed embedded object with no preserved block: the writer
-///    authors the `SoLd` from `SmartObject.smart_filters` on save.
-///
-/// Returns `Err` without mutating for a layer with no smart object, or a
-/// preserved block whose signature is neither `soLD` nor `soLE`.
-pub fn attach_pictura_raw_filter(
-    layer: &mut Layer,
-    settings: &PicturaRawSettings,
-) -> Result<(), PsdError> {
-    if let Some(index) = layer.smart_object.as_ref().and_then(|so| {
-        so.smart_filters
-            .iter()
-            .position(|f| f.filter_id == CAMERA_RAW_FILTER_ID)
-    }) {
-        if config_block_index(layer).is_some() {
-            if let DescValue::Object { items, .. } = encode_pictura_raw_fltr(settings) {
-                for (key, value) in items {
-                    crate::smart_filter::set_camera_raw_option(layer, index, &key, value)?;
-                }
-            }
-        } else if let Some(so) = layer.smart_object.as_mut() {
-            so.smart_filters[index].options =
-                descriptor::write_descriptor(&encode_pictura_raw_fltr(settings));
-        }
-        return Ok(());
-    }
-
+/// 1. A preserved `SoLd`/`SoLE` block is parsed, its `filterFXList` rewritten,
+///    and the layer's typed view kept consistent. Every other descriptor key
+///    survives.
+/// 2. A smart object with no preserved block records the filter on
+///    `SmartObject.smart_filters`; the writer authors the block on save.
+/// 3. Anything else is refused without mutating: a layer with no smart object,
+///    a non-embedded object, or a legacy `plLd`/`PlLd` placed layer (no `SoLd`
+///    to carry a filter and the writer does not author one beside it).
+pub fn attach_smart_filter(layer: &mut Layer, filter: SmartFilter) -> Result<(), PsdError> {
     if let Some(block_idx) = config_block_index(layer) {
-        return insert_into_config(layer, block_idx, settings);
+        return insert_into_config(layer, block_idx, &filter);
     }
-
-    // ponytail: a legacy `plLd`/`PlLd` placed layer has no `SoLd` to carry a
-    // filter and the writer does not author one beside it; refuse rather than
-    // report success that would not survive a save.
     if layer
         .extra_blocks
         .iter()
@@ -226,15 +205,31 @@ pub fn attach_pictura_raw_filter(
             "legacy placed-layer smart object".into(),
         ));
     }
-
     let Some(so) = layer.smart_object.as_mut() else {
         return Err(malformed("layer has no smart object"));
     };
     if so.kind != SmartObjectKind::Embedded || so.payload.is_none() {
         return Err(malformed("smart object is not an embedded payload"));
     }
-    so.smart_filters = vec![new_filter(settings)];
+    match so
+        .smart_filters
+        .iter_mut()
+        .find(|f| f.filter_id == filter.filter_id)
+    {
+        Some(existing) => *existing = filter,
+        None => so.smart_filters.push(filter),
+    }
     Ok(())
+}
+
+/// Attach the camera-raw smart filter carrying `settings` to `layer`.
+///
+/// A thin wrapper over [`attach_smart_filter`] with the camera-raw filter id.
+pub fn attach_pictura_raw_filter(
+    layer: &mut Layer,
+    settings: &PicturaRawSettings,
+) -> Result<(), PsdError> {
+    attach_smart_filter(layer, new_filter(settings))
 }
 
 fn config_block_index(layer: &Layer) -> Option<usize> {
@@ -254,12 +249,38 @@ fn new_filter(settings: &PicturaRawSettings) -> SmartFilter {
     }
 }
 
-/// Insert or append the camera-raw entry in a preserved `SoLd`/`SoLE`
-/// descriptor, rewriting the block and the layer's typed view consistently.
+/// The group flags the writer authors for a fresh `filterFX` on `layer`.
+fn group_flags(layer: &Layer) -> (bool, bool, bool) {
+    layer
+        .smart_object
+        .as_ref()
+        .map(|so| {
+            (
+                so.filter_mask_enabled,
+                so.filter_mask_linked,
+                so.filter_mask_extend_with_white,
+            )
+        })
+        .unwrap_or((true, false, true))
+}
+
+/// The `filterID` of a `filterFXList` entry, or `None` when absent.
+fn entry_filter_id(entry: &DescValue) -> Option<i32> {
+    let DescValue::Object { items, .. } = entry else {
+        return None;
+    };
+    match get_object_item(items, b"filterID") {
+        Some(DescValue::Long(id)) => Some(*id),
+        _ => None,
+    }
+}
+
+/// Insert or replace the entry in a preserved `SoLd`/`SoLE` descriptor,
+/// rewriting the block and the layer's typed view consistently.
 fn insert_into_config(
     layer: &mut Layer,
     block_idx: usize,
-    settings: &PicturaRawSettings,
+    filter: &SmartFilter,
 ) -> Result<(), PsdError> {
     let data = &layer.extra_blocks[block_idx].data;
     let mut r = Reader::new(data);
@@ -279,16 +300,27 @@ fn insert_into_config(
         Some(DescValue::Object {
             items: filter_fx, ..
         }) => match get_object_item_mut(filter_fx, b"filterFXList") {
-            Some(DescValue::List(list)) => list.push(filter_item(&new_filter(settings))),
+            Some(DescValue::List(list)) => {
+                match list
+                    .iter_mut()
+                    .find(|entry| entry_filter_id(entry) == Some(filter.filter_id))
+                {
+                    Some(entry) => *entry = filter_item(filter),
+                    None => list.push(filter_item(filter)),
+                }
+            }
             _ => return Err(malformed("filterFXList is not a list")),
         },
         Some(_) => return Err(malformed("filterFX is not an object")),
-        None => set_object_item(
-            items,
-            b"filterFX",
-            author_filter_fx(std::slice::from_ref(&new_filter(settings)))
-                .ok_or_else(|| malformed("no filter to author"))?,
-        ),
+        None => {
+            let (enabled, linked, extend) = group_flags(layer);
+            set_object_item(
+                items,
+                b"filterFX",
+                author_filter_fx(std::slice::from_ref(filter), enabled, linked, extend)
+                    .ok_or_else(|| malformed("no filter to author"))?,
+            );
+        }
     }
 
     let mut new_data = data[..8].to_vec();
@@ -301,7 +333,14 @@ fn insert_into_config(
     layer.extra_blocks[block_idx].data = new_data.clone();
     if let Some(so) = layer.smart_object.as_mut() {
         so.config_descriptor = new_data;
-        so.smart_filters.push(new_filter(settings));
+        match so
+            .smart_filters
+            .iter_mut()
+            .find(|f| f.filter_id == filter.filter_id)
+        {
+            Some(existing) => *existing = filter.clone(),
+            None => so.smart_filters.push(filter.clone()),
+        }
     }
     Ok(())
 }
