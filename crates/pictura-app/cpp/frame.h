@@ -2,6 +2,7 @@
 
 #include <QtCore/QByteArray>
 #include <QtCore/QList>
+#include <QtCore/QPointer>
 #include <QtCore/QPoint>
 #include <QtCore/QSet>
 #include <QtCore/QString>
@@ -41,6 +42,7 @@ class InfoPanel;
 class LayersPanel;
 class NavigatorPanel;
 class NotesPanel;
+class ColorRangeDialog;
 class PathsPanel;
 class OptionsBar;
 class PanelColumn;
@@ -317,6 +319,7 @@ private:
     NavigatorPanel* navigatorPanel_ = nullptr;
     ColorState* colorState_ = nullptr;
     ColorPanel* colorPanel_ = nullptr;
+    QPointer<ColorRangeDialog> colorRangeDialog_;
     SwatchesPanel* swatchesPanel_ = nullptr;
     InfoPanel* infoPanel_ = nullptr;
     HistogramPanel* histogramPanel_ = nullptr;

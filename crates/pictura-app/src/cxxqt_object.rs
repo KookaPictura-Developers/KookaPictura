@@ -4,6 +4,7 @@ mod align;
 mod annotations;
 mod clipboard;
 mod clipping;
+mod color_range;
 mod crop_group;
 mod export;
 mod filter_map;
@@ -434,8 +435,7 @@ pub mod qobject {
         #[qinvokable]
         fn apply_visibility(self: Pin<&mut Self>, paths: &QStringList, label: &QString) -> i32;
 
-        /// Delete every eligible path. Returns the number deleted; records one
-        /// undo state only when non-zero.
+        /// Delete every eligible path. Returns the number deleted; records one undo state only when non-zero.
         #[qinvokable]
         fn delete_layers(self: Pin<&mut Self>, paths: &QStringList) -> i32;
 

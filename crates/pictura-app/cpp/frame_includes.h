@@ -17,6 +17,7 @@
 #include "pictura_raw_dialog.h"
 #include "panels/brush_panel.h"
 #include "panels/channels_panel.h"
+#include "color_range_dialog.h"
 #include "panels/character_panel.h"
 #include "panels/clone_source_panel.h"
 #include "panels/glyphs_panel.h"

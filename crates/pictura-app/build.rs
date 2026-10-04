@@ -47,6 +47,7 @@ fn main() {
                 "src/cxxqt_object/align.rs",
                 "src/cxxqt_object/annotations.rs",
                 "src/cxxqt_object/clipping.rs",
+                "src/cxxqt_object/color_range.rs",
                 "src/cxxqt_object/clipboard.rs",
                 "src/cxxqt_object/crop_group.rs",
                 "src/cxxqt_object/export.rs",

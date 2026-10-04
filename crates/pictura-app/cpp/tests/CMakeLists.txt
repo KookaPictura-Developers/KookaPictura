@@ -21,6 +21,7 @@ set(PICTURA_QT_TESTS
     tst_channels_panel
     tst_icon_assets
     tst_filter_menu
+    tst_color_range
 )
 
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/qt-test-results)

@@ -92,6 +92,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/filter_preview_dialog.h
     crates/pictura-app/cpp/color_settings_dialog.cpp
     crates/pictura-app/cpp/color_picker_dialog.cpp
+    crates/pictura-app/cpp/color_range_dialog.cpp
     crates/pictura-app/cpp/export_as_dialog.cpp
     crates/pictura-app/cpp/image_view.cpp
     crates/pictura-app/cpp/image_view_overlays.cpp
