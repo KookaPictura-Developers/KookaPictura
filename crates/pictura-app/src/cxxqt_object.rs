@@ -1,5 +1,6 @@
 //! The cxx-qt bridge: a Rust `QObject` that owns the image shown by the shell.
 #![allow(clippy::too_many_arguments)] // brush parameter lists mirror the C++ API
+mod adjustment_edit;
 mod align;
 mod annotations;
 mod clipboard;
@@ -1091,8 +1092,7 @@ pub mod qobject {
             alt: bool,
         ) -> i32;
 
-        /// Hover hit-test for the transform overlay cursor; 0..=7 scale,
-        /// 8 rotate, 9 move, -1 outside. Read-only.
+        /// Hover hit-test for the transform overlay cursor; 0..=7 scale, 8 rotate, 9 move, -1 outside. Read-only.
         #[qinvokable]
         fn transform_hit_test(&self, x: f64, y: f64, zoom: f64) -> i32;
 
