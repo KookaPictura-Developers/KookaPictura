@@ -151,6 +151,9 @@ public:
     QRect rowThumbRectForTest(const QString& path) const;
     QRect rowEyeRectForTest(const QString& path) const;
     QRect rowNameRectForTest(const QString& path) const;
+    // The row's rect in viewport coordinates, resolved through the panel's own
+    // proxy mapping (so a test clicks the same row the panel would toggle).
+    QRect rowViewportRectForTest(const QString& path) const;
 
     // Follow-up cosmetics hooks: the centred eye gutter, its separator, and the
     // custom drop indicator kind after a synthesized hover (0 above, 1 below,

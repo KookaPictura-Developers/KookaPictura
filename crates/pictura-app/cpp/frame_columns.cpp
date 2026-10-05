@@ -1,5 +1,9 @@
 #include "frame_includes.h"
 
+#include <QtGui/QResizeEvent>
+#include <QtGui/QShowEvent>
+#include <QtWidgets/QStyle>
+
 namespace pictura {
 
 void PicturaMainWindow::wirePanelColumn(PanelColumn* column)
@@ -20,14 +24,177 @@ void PicturaMainWindow::reapplyColumnStretch()
     for (int i = 0; i < centerSplitter_->count(); ++i) {
         centerSplitter_->setStretchFactor(i, centerSplitter_->widget(i) == tabs_ ? 1 : 0);
     }
-    // The Tools column is fixed-size; a live handle beside it would offer a drag
-    // that can only resize the toolbar. Handles between two widget panes stay.
+    // The visible width drags come from the widget columns' own 4 px grips on
+    // their workspace-facing edge; the splitter's handles are kept inert so a
+    // column edge exposes exactly one resize affordance. A 0-width handle still
+    // carries a style cursor over the column edge, so it is made arrow-cursorred
+    // and mouse-transparent rather than left as a dead second drag point.
     for (int i = 0; i + 1 < centerSplitter_->count(); ++i) {
         if (QSplitterHandle* handle = centerSplitter_->handle(i)) {
-            const bool besideTools = centerSplitter_->widget(i) == toolsColumn_
-                                     || centerSplitter_->widget(i + 1) == toolsColumn_;
-            handle->setEnabled(!besideTools);
+            handle->setCursor(Qt::ArrowCursor);
+            handle->setAttribute(Qt::WA_TransparentForMouseEvents, true);
         }
+    }
+    // A column's side can change when it is re-ordered; re-place each grip on
+    // its workspace-facing edge.
+    for (int i = 0; i < centerSplitter_->count(); ++i) {
+        if (auto* column = qobject_cast<PanelColumn*>(centerSplitter_->widget(i))) {
+            column->updateResizeGrip();
+        }
+    }
+}
+
+void PicturaMainWindow::onCenterSplitterMoved(int, int)
+{
+    // A divider between two widget columns resizes only the outer column;
+    // restore the workspace-side column and let the workspace absorb the change.
+    // `resizeAnchorColumn_` is set on the handle press.
+    if (!adjustingColumns_ && resizeAnchorColumn_ && resizeAnchorWidth_ > 0
+        && centerSplitter_) {
+        const int ai = centerSplitter_->indexOf(resizeAnchorColumn_);
+        const int ti = centerSplitter_->indexOf(tabs_);
+        if (ai >= 0 && ti >= 0 && ai != ti) {
+            QList<int> sizes = centerSplitter_->sizes();
+            if (ai < sizes.size() && ti < sizes.size()) {
+                adjustingColumns_ = true;
+                const int delta = sizes.at(ai) - resizeAnchorWidth_;
+                sizes[ai] = resizeAnchorWidth_;
+                sizes[ti] += delta;
+                centerSplitter_->setSizes(sizes);
+                adjustingColumns_ = false;
+            }
+        }
+    }
+    if (sessionSaveTimer_) {
+        sessionSaveTimer_->start();
+    }
+}
+
+void PicturaMainWindow::beginWidgetColumnResize(PanelColumn* column, int globalX)
+{
+    resizeHandleIndex_ = -1;
+    resizeAnchorColumn_ = nullptr;
+    resizeAnchorWidth_ = -1;
+    if (!centerSplitter_ || !tabs_ || !column) {
+        return;
+    }
+    const int k = centerSplitter_->indexOf(column);
+    if (k < 0) {
+        return;
+    }
+    // The workspace-facing edge: a Left column's right side is handle k, a Right
+    // column's left side is handle k-1.
+    const int handleIndex = sideOf(column) == PanelSide::Left ? k : k - 1;
+    if (handleIndex < 0 || handleIndex + 1 >= centerSplitter_->count()) {
+        return;
+    }
+    QSplitterHandle* handle = centerSplitter_->handle(handleIndex);
+    if (!handle) {
+        return;
+    }
+    resizeHandleIndex_ = handleIndex;
+    resizeStartGlobalX_ = globalX;
+    resizeStartSizes_ = centerSplitter_->sizes();
+    // Mirror the handle-press anchor: between two widget columns the
+    // workspace-side one stays fixed and the workspace absorbs the delta.
+    auto* left = qobject_cast<PanelColumn*>(centerSplitter_->widget(handleIndex));
+    auto* right = qobject_cast<PanelColumn*>(centerSplitter_->widget(handleIndex + 1));
+    if (left && right) {
+        const int tabsIndex = centerSplitter_->indexOf(tabs_);
+        PanelColumn* anchor = handleIndex < tabsIndex ? right : left;
+        resizeAnchorColumn_ = anchor;
+        resizeAnchorWidth_ = anchor->width();
+    }
+}
+
+void PicturaMainWindow::updateWidgetColumnResize(int globalX)
+{
+    if (resizeHandleIndex_ < 0 || !centerSplitter_) {
+        return;
+    }
+    const int handle = resizeHandleIndex_;
+    if (handle + 1 >= resizeStartSizes_.size()) {
+        return;
+    }
+    // moveSplitter is protected, so move the handle by trading width between the
+    // two panes it separates, from the press-time sizes.
+    const int delta = globalX - resizeStartGlobalX_;
+    QList<int> sizes = resizeStartSizes_;
+    sizes[handle] += delta;
+    sizes[handle + 1] -= delta;
+    centerSplitter_->setSizes(sizes);
+}
+
+void PicturaMainWindow::endWidgetColumnResize()
+{
+    resizeHandleIndex_ = -1;
+    resizeStartSizes_.clear();
+    resizeAnchorColumn_ = nullptr;
+    resizeAnchorWidth_ = -1;
+}
+
+void PicturaMainWindow::resizeEvent(QResizeEvent* event)
+{
+    QMainWindow::resizeEvent(event);
+    layoutWorkspaceFrame();
+}
+
+void PicturaMainWindow::showEvent(QShowEvent* event)
+{
+    QMainWindow::showEvent(event);
+    layoutWorkspaceFrame();
+}
+
+void PicturaMainWindow::layoutWorkspaceFrame()
+{
+    if (!workspaceFrameLeft_ || !workspaceFrameRight_) {
+        return;
+    }
+    int top = 0;
+    if (menuBar() && menuBar()->isVisible()) {
+        top = menuBar()->geometry().bottom() + 1;
+    }
+    int bottom = height();
+    if (statusBar() && statusBar()->isVisible()) {
+        bottom = statusBar()->geometry().top();
+    }
+    const int lineHeight = qMax(0, bottom - top);
+    // The 1 px border is the inner edge of the 3 px band; the outer 2 px is the
+    // window `${panel}` showing through the splitter's reserved margin.
+    workspaceFrameLeft_->setGeometry(kWorkspaceFrameWidth - 1, top, 1, lineHeight);
+    workspaceFrameRight_->setGeometry(qMax(0, width() - kWorkspaceFrameWidth), top, 1,
+                                      lineHeight);
+    workspaceFrameLeft_->raise();
+    workspaceFrameRight_->raise();
+    updateColumnFrameEdges();
+}
+
+void PicturaMainWindow::updateColumnFrameEdges()
+{
+    if (!centerSplitter_) {
+        return;
+    }
+    const int count = centerSplitter_->count();
+    for (int i = 0; i < count; ++i) {
+        auto* column = qobject_cast<PanelColumn*>(centerSplitter_->widget(i));
+        if (!column) {
+            continue;
+        }
+        // Only the outermost column abuts the band frame; its outer side
+        // border is suppressed there so the 1 px frame line is not doubled.
+        // This includes the Tools column, whose reserved slot sits at the band's
+        // left edge. The tool column is not width-draggable.
+        const QString edge = i == 0 ? QStringLiteral("left")
+                             : i == count - 1 ? QStringLiteral("right")
+                                              : QString();
+        column->setBorderEdgeSuppressed(edge == QStringLiteral("left"),
+                                        edge == QStringLiteral("right"));
+        if (column->property("frameEdge").toString() == edge) {
+            continue;
+        }
+        column->setProperty("frameEdge", edge);
+        column->style()->unpolish(column);
+        column->style()->polish(column);
     }
 }
 

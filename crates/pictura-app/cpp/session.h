@@ -34,6 +34,8 @@ struct SessionState {
     QJsonArray panelColumns;
     int schemaVersion = 9;
     QStringList recent;
+    QByteArray windowGeometry;       // QMainWindow::saveGeometry(), empty = default
+    bool windowMaximized = false;    // restored as Qt::WindowMaximized on launch
 };
 
 // Path of the session store, $XDG_STATE_HOME/kooka-pictura/state.json.

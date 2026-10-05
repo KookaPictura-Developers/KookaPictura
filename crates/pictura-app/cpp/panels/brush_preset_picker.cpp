@@ -2,6 +2,7 @@
 
 #include "../paint_tip.h"
 #include "../tools.h"
+#include "jump_slider.h"
 
 #include "pictura_app/src/cxxqt_object/paint_tools.cxxqt.h"
 
@@ -169,7 +170,7 @@ BrushPresetPicker::BrushPresetPicker(ToolController* controller, QWidget* parent
         (*value)->setSuffix(suffix);
         (*value)->setFixedWidth(80);
         top->addWidget(*value, row, 2);
-        *slider = new QSlider(Qt::Horizontal, this);
+        *slider = new JumpSlider(Qt::Horizontal, this);
         (*slider)->setObjectName(name + QStringLiteral("Slider"));
         top->addWidget(*slider, row + 1, 1, 1, 2);
     };

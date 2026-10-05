@@ -38,7 +38,17 @@ QPixmap SvgIconEngine::render(const QSize& pixelSize, QIcon::Mode mode) const
 
     QSvgRenderer renderer(resourcePath_);
     QPainter painter(&pixmap);
-    renderer.render(&painter);
+    // Fit the SVG inside the canvas preserving its aspect ratio (letterboxed and
+    // centred), so a square icon is never squashed into a non-square canvas.
+    const QSizeF canvas(pixelSize);
+    QSizeF fitted = QSizeF(renderer.defaultSize()).scaled(canvas, Qt::KeepAspectRatio);
+    if (fitted.isEmpty()) {
+        fitted = canvas;
+    }
+    const QRectF target((canvas.width() - fitted.width()) / 2.0,
+                        (canvas.height() - fitted.height()) / 2.0, fitted.width(),
+                        fitted.height());
+    renderer.render(&painter, target);
     // SourceIn keeps the rendered alpha and replaces the colour, so alpha
     // gradients in the source become gradients of the tint. The whole set sits
     // at 80% opacity so it reads a touch softer against the chrome.

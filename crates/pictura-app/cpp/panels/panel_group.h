@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QtCore/QHash>
 #include <QtCore/QList>
 #include <QtCore/QPoint>
 #include <QtCore/QRect>
@@ -80,10 +81,12 @@ public:
     QToolButton* floatCloseButton() const { return floatCloseButton_; }
 
     // Test hooks.
-    int tabPositionForTest() const;
-    int titleCountForTest() const;
+    int tabPositionForTest() const;    int titleCountForTest() const;
     QStringList titleTextsForTest() const;
     QIcon titleIconForTest(const QString& title) const;
+    bool tabHasIconForTest(const QString& title) const;
+    QIcon iconicIconForTest(const QString& objectName) const;
+    int headerCornerRightMarginForTest() const;
     bool groupLabelForTest() const;
     bool isMinimizedForTest() const { return minimized_; }
     void setMinimizedForTest(bool minimized) { setMinimized(minimized); }
@@ -160,6 +163,9 @@ private:
     QToolButton* floatToggle_ = nullptr;
     QToolButton* floatCloseButton_ = nullptr;
     QMenu* headerMenu_ = nullptr;
+    // M48: panel icons are kept off the normal tabs but retained here for the
+    // iconic/icon strip and the tab-drag payloads, keyed by panel objectName.
+    QHash<QString, QIcon> panelIcons_;
     bool collapsedToIcons_ = false;
     bool minimized_ = false;
     int savedMaxHeight_ = QWIDGETSIZE_MAX;

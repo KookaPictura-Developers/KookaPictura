@@ -3,6 +3,7 @@
 #include "layers_panel.h"
 
 #include "icons.h"
+#include "theme.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 
@@ -660,15 +661,25 @@ public:
     void setThumbnailSize(int size) { thumbnailSize_ = qMax(0, size); }
 
     // Fixed eye gutter and per-level content indent, in row-local pixels.
-    static constexpr int kEyeColumn = 26;
+    static constexpr int kEyeColumn = 30;
+    static constexpr int kContentPad = 6;
     static constexpr int kIndent = 14;
     static constexpr int kChevronWidth = 16;
+    // The gap between the thumbnail (or clip glyph) and the name text.
+    static constexpr int kNameGap = 8;
+
+    /// True when `pos` (row-local) lands in the non-selectable visibility
+    /// gutter at the row's left edge.
+    bool eyeColumnContains(const QRect& itemRect, const QPoint& pos) const
+    {
+        return pos.x() >= itemRect.left() && pos.x() < itemRect.left() + kEyeColumn;
+    }
 
     /// The eye's hit-target inside a row's content rect (as painted): a square
     /// glyph centred in the fixed gutter with equal left/right padding.
     QRect eyeRect(const QRect& itemRect) const
     {
-        const int width = qBound(14, itemRect.height(), 20);
+        const int width = qBound(12, itemRect.height(), 16);
         return QRect(itemRect.left() + (kEyeColumn - width) / 2, itemRect.top(), width,
                      itemRect.height());
     }
@@ -687,7 +698,7 @@ public:
     int contentLeft(const QRect& itemRect, const QModelIndex& index) const
     {
         const int depth = index.data(DepthRole).toInt();
-        int x = itemRect.left() + kEyeColumn + qMax(0, depth) * kIndent;
+        int x = itemRect.left() + kEyeColumn + kContentPad + qMax(0, depth) * kIndent;
         if (index.data(ExpandableRole).toBool()) {
             x += kChevronWidth;
         }
@@ -698,7 +709,8 @@ public:
     QRect chevronRect(const QRect& itemRect, int depth) const
     {
         const int side = qMin(kChevronWidth, itemRect.height());
-        const int left = itemRect.left() + kEyeColumn + qMax(0, depth) * kIndent;
+        const int left =
+            itemRect.left() + kEyeColumn + kContentPad + qMax(0, depth) * kIndent;
         return QRect(left, itemRect.top() + (itemRect.height() - side) / 2, side, side);
     }
 
@@ -763,7 +775,7 @@ public:
         if (thumb > 0) {
             x += thumb;
         }
-        x += 4;
+        x += kNameGap;
         int right = itemRect.right() - 3;
         const int badge = qMax(12, thumb > 0 ? thumb : 16);
         if (index.data(LockRole).toInt() != 0
@@ -796,6 +808,11 @@ public:
         font.setUnderline(index.data(ClipBaseRole).toBool()
                           || index.data(LayerRowLinkedRole).toBool()
                           || index.data(LayerRowPlacedRole).toBool());
+        if (base.pixelSize() > 0) {
+            font.setPixelSize(qMax(1, base.pixelSize() - 2));
+        } else if (base.pointSize() > 0) {
+            font.setPointSize(qMax(1, base.pointSize() - 2));
+        }
         return font;
     }
 
@@ -809,30 +826,27 @@ public:
     void paint(QPainter* painter, const QStyleOptionViewItem& option,
                const QModelIndex& index) const override
     {
-        // Let the style paint the row background/selection only, then draw the
-        // CS6 anatomy ourselves on top. The selection highlight is clipped away
-        // from the eye column and that column is repainted with the base colour,
-        // so the visibility toggle stays legible.
-        QStyleOptionViewItem opt = option;
-        initStyleOption(&opt, index);
-        opt.text.clear();
-        opt.icon = QIcon();
-        const QWidget* widget = opt.widget;
-        QStyle* style = widget ? widget->style() : QApplication::style();
-
+        // Paint the surfaces ourselves rather than through the style: the list
+        // is a flat base and every row sits one shade step lighter, so the rows
+        // read as a distinct surface. A selected row takes the neutral
+        // list-selection grey (the same value the stylesheet uses) instead of
+        // the palette's blue Highlight, and the eye gutter is refilled with the
+        // row surface so it matches an unselected row.
         const QRect rect = option.rect;
         const int height = qMax(kRowHeightFloor, rect.height());
         const bool selected = option.state & QStyle::State_Selected;
+        // The item surface matches the widget surface; the gutter and a selected
+        // row step off it so the row still reads. Never the palette blue.
+        const QColor rowSurface = Theme::shade(option.palette.color(QPalette::Window), 1);
+        const QColor selectionSurface = Theme::shade(option.palette.color(QPalette::Window), 3);
+        const QColor gutterSurface = Theme::shade(option.palette.color(QPalette::Window), 0);
+        painter->fillRect(rect, selected ? selectionSurface : rowSurface);
         const QRect eye = eyeRect(rect);
-        if (selected) {
-            painter->save();
-            painter->setClipRegion(QRegion(rect).subtracted(QRegion(eye)));
-            style->drawControl(QStyle::CE_ItemViewItem, &opt, painter, widget);
-            painter->restore();
-            painter->fillRect(eye, option.palette.color(QPalette::Base));
-        } else {
-            style->drawControl(QStyle::CE_ItemViewItem, &opt, painter, widget);
-        }
+        // The visibility gutter never takes the selection highlight.
+        painter->fillRect(QRect(rect.left(), rect.top(), kEyeColumn, height), gutterSurface);
+        // 1 px bottom rule per row.
+        painter->fillRect(QRect(rect.left(), rect.bottom(), rect.width(), 1),
+                          option.palette.color(QPalette::Base).darker(115));
 
         painter->save();
         const QPalette& palette = option.palette;
@@ -859,7 +873,7 @@ public:
         int x = contentLeft(rect, index);
         QRect thumbBox;
         if (index.data(ExpandableRole).toBool()) {
-            const auto* treeView = qobject_cast<const QTreeView*>(opt.widget);
+            const auto* treeView = qobject_cast<const QTreeView*>(option.widget);
             const bool expanded = treeView && treeView->isExpanded(index);
             paintAsset(painter, chevronRect(rect, depth),
                        expanded ? QStringLiteral("layers.disclosureDown")
@@ -931,7 +945,7 @@ public:
                 }
             }
         }
-        x += thumb + 4;
+        x += thumb + kNameGap;
 
         // Right-aligned badges: the lock badge at the far edge, then fx, then
         // the mask thumbnail. A null icon/thumbnail is omitted.
@@ -979,7 +993,7 @@ public:
 
         // White 1 px corner brackets one pixel outside the outline, only for the
         // singular active layer.
-        if (thumb > 0 && singularActive(selected, opt.widget, index)) {
+        if (thumb > 0 && singularActive(selected, option.widget, index)) {
             paintBrackets(painter, thumbBox.adjusted(-1, -1, 1, 1));
         }
         painter->restore();

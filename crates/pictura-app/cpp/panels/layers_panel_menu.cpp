@@ -50,7 +50,7 @@ void LayersPanel::showContextMenu(const QPoint& pos)
     if (!index.isValid()) {
         return;
     }
-    if (delegate_->eyeRect(tree_->visualRect(index)).contains(pos)) {
+    if (delegate_->eyeColumnContains(tree_->visualRect(index), pos)) {
         showEyeMenu(pos, index);
         return;
     }

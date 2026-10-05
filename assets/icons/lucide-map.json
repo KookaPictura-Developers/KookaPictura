@@ -344,6 +344,11 @@
       "slug": "chevrons-right",
       "match": "good"
     },
+    "panel.menu": {
+      "kind": "lucide",
+      "slug": "menu",
+      "match": "exact"
+    },
     "path.delete": {
       "kind": "lucide",
       "slug": "trash",

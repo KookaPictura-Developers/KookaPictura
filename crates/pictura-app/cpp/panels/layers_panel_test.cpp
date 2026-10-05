@@ -820,6 +820,16 @@ QRect LayersPanel::rowNameRectForTest(const QString& path) const
     return delegate_->nameRect(QRect(0, 0, vr.width(), vr.height()), index);
 }
 
+QRect LayersPanel::rowViewportRectForTest(const QString& path) const
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || !tree_) {
+        return {};
+    }
+    tree_->scrollTo(index);
+    return tree_->visualRect(index);
+}
+
 bool LayersPanel::eyeGutterCentredForTest(const QString& path) const
 {
     const QModelIndex index = proxyIndexForPath(path);
@@ -902,6 +912,7 @@ QImage LayersPanel::rowImageForTest(const QString& path) const
     QStyleOptionViewItem option;
     option.rect = QRect(0, 0, vr.width(), vr.height());
     QPalette palette = tree_->palette();
+    palette.setColor(QPalette::Window, base);
     palette.setColor(QPalette::Base, base);
     palette.setColor(QPalette::Highlight, QColor(0, 0, 255));
     palette.setColor(QPalette::HighlightedText, QColor(255, 255, 255));

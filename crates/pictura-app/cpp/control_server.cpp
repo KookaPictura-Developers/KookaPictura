@@ -64,6 +64,7 @@ bool isModalCommand(const QString& id)
         QString::fromLatin1(command_ids::EditColorSettings),
         QString::fromLatin1(command_ids::EditPreferencesGeneral),
         QString::fromLatin1(command_ids::EditPreferencesInterface),
+        QString::fromLatin1(command_ids::EditPreferencesPerformance),
         QString::fromLatin1(command_ids::LayerNewLayer),
         QString::fromLatin1(command_ids::LayerNewGroup),
         QString::fromLatin1(command_ids::LayerNewGroupFromLayers),

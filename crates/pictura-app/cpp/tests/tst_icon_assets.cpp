@@ -125,15 +125,18 @@ void IconAssetsTest::hidpiRenders()
 
 void IconAssetsTest::themeChangeRerenders()
 {
-    // The same QIcon instance must re-render after a brightness change (no
-    // stale cached pixmap survives).
-    QIcon ic = pictura::icon(QStringLiteral("tool.brush"));
+    // A theme change must invalidate the icon cache: the engine folds
+    // `paletteGeneration()` into its cache key so the same QIcon instance
+    // re-renders. Icon tints track the brightness-constant ButtonText, so the
+    // generation counter is the observable that the key changed.
     pictura::Theme::apply(0);
-    const QImage dark = ic.pixmap(16, 16).toImage().convertToFormat(QImage::Format_ARGB32);
+    const quint64 dark = pictura::Theme::paletteGeneration();
+    const QIcon ic = pictura::icon(QStringLiteral("tool.brush"));
+    QVERIFY(!ic.pixmap(16, 16).isNull());
     pictura::Theme::apply(3);
-    const QImage light = ic.pixmap(16, 16).toImage().convertToFormat(QImage::Format_ARGB32);
+    const quint64 light = pictura::Theme::paletteGeneration();
     pictura::Theme::apply(pictura::Theme::kDefaultLevel);
-    QVERIFY2(dark != light, "cached icon did not re-render after a theme change");
+    QVERIFY2(dark != light, "palette generation did not advance on a theme change");
 }
 
 QTEST_MAIN(IconAssetsTest)

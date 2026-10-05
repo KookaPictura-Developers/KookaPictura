@@ -1,5 +1,6 @@
 #include "panel_group.h"
 
+#include "fonts.h"
 #include "icons.h"
 
 #include <QtCore/QEvent>
@@ -7,6 +8,7 @@
 #include <QtGui/QMouseEvent>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QBoxLayout>
+#include <QtWidgets/QGraphicsOpacityEffect>
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QSizePolicy>
@@ -22,6 +24,7 @@ constexpr int kIconButtonSize = 34;
 constexpr int kIconPixmapSize = 24;
 constexpr int kHeaderButtonSize = 18;
 constexpr int kHeaderGripWidth = 16;
+constexpr int kHeaderCornerRightMargin = 2;
 // M47: matches the docked strip's `kCompactGripHeight`, so the collapsed float
 // row and a strip group box share the same grip band.
 constexpr int kIconGripHeight = 10;
@@ -69,9 +72,10 @@ PanelGroup::PanelGroup(QWidget* parent)
     tabs_->setObjectName(QStringLiteral("panelGroupTabs"));
     tabs_->setTabPosition(QTabWidget::North);
     tabs_->setDocumentMode(true);
+    tabs_->tabBar()->setDrawBase(false);
     tabs_->tabBar()->installEventFilter(this);
     // M43: name the panel-group tab bar so the scoped theme can make the active
-    // tab use the pane `${base}` colour without touching the document tabs. The
+    // tab use the pane `${panel}` colour without touching the document tabs. The
     // tab bar elides instead of forcing width, and does not expand, so the
     // corner `▾` button keeps its place at the column minimum width.
     tabs_->tabBar()->setObjectName(QStringLiteral("panelTabBar"));
@@ -82,6 +86,10 @@ PanelGroup::PanelGroup(QWidget* parent)
     // The theme draws the header's top rule itself; Qt's base frame would
     // break it under the current tab.
     tabs_->tabBar()->setDrawBase(false);
+    // The theme paints the tab label two pixels under the app default, but
+    // QTabBar computes its elision from the bar's own font; match the painted
+    // size and weight so a label only elides when it genuinely does not fit.
+    applyTabBarFont(tabs_->tabBar());
     layout->addWidget(tabs_);
 
     // M47: a lowered band behind the tab bar and corner paints the header strip
@@ -97,7 +105,7 @@ PanelGroup::PanelGroup(QWidget* parent)
     headerCorner_->setObjectName(QStringLiteral("panelWidgetCorner"));
     headerCorner_->setAttribute(Qt::WA_StyledBackground, true);
     auto* cornerLayout = new QHBoxLayout(headerCorner_);
-    cornerLayout->setContentsMargins(0, 0, 0, 0);
+    cornerLayout->setContentsMargins(0, 0, kHeaderCornerRightMargin, 0);
     cornerLayout->setSpacing(0);
 
     // M47: a reserved blank drag grip, the first corner child so it sits
@@ -114,7 +122,13 @@ PanelGroup::PanelGroup(QWidget* parent)
 
     headerButton_ = new QToolButton(headerCorner_);
     headerButton_->setObjectName(QStringLiteral("panelWidgetMenu"));
-    headerButton_->setText(QStringLiteral("\u25BE"));
+    headerButton_->setIcon(icon(QStringLiteral("panel.menu")));
+    // The glyph runs smaller than the button and a touch translucent so it reads
+    // as a quiet affordance rather than a filled control.
+    headerButton_->setIconSize(QSize(13, 13));
+    auto* menuOpacity = new QGraphicsOpacityEffect(headerButton_);
+    menuOpacity->setOpacity(0.9);
+    headerButton_->setGraphicsEffect(menuOpacity);
     headerButton_->setAutoRaise(true);
     headerButton_->setPopupMode(QToolButton::InstantPopup);
     headerButton_->setFixedSize(kHeaderButtonSize, kHeaderButtonSize);
@@ -161,7 +175,8 @@ void PanelGroup::addPanel(QWidget* panel, const QString& title, const QIcon& ico
     if (!panel) {
         return;
     }
-    const int index = tabs_->addTab(panel, icon, title);
+    panelIcons_.insert(panel->objectName(), icon);
+    const int index = tabs_->addTab(panel, QIcon(), title);
     tabs_->setTabToolTip(index, title);
     if (tabs_->count() == 1) {
         setObjectName(QStringLiteral("panelGroup_") + panel->objectName());
@@ -186,11 +201,9 @@ void PanelGroup::setPanelOrder(const QStringList& order)
     const int count = tabs_->count();
     QList<QWidget*> panels;
     QStringList titles;
-    QList<QIcon> icons;
     for (int i = 0; i < count; ++i) {
         panels << tabs_->widget(i);
         titles << tabs_->tabText(i);
-        icons << tabs_->tabIcon(i);
     }
     QList<int> sequence;
     for (const QString& name : order) {
@@ -212,7 +225,7 @@ void PanelGroup::setPanelOrder(const QStringList& order)
         tabs_->removeTab(i);
     }
     for (int index : sequence) {
-        tabs_->addTab(panels.at(index), icons.at(index), titles.at(index));
+        tabs_->addTab(panels.at(index), QIcon(), titles.at(index));
     }
     if (collapsedToIcons_) {
         rebuildIconRow();
@@ -339,7 +352,7 @@ QIcon PanelGroup::iconForPanel(const QString& objectName) const
     for (int i = 0; i < tabs_->count(); ++i) {
         QWidget* panel = tabs_->widget(i);
         if (panel && panel->objectName() == objectName) {
-            return tabs_->tabIcon(i);
+            return panelIcons_.value(objectName);
         }
     }
     return QIcon();
@@ -354,7 +367,7 @@ QWidget* PanelGroup::takePanel(const QString& objectName, QString* title, QIcon*
                 *title = tabs_->tabText(i);
             }
             if (icon) {
-                *icon = tabs_->tabIcon(i);
+                *icon = panelIcons_.value(objectName);
             }
             if (index) {
                 *index = i;
@@ -375,7 +388,8 @@ void PanelGroup::insertPanel(QWidget* panel, const QString& title, const QIcon& 
         return;
     }
     index = qBound(0, index, tabs_->count());
-    const int actual = tabs_->insertTab(index, panel, icon, title);
+    panelIcons_.insert(panel->objectName(), icon);
+    const int actual = tabs_->insertTab(index, panel, QIcon(), title);
     tabs_->setTabToolTip(actual, title);
     tabs_->setCurrentIndex(actual);
     if (collapsedToIcons_) {
@@ -537,13 +551,23 @@ void PanelGroup::updateFloatToggle()
     floatToggle_->setToolTip(collapsedToIcons_ ? tr("Expand panels")
                                                : tr("Collapse panels to icons"));
 }
-
 void PanelGroup::updateHeaderBand()
 {
     if (!headerBand_ || !tabs_ || !tabs_->tabBar()) {
         return;
     }
-    headerBand_->setGeometry(0, 0, tabs_->width(), tabs_->tabBar()->height());
+    const int barHeight = tabs_->tabBar()->height();
+    // QTabWidget bottom-aligns the corner to the tab bar, which drops the menu
+    // button below the tab text. Give the corner symmetric padding so its own
+    // height matches the tab bar and the centred layout lifts the button level
+    // with the tabs.
+    if (headerCorner_ && headerCorner_->layout() && barHeight > 0) {
+        const int pad = qMax(0, (barHeight - kHeaderButtonSize) / 2);
+        headerCorner_->layout()->setContentsMargins(0, pad, kHeaderCornerRightMargin, pad);
+    }
+    const int bandHeight =
+        qMax(barHeight, headerCorner_ ? headerCorner_->height() : 0);
+    headerBand_->setGeometry(0, 0, tabs_->width(), bandHeight);
     headerBand_->lower();
 }
 
@@ -564,7 +588,8 @@ void PanelGroup::rebuildIconRow()
             continue;
         }
         iconRowLayout_->addWidget(
-            makeIconButton(tabs_->tabIcon(i), tabs_->tabText(i), panel->objectName()));
+            makeIconButton(panelIcons_.value(panel->objectName()), tabs_->tabText(i),
+                           panel->objectName()));
     }
     iconRowLayout_->addStretch(1);
 }

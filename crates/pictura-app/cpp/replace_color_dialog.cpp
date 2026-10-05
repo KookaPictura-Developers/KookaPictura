@@ -2,6 +2,7 @@
 
 #include "icons.h"
 #include "image_view.h"
+#include "panels/jump_slider.h"
 #include "tools.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
@@ -117,7 +118,7 @@ void ReplaceColorDialog::buildUi()
     // --- Fuzziness ---------------------------------------------------------
     auto* fuzzRow = new QHBoxLayout;
     fuzzRow->addWidget(new QLabel(QStringLiteral("Fuzziness:"), this));
-    fuzzinessSlider_ = new QSlider(Qt::Horizontal, this);
+    fuzzinessSlider_ = new JumpSlider(Qt::Horizontal, this);
     fuzzinessSlider_->setRange(0, 200);
     fuzzinessSlider_->setValue(40);
     fuzzRow->addWidget(fuzzinessSlider_, 1);
@@ -153,7 +154,7 @@ void ReplaceColorDialog::buildUi()
     const auto makeRow = [&](int row, const QString& label, int min, int max, QSlider*& slider,
                              QSpinBox*& spin, const QString& name) {
         grid->addWidget(new QLabel(label, this), row, 0);
-        slider = new QSlider(Qt::Horizontal, this);
+        slider = new JumpSlider(Qt::Horizontal, this);
         slider->setRange(min, max);
         grid->addWidget(slider, row, 1);
         spin = new QSpinBox(this);
