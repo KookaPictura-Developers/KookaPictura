@@ -40,6 +40,7 @@
 #include "commands.h"
 #include "control_server.h"
 #include "dialogs.h"
+#include "fonts.h"
 #include "frame.h"
 #include "icons.h"
 #include "image_view.h"
@@ -89,6 +90,9 @@ int main(int argc, char* argv[])
 
     QApplication app(argc, argv);
     QApplication::setWindowIcon(pictura::icon(QStringLiteral("app")));
+    // Pin the UI to the bundled Noto Sans so every OS resolves the same family
+    // and the weighted chrome (Medium tab labels, etc.) hits a face that exists.
+    pictura::applyBundledUiFont();
 
     // Surface Qt's own diagnostics (QRhi logs through qWarning) on stderr so
     // the interop probe can capture them under xvfb/offscreen.
@@ -197,7 +201,8 @@ int main(int argc, char* argv[])
     pictura::PictureView* view = frame.activeView();
     const QImage image = view ? view->image() : QImage();
 
-    frame.resize(1100, 700);
+    // The frame applies the default size (or the stored geometry) in its
+    // constructor; resizing here would clobber the restored window geometry.
     frame.show();
 
     if (selfTest) {

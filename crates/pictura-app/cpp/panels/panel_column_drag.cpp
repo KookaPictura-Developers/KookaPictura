@@ -13,6 +13,7 @@
 #include <QtCore/QRect>
 #include <QtCore/QSize>
 #include <QtGui/QAction>
+#include <QtGui/QContextMenuEvent>
 #include <QtGui/QCursor>
 #include <QtGui/QFontMetrics>
 #include <QtGui/QGuiApplication>
@@ -39,10 +40,44 @@ namespace pictura {
 
 bool PanelColumn::eventFilter(QObject* watched, QEvent* event)
 {
+    // A widget column's invisible grip drives the adjacent splitter handle; the
+    // frame keeps the workspace-side column fixed through the same anchor path a
+    // handle press used to seed.
+    if (watched == resizeGrip_) {
+        const QEvent::Type type = event->type();
+        if (type == QEvent::MouseButtonPress) {
+            auto* mouse = static_cast<QMouseEvent*>(event);
+            if (mouse->button() == Qt::LeftButton) {
+                if (PicturaMainWindow* frame = owningFrame()) {
+                    frame->beginWidgetColumnResize(this,
+                                                   mouse->globalPosition().toPoint().x());
+                }
+                return true;
+            }
+        } else if (type == QEvent::MouseMove) {
+            if (PicturaMainWindow* frame = owningFrame()) {
+                frame->updateWidgetColumnResize(
+                    static_cast<QMouseEvent*>(event)->globalPosition().toPoint().x());
+            }
+            return true;
+        } else if (type == QEvent::MouseButtonRelease) {
+            if (PicturaMainWindow* frame = owningFrame()) {
+                frame->endWidgetColumnResize();
+            }
+            return true;
+        }
+    }
     // M47: drag the whole column from its top header onto any side of another
     // column (or a workspace edge). The toggle child is not filtered.
     if (watched == header_) {
         const QEvent::Type type = event->type();
+        // M49: a right-click on the column header opens the column menu (the
+        // left button belongs to the column drag / click).
+        if (type == QEvent::ContextMenu) {
+            auto* context = static_cast<QContextMenuEvent*>(event);
+            showColumnHeaderMenu(context->globalPos());
+            return true;
+        }
         if (type == QEvent::MouseButtonPress) {
             auto* mouse = static_cast<QMouseEvent*>(event);
             if (mouse->button() == Qt::LeftButton) {
@@ -126,6 +161,29 @@ bool PanelColumn::eventFilter(QObject* watched, QEvent* event)
                 return true;
             }
             stripGripGroup_ = nullptr;
+        }
+    }
+    // M49: the compact strip's label is part of its icon item, so a click on the
+    // text drives the same flyout the icon button does.
+    if (auto* label = qobject_cast<QLabel*>(watched);
+        label && label->objectName() == QStringLiteral("panelIconLabel")) {
+        auto* target = qobject_cast<QToolButton*>(
+            label->property("iconButton").value<QObject*>());
+        if (target) {
+            if (event->type() == QEvent::MouseButtonPress) {
+                auto* mouse = static_cast<QMouseEvent*>(event);
+                if (mouse->button() == Qt::LeftButton) {
+                    target->setDown(true);
+                }
+            } else if (event->type() == QEvent::MouseButtonRelease) {
+                target->setDown(false);
+                auto* mouse = static_cast<QMouseEvent*>(event);
+                if (mouse->button() == Qt::LeftButton
+                    && label->rect().contains(mouse->position().toPoint())) {
+                    target->click();
+                }
+                return true;
+            }
         }
     }
     auto* button = qobject_cast<QToolButton*>(watched);
@@ -255,8 +313,12 @@ PanelColumn::DropTarget PanelColumn::resolveDrop(const QPoint& globalPos) const
         }
         // M44 W5: a drop beside another column allocates the new column adjacent
         // to that column, so a widget column can dock on any side of another.
+        // The source column is excluded here; it is offered only after an
+        // in-body local drop declines (below), so a tab insertion near its own
+        // edge still reorders instead of opening a new column.
         int anchorSide = -1;
-        if (PanelColumn* anchor = frame->columnEdgeAnchorAt(globalPos, this, &anchorSide)) {
+        PanelColumn* anchor = frame->columnEdgeAnchorAt(globalPos, this, &anchorSide);
+        if (anchor) {
             DropTarget target;
             target.valid = true;
             target.anchorColumn = anchor;
@@ -290,6 +352,28 @@ PanelColumn::DropTarget PanelColumn::resolveDrop(const QPoint& globalPos) const
                         delegated.owner = other;
                         return delegated;
                     }
+                }
+            }
+        }
+        // M48: no in-body target and no other column claimed the point, so a
+        // point beside this column docks a panel/group to its own
+        // document-facing edge (left of a right column, and vice versa).
+        if (auto* frame = owningFrame()) {
+            int selfSide = -1;
+            if (PanelColumn* self = frame->columnEdgeAnchorAt(globalPos, nullptr, &selfSide)) {
+                // Only a point strictly beyond the column's own edge docks a new
+                // sibling; the last tab insertion maps a pixel past the edge, so
+                // an exact-edge hit must stay an in-column drop.
+                const QRect r(self->mapToGlobal(QPoint(0, 0)), self->size());
+                const bool beyondEdge = globalPos.x() < r.left() - 2 || globalPos.x() > r.right() + 2;
+                if (self == this && beyondEdge) {
+                    DropTarget dock;
+                    dock.valid = true;
+                    dock.anchorColumn = const_cast<PanelColumn*>(this);
+                    dock.owner = const_cast<PanelColumn*>(this);
+                    dock.kind =
+                        selfSide == 0 ? DropKind::NewColumnLeft : DropKind::NewColumnRight;
+                    return dock;
                 }
             }
         }
@@ -334,10 +418,22 @@ PanelColumn::DropTarget PanelColumn::resolveLocalDrop(const QPoint& globalPos, b
     // column and not only into the gaps between groups.
     const int edgeY = viewport->mapFromGlobal(globalPos).y();
     if (edgeY <= kColumnEdgeBand) {
-        target.valid = true;
-        target.kind = DropKind::AboveGroup;
-        target.boundary = 0;
-        return target;
+        // A point over the first group's tab bar is a tab insertion, not a
+        // column-top drop, even when the bar is short enough to sit inside the
+        // edge band (normal-mode tabs carry no icon and are shorter).
+        bool overTabBar = false;
+        for (PanelGroup* group : groups_) {
+            if (group && group->isVisible() && group->tabBarGlobalRect().contains(globalPos)) {
+                overTabBar = true;
+                break;
+            }
+        }
+        if (!overTabBar) {
+            target.valid = true;
+            target.kind = DropKind::AboveGroup;
+            target.boundary = 0;
+            return target;
+        }
     }
     if (edgeY >= viewport->height() - 1 - kColumnEdgeBand) {
         target.valid = true;

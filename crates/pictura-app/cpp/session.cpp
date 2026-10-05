@@ -101,6 +101,10 @@ SessionState loadSession()
     state.layout =
         QByteArray::fromBase64(obj.value(QStringLiteral("layout")).toString().toLatin1());
     state.layoutRevision = obj.value(QStringLiteral("layoutRevision")).toInt(0);
+    state.windowGeometry = QByteArray::fromBase64(
+        obj.value(QStringLiteral("windowGeometry")).toString().toLatin1());
+    state.windowMaximized =
+        obj.value(QStringLiteral("windowMaximized")).toBool(false);
     const QJsonArray recent = obj.value(QStringLiteral("recent")).toArray();
     for (const QJsonValue& entry : recent) {
         if (entry.isString()) {
@@ -136,6 +140,9 @@ bool saveSession(const SessionState& state)
     obj.insert(QStringLiteral("panelColumns"), state.panelColumns);
     obj.insert(QStringLiteral("layout"), QString::fromLatin1(state.layout.toBase64()));
     obj.insert(QStringLiteral("layoutRevision"), state.layoutRevision);
+    obj.insert(QStringLiteral("windowGeometry"),
+               QString::fromLatin1(state.windowGeometry.toBase64()));
+    obj.insert(QStringLiteral("windowMaximized"), state.windowMaximized);
     QJsonArray recent;
     for (const QString& path : state.recent) {
         recent.append(path);

@@ -48,6 +48,14 @@ here.
 - `crates/pictura-render/assets/LiberationSans-Regular.ttf` — Liberation Sans,
   **SIL Open Font License 1.1**; license text at
   `crates/pictura-render/assets/LICENSES/LiberationSans-OFL.txt`.
+- `assets/fonts/NotoSans-{Regular,Medium,SemiBold,Bold}{,Italic,MediumItalic,SemiBoldItalic,BoldItalic}.ttf`
+  — Noto Sans (upright and italic at weights 400/500/600/700), vendored from
+  `notofonts/noto-fonts` `hinted/ttf/NotoSans/` at commit
+  `ffebf8c1ee449e544955a7e813c54f9b73848eac` (the Google Fonts static-instance
+  source; Google Fonts distributes the family only as a variable font). The
+  application UI font, embedded via `assets/pictura.qrc` and registered at
+  startup. **SIL Open Font License 1.1**; license text at
+  `LICENSES/NotoSans-OFL.txt`.
 
 ## Test fixtures
 

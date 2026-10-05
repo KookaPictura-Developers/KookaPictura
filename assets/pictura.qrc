@@ -1,5 +1,13 @@
 <RCC>
   <qresource prefix="/">
+    <file>fonts/NotoSans-Regular.ttf</file>
+    <file>fonts/NotoSans-Medium.ttf</file>
+    <file>fonts/NotoSans-SemiBold.ttf</file>
+    <file>fonts/NotoSans-Bold.ttf</file>
+    <file>fonts/NotoSans-Italic.ttf</file>
+    <file>fonts/NotoSans-MediumItalic.ttf</file>
+    <file>fonts/NotoSans-SemiBoldItalic.ttf</file>
+    <file>fonts/NotoSans-BoldItalic.ttf</file>
     <file>icons/app.png</file>
     <file>icons/edit.redo.svg</file>
     <file>icons/edit.stepBackward.svg</file>
@@ -66,8 +74,10 @@
     <file>icons/layers.reset.svg</file>
     <file>icons/layers.search.svg</file>
     <file>icons/panel.close.svg</file>
+    <file>icons/panel.close.light.png</file>
     <file>icons/panel.columnsOne.svg</file>
     <file>icons/panel.columnsTwo.svg</file>
+    <file>icons/panel.menu.svg</file>
     <file>icons/path.delete.svg</file>
     <file>icons/path.fill.svg</file>
     <file>icons/path.loadSelection.svg</file>

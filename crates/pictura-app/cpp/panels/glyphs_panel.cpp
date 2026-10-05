@@ -1,5 +1,6 @@
 #include "glyphs_panel.h"
 
+#include "jump_slider.h"
 #include "tools.h"
 
 #include <QtCore/QSignalBlocker>
@@ -111,7 +112,7 @@ GlyphsPanel::GlyphsPanel(QWidget* parent)
     smallFont.setPointSize(8);
     small->setFont(smallFont);
     zoomRow->addWidget(small);
-    zoom_ = new QSlider(Qt::Horizontal, this);
+    zoom_ = new JumpSlider(Qt::Horizontal, this);
     zoom_->setRange(kMinGlyphPoints, kMaxGlyphPoints);
     zoom_->setValue(18);
     zoom_->setFixedWidth(90);

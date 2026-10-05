@@ -328,7 +328,7 @@ QList<ToolHint> toolHintEntries(ToolId id)
                 {QStringLiteral("Esc"), QStringLiteral("Cancel")}};
     case ToolId::Move:
         return {{QStringLiteral("Arrows"), QStringLiteral("Nudge 1 px")},
-                {QStringLiteral("Shift"), QStringLiteral("Nudge 10 px")},
+                {QStringLiteral("Shift+Arrows"), QStringLiteral("Nudge 10 px")},
                 {QString(), QStringLiteral("Free transform"), command_ids::EditFreeTransform}};
     default:
         return {};

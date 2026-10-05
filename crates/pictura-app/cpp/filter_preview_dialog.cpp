@@ -1,5 +1,6 @@
 #include "filter_preview_dialog.h"
 #include "dialogs.h"
+#include "panels/jump_slider.h"
 
 #include <QtCore/QSignalBlocker>
 #include <QtCore/QVariant>
@@ -418,7 +419,7 @@ void FilterPreviewDialog::addControl(const QList<double>& initial, int index)
             spin->setRange(spec.minimum, spec.maximum);
             spin->setDecimals(3);
             spin->setSingleStep(0.01);
-            spin->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            spin->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
             spin->setFixedWidth(compactSpinWidth(spin));
         }
         control.x->setValue(fallback(0, spec.initial.value(0, 0.5)));
@@ -456,10 +457,10 @@ void FilterPreviewDialog::addControl(const QList<double>& initial, int index)
         control.spin = new QDoubleSpinBox(this);
         control.spin->setRange(spec.minimum, spec.maximum);
         control.spin->setDecimals(spec.decimals);
-        control.spin->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        control.spin->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
         control.spin->setFixedWidth(compactSpinWidth(control.spin));
         control.spin->setValue(fallback(0, spec.value));
-        control.slider = new QSlider(Qt::Horizontal, this);
+        control.slider = new JumpSlider(Qt::Horizontal, this);
         control.slider->setRange(0, 1000);
         const double span = spec.maximum - spec.minimum;
         const double frac = span > 0.0 ? (control.spin->value() - spec.minimum) / span : 0.0;

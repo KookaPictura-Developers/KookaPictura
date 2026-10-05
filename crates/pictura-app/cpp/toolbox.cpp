@@ -3,6 +3,7 @@
 #include "color_picker_dialog.h"
 #include "icons.h"
 #include "panels/color_panel.h"
+#include "theme.h"
 #include "tools.h"
 
 #include <QtCore/QEvent>
@@ -35,9 +36,14 @@ constexpr int kSwatchSize = 22;
 constexpr int kWidgetSize = 40;
 constexpr int kMinWidgetSize = 20;
 constexpr int kResetSize = 12;
-constexpr int kSlotButtonSize = 32;
-constexpr int kSlotIconSize = 22;
 constexpr int kFlyoutDelayMs = 300;
+
+// Slot geometry is derived from the one 96-DPI base in Theme; Qt6 applies the
+// device-pixel-ratio transform itself, so we scale only by logical DPI.
+qreal slotDpiScale(qreal logicalDpi)
+{
+    return std::clamp(logicalDpi / 96.0, 1.0, 4.0);
+}
 
 // A slot button: the base tool button plus the CS6 interactions the stock
 // class lacks — a custom lower-right flyout triangle, right-click and
@@ -55,6 +61,9 @@ public:
             if (onMenu) {
                 onMenu();
             }
+            // The popup owns the pending release, so the button would otherwise
+            // stay drawn pressed; clear the down state now.
+            setDown(false);
         });
     }
 
@@ -77,9 +86,10 @@ protected:
         }
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setOpacity(0.6);
         painter.setPen(Qt::NoPen);
         painter.setBrush(palette().color(QPalette::ButtonText));
-        const int size = 5;
+        const int size = 4;
         const int margin = 2;
         QPolygon triangle;
         triangle << QPoint(width() - margin - size, height() - margin)
@@ -218,6 +228,7 @@ QRect ForegroundBackgroundWidget::resetRect() const
 
 QRect ForegroundBackgroundWidget::swapRect() const
 {
+    // Top-right corner, clear of the default-colour reset at bottom-left.
     const int size = resetSize();
     return QRect(width() - size - 2, 2, size, size);
 }
@@ -255,8 +266,7 @@ void ForegroundBackgroundWidget::resetColors()
 void ForegroundBackgroundWidget::paintEvent(QPaintEvent*)
 {
     QPainter painter(this);
-    painter.fillRect(rect(), palette().window());
-
+    // No background fill: the panel shows through around the swatches.
     const QColor fg = state_ ? state_->foreground() : QColor(Qt::black);
     const QColor bg = state_ ? state_->background() : QColor(Qt::white);
     const bool fgActive = !state_ || state_->foregroundActive();
@@ -280,17 +290,20 @@ void ForegroundBackgroundWidget::paintEvent(QPaintEvent*)
     painter.fillRect(QRect(reset.topLeft(), QSize(reset.width() / 2, reset.height() / 2)),
                      QColor(Qt::black));
 
-    // CS6 double-headed swap arrow, top-right of the swatch area.
+    // CS6 close-out: swap arrows sourced at the top-right corner — one runs
+    // right to left, the other up to down. No asset; the theme ink draws them.
     const QRect swap = swapRect();
-    const int midY = swap.center().y();
-    const int left = swap.left() + 1;
-    const int right = swap.right() - 1;
     painter.setPen(QPen(palette().color(QPalette::ButtonText), 1));
-    painter.drawLine(left, midY, right, midY);
-    painter.drawLine(left, midY, left + 3, midY - 3);
-    painter.drawLine(left, midY, left + 3, midY + 3);
-    painter.drawLine(right, midY, right - 3, midY - 3);
-    painter.drawLine(right, midY, right - 3, midY + 3);
+    const int srcX = swap.right() - 1;
+    const int srcY = swap.top() + 1;
+    const int leftX = swap.left() + 1;
+    const int downY = swap.bottom() - 1;
+    painter.drawLine(srcX, srcY, leftX, srcY);
+    painter.drawLine(leftX, srcY, leftX + 2, srcY - 2);
+    painter.drawLine(leftX, srcY, leftX + 2, srcY + 2);
+    painter.drawLine(srcX, srcY, srcX, downY);
+    painter.drawLine(srcX, downY, srcX - 2, downY - 2);
+    painter.drawLine(srcX, downY, srcX + 2, downY - 2);
 }
 
 void ForegroundBackgroundWidget::mousePressEvent(QMouseEvent* event)
@@ -353,6 +366,8 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
     auto* group = new QButtonGroup(this);
     group->setExclusive(true);
 
+    applyMetrics();
+
     for (int g = 1; g <= 23; ++g) {
         QList<ToolId> members;
         bool anyImplemented = false;
@@ -366,18 +381,16 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
             continue;
         }
 
-        currentByGroup_[g] = groupCurrentTool(g);
-        auto* button = new ToolSlotButton(gridWidget_);
-        button->setIconSize(QSize(kSlotIconSize, kSlotIconSize));
-        button->setFixedSize(kSlotButtonSize, kSlotButtonSize);
-        button->setCheckable(true);
-        button->setAutoRaise(true);
-        button->setEnabled(anyImplemented);
-        button->setHasFlyout(members.size() > 1);
-
+        // Hidden groups (all-unimplemented: Object/Camera) build no slot button,
+        // so the toolbox drops exactly those slots. Their flyout menu is still
+        // built for the self-test's disabled-member checks.
         QMenu* menu = nullptr;
         if (members.size() > 1) {
-            menu = new QMenu(button);
+            menu = new QMenu(this);
+            menu->setObjectName(QStringLiteral("toolFlyoutMenu"));
+            // Left icon margin with a tight icon/label gap; scoped to the flyout.
+            menu->setStyleSheet(
+                QStringLiteral("QMenu::item { padding: 3px 18px 3px 24px; }"));
             for (ToolId member : members) {
                 const ToolInfo& info = toolInfo(member);
                 QAction* action =
@@ -396,13 +409,34 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
             connect(menu, &QMenu::triggered, this, [this, g](QAction* action) {
                 selectMember(g, ToolId(action->data().toInt()));
             });
+            connect(menu, &QMenu::aboutToHide, this, [this, menu]() {
+                if (openSlotMenu_ == menu) {
+                    closeOpenSlotMenu();
+                }
+            });
         }
-        slotMenus_ << menu;
+        slotMenuByGroup_[g] = menu;
+
+        if (!anyImplemented) {
+            continue;
+        }
+
+        currentByGroup_[g] = groupCurrentTool(g);
+        auto* button = new ToolSlotButton(gridWidget_);
+        button->setObjectName(QStringLiteral("toolSlotButton"));
+        button->setIconSize(iconSize_);
+        button->setFixedSize(slotSize_);
+        button->setCheckable(true);
+        button->setAutoRaise(true);
+        button->setEnabled(anyImplemented);
+        button->setHasFlyout(members.size() > 1);
 
         button->onMenu = [this, g]() { showSlotMenu(g); };
         button->onCycle = [this, g]() { cycleGroup(g); };
 
         slotButtons_ << button;
+        slotGroups_ << g;
+        slotButtonByGroup_[g] = button;
         group->addButton(button);
 
         refreshSlot(g);
@@ -422,23 +456,47 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
     fgbg_ = new ForegroundBackgroundWidget(colors, this);
     layout->addWidget(fgbg_, 0, Qt::AlignHCenter);
 
+    paintMask_ = new QToolButton(this);
+    paintMask_->setObjectName(QStringLiteral("paintMaskButton"));
+    paintMask_->setCheckable(true);
+    paintMask_->setAutoRaise(true);
+    const QIcon paintMaskIcon = icon(QStringLiteral("layers.mask"));
+    if (!paintMaskIcon.isNull()) {
+        paintMask_->setIcon(paintMaskIcon);
+    } else {
+        paintMask_->setText(QStringLiteral("Q"));
+    }
+    paintMask_->setToolTip(tr("Edit in Quick Mask Mode"));
+    // ponytail: button stub, Quick Mask behavior tracked in #172
+    connect(paintMask_, &QToolButton::toggled, this,
+            [this](bool checked) { emit paintMaskToggled(checked); });
+
     screenMode_ = new QToolButton(this);
     screenMode_->setObjectName(QStringLiteral("screenModeButton"));
-    screenMode_->setFixedSize(kSlotButtonSize, kSlotButtonSize);
     screenMode_->setAutoRaise(true);
-    const QIcon screenModeIcon = icon(QStringLiteral("view.screenMode.full"));
+    const QIcon screenModeIcon = icon(QStringLiteral("view.screenMode.standard"));
     if (!screenModeIcon.isNull()) {
         screenMode_->setIcon(screenModeIcon);
-        screenMode_->setIconSize(QSize(kSlotIconSize, kSlotIconSize));
     } else {
         screenMode_->setText(QStringLiteral("Screen Mode"));
     }
     screenMode_->setToolTip(tr("Screen Mode"));
-    connect(screenMode_, &QToolButton::clicked, this,
-            [this]() { emit screenModeRequested(); });
-    layout->addWidget(screenMode_, 0, Qt::AlignHCenter);
+
+    // The Quick Mask toggle sits immediately left of the screen-mode control.
+    // Both are compact icon buttons (not full slots); `contentWidth` measures
+    // this row so the tools panel is only as wide as the grid or the footer.
+    footerRow_ = new QHBoxLayout();
+    footerRow_->setContentsMargins(0, 0, 0, 0);
+    footerRow_->setSpacing(2);
+    footerRow_->addStretch(1);
+    footerRow_->addWidget(paintMask_);
+    footerRow_->addWidget(screenMode_);
+    footerRow_->addStretch(1);
+    layout->addLayout(footerRow_);
 
     layout->addStretch(1);
+
+    applyMetrics();
     updateContentMetrics();
 
     if (controller_) {
@@ -450,6 +508,106 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
     }
 }
 
+Toolbox::~Toolbox()
+{
+    // `showSlotMenu` installs `this` as a qApp event filter; drop it (and any
+    // open popup) even if Qt also unregisters on teardown.
+    closeOpenSlotMenu();
+}
+
+QSize Toolbox::slotSizeForDpi(qreal logicalDpi)
+{
+    const qreal scale = slotDpiScale(logicalDpi);
+    return QSize(qRound(Theme::kSlotBaseW * scale), qRound(Theme::kSlotBaseH * scale));
+}
+
+QSize Toolbox::iconSizeForDpi(qreal logicalDpi)
+{
+    const qreal scale = slotDpiScale(logicalDpi);
+    return QSize(qRound(Theme::kSlotIconMaxW * scale), qRound(Theme::kSlotIconMaxH * scale));
+}
+
+void Toolbox::setScreenModeActions(const QList<QAction*>& actions)
+{
+    if (!screenMode_ || actions.isEmpty()) {
+        return;
+    }
+    auto* menu = new QMenu(screenMode_);
+    menu->setObjectName(QStringLiteral("toolScreenModeMenu"));
+    for (QAction* action : actions) {
+        if (action) {
+            // Display only: a trailing tab right-aligns the `F` hint Qt renders
+            // as an accelerator column. `F` still cycles in the frame; this
+            // adds no key binding. Guarded so re-calling does not double it.
+            if (!action->text().endsWith(QStringLiteral("\tF"))) {
+                action->setText(action->text() + QStringLiteral("\tF"));
+            }
+            menu->addAction(action);
+        }
+    }
+    screenModeActions_ = actions;
+    screenMode_->setMenu(menu);
+    screenMode_->setPopupMode(QToolButton::InstantPopup);
+    setActiveScreenMode(0);
+}
+
+void Toolbox::setActiveScreenMode(int mode)
+{
+    if (!screenMode_ || mode < 0 || mode >= screenModeActions_.size()) {
+        return;
+    }
+    QAction* action = screenModeActions_.at(mode);
+    if (action && !action->icon().isNull()) {
+        screenMode_->setIcon(action->icon());
+    }
+}
+
+void Toolbox::applyMetrics()
+{
+    const qreal dpi = screen() ? screen()->logicalDotsPerInch() : 96.0;
+    slotSize_ = slotSizeForDpi(dpi);
+    iconSize_ = iconSizeForDpi(dpi);
+    for (QToolButton* button : slotButtons_) {
+        button->setFixedSize(slotSize_);
+        button->setIconSize(iconSize_);
+    }
+    layoutFooter();
+    updateContentMetrics();
+}
+
+void Toolbox::layoutFooter()
+{
+    if (footerRow_) {
+        // A single column of tools stacks the Quick Mask / Screen Mode pair
+        // vertically; two columns keep the compact horizontal row. The 2-column
+        // gutter matches the grid spacing so the pair fits the grid width.
+        footerRow_->setDirection(columns_ == 1 ? QBoxLayout::TopToBottom
+                                               : QBoxLayout::LeftToRight);
+        footerRow_->setSpacing(columns_ == 1 ? 2 : (grid_ ? grid_->spacing() : 1));
+    }
+    // Both controls track a tool slot's size in either column mode, so the
+    // footer never renders a shrunken button beside full-size slots.
+    if (paintMask_) {
+        paintMask_->setFixedSize(slotSize_);
+        paintMask_->setIconSize(iconSize_);
+    }
+    if (screenMode_) {
+        screenMode_->setFixedSize(slotSize_);
+        screenMode_->setIconSize(iconSize_);
+    }
+}
+
+bool Toolbox::event(QEvent* event)
+{
+    // A screen change or a re-host (column float/re-place) re-derives the
+    // metrics, so the fixed sizes track the destination DPI and no seam lingers.
+    if (event->type() == QEvent::ScreenChangeInternal
+        || event->type() == QEvent::ParentChange) {
+        applyMetrics();
+    }
+    return QWidget::event(event);
+}
+
 void Toolbox::setColumns(int columns)
 {
     columns = columns == 2 ? 2 : 1;
@@ -458,25 +616,45 @@ void Toolbox::setColumns(int columns)
     }
     columns_ = columns;
     reflow();
+    layoutFooter();
     updateContentMetrics();
+    // The grid was rebuilt synchronously; force the layout chain to measure it
+    // now so a floating tools column's deferred re-fit reads the new
+    // arrangement's height instead of the previous mode's.
+    if (grid_) {
+        grid_->invalidate();
+        grid_->activate();
+    }
+    if (gridWidget_) {
+        gridWidget_->updateGeometry();
+    }
+    updateGeometry();
+    if (bodyLayout_) {
+        bodyLayout_->invalidate();
+        bodyLayout_->activate();
+    }
     emit columnsChanged(columns_);
 }
 
 int Toolbox::contentWidth(int columns) const
 {
-    const int slot = kSlotButtonSize;
+    const int slot = slotSize_.width();
     const int spacing = grid_ ? grid_->spacing() : 0;
     const int gridWidth = columns * slot + (columns > 1 ? (columns - 1) * spacing : 0);
+    // The compact footer (Quick Mask + Screen Mode) shares the body's width, so
+    // the content is as wide as the grid or the footer, whichever is wider.
+    const int footerWidth = footerRow_ ? footerRow_->minimumSize().width() : 0;
+    const int bodyWidth = qMax(gridWidth, footerWidth);
     const int margins = bodyLayout_
         ? bodyLayout_->contentsMargins().left() + bodyLayout_->contentsMargins().right()
         : 0;
-    return gridWidth + margins;
+    return bodyWidth + margins;
 }
 
 void Toolbox::updateContentMetrics()
 {
-    // The content's minimum width follows the tool grid; the hosting PanelColumn
-    // tracks it so the column hugs the grid plus the fg/bg control.
+    // The content's minimum width follows the tool grid or the compact footer,
+    // whichever is wider; the hosting PanelColumn tracks it so the column hugs.
     const int content = contentWidth(columns_);
     setMinimumWidth(content);
     if (fgbg_) {
@@ -529,17 +707,23 @@ void Toolbox::reflow()
 
 void Toolbox::showSlotMenu(int group)
 {
-    QMenu* menu = slotMenuForTest(group);
-    if (!menu || group < 1 || group > slotButtons_.size()) {
+    QMenu* menu = slotMenuByGroup_.value(group, nullptr);
+    QToolButton* button = slotButtonByGroup_.value(group, nullptr);
+    if (!menu || !button) {
         return;
     }
-    QToolButton* button = slotButtons_.at(group - 1);
+    if (openSlotMenu_ && openSlotMenu_ != menu) {
+        closeOpenSlotMenu();
+    }
     const QSize hint = menu->sizeHint();
-    QPoint pos = button->mapToGlobal(QPoint(0, button->height()));
+    const QPoint buttonTopLeft = button->mapToGlobal(QPoint(0, 0));
+    // Open beside the button, never over it: right edge first, flip left when
+    // the right side overflows, and clamp only as a fallback.
+    QPoint pos = button->mapToGlobal(QPoint(button->width(), 0));
     if (QScreen* screen = button->screen()) {
         const QRect avail = screen->availableGeometry();
         if (pos.x() + hint.width() > avail.right()) {
-            pos.setX(avail.right() - hint.width());
+            pos.setX(buttonTopLeft.x() - hint.width());
         }
         if (pos.x() < avail.left()) {
             pos.setX(avail.left());
@@ -547,16 +731,77 @@ void Toolbox::showSlotMenu(int group)
         if (pos.y() + hint.height() > avail.bottom()) {
             pos.setY(avail.bottom() - hint.height());
         }
+        if (pos.y() < avail.top()) {
+            pos.setY(avail.top());
+        }
     }
+    openSlotMenu_ = menu;
+    openSlotButton_ = button;
+    qApp->installEventFilter(this);
     menu->popup(pos);
+}
+
+void Toolbox::closeOpenSlotMenu()
+{
+    QMenu* menu = openSlotMenu_;
+    openSlotMenu_ = nullptr;
+    if (openSlotButton_) {
+        // The open popup swallowed the release; drop any lingering pressed look.
+        openSlotButton_->setDown(false);
+    }
+    openSlotButton_ = nullptr;
+    qApp->removeEventFilter(this);
+    if (menu) {
+        menu->close();
+    }
+}
+
+QToolButton* Toolbox::slotButtonAt(const QPoint& globalPos) const
+{
+    for (QToolButton* button : slotButtons_) {
+        if (button->rect().contains(button->mapFromGlobal(globalPos))) {
+            return button;
+        }
+    }
+    return nullptr;
+}
+
+// While a slot flyout is open the popup owns the mouse, so a press on another
+// slot would only dismiss it (needing a second click). Catch the press here,
+// close the flyout, and forward the press to the target slot so its own
+// hold/click semantics run: a quick release activates, a hold opens its menu.
+bool Toolbox::eventFilter(QObject* watched, QEvent* event)
+{
+    if (event->type() == QEvent::MouseButtonPress && openSlotMenu_
+        && openSlotMenu_->isVisible()) {
+        auto* mouse = static_cast<QMouseEvent*>(event);
+        const QPoint globalPos = mouse->globalPosition().toPoint();
+        if (!openSlotMenu_->geometry().contains(globalPos)) {
+            QToolButton* target = slotButtonAt(globalPos);
+            if (target && target != openSlotButton_) {
+                closeOpenSlotMenu();
+                // Forward a full press/release pair: the popup grabbed the real
+                // release, so without the synthetic one the target's hold timer
+                // would keep running and open its flyout on a plain click.
+                QMouseEvent forwardPress(QEvent::MouseButtonPress,
+                                         target->mapFromGlobal(globalPos), mouse->globalPosition(),
+                                         mouse->button(), mouse->buttons(), mouse->modifiers());
+                QApplication::sendEvent(target, &forwardPress);
+                QMouseEvent forwardRelease(QEvent::MouseButtonRelease,
+                                           target->mapFromGlobal(globalPos),
+                                           mouse->globalPosition(), mouse->button(), Qt::NoButton,
+                                           mouse->modifiers());
+                QApplication::sendEvent(target, &forwardRelease);
+                return true;
+            }
+        }
+    }
+    return QWidget::eventFilter(watched, event);
 }
 
 QMenu* Toolbox::slotMenuForTest(int group) const
 {
-    if (group < 1 || group > slotMenus_.size()) {
-        return nullptr;
-    }
-    return slotMenus_.at(group - 1);
+    return slotMenuByGroup_.value(group, nullptr);
 }
 
 QList<QAction*> Toolbox::slotMenuActionsForTest(int group) const
@@ -567,10 +812,11 @@ QList<QAction*> Toolbox::slotMenuActionsForTest(int group) const
 
 bool Toolbox::hasFlyoutTriangleForTest(int group) const
 {
-    if (group < 1 || group > slotButtons_.size()) {
+    QToolButton* button = slotButtonByGroup_.value(group, nullptr);
+    if (!button) {
         return false;
     }
-    return static_cast<ToolSlotButton*>(slotButtons_.at(group - 1))->hasFlyout();
+    return static_cast<ToolSlotButton*>(button)->hasFlyout();
 }
 
 void Toolbox::openSlotFlyoutForTest(int group)
@@ -628,10 +874,10 @@ ToolId Toolbox::groupCurrentTool(int group) const
 
 void Toolbox::refreshSlot(int group)
 {
-    if (group < 1 || group > slotButtons_.size()) {
+    QToolButton* button = slotButtonByGroup_.value(group, nullptr);
+    if (!button) {
         return;
     }
-    QToolButton* button = slotButtons_.at(group - 1);
     const ToolId id = groupCurrentTool(group);
     const ToolInfo& info = toolInfo(id);
     button->setIcon(icon(QStringLiteral("tool.") + toolIdName(id)));

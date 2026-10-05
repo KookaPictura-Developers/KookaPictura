@@ -15,6 +15,8 @@
 #include <QtGui/QTransform>
 #include <QtWidgets/QWidget>
 
+#include "theme.h"
+
 #include <algorithm>
 #include <functional>
 
@@ -401,7 +403,7 @@ private:
     // The visible channel when exactly one is, else -1.
     int singleChannel() const;
     const QImage& channelImage();
-    QColor canvasColor_{Qt::darkGray};
+    QColor canvasColor_{Theme::workspaceColor()};
     double zoom_ = 1.0;
     QPointF offset_;
     double rotation_ = 0.0;

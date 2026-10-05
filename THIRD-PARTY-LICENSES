@@ -201,6 +201,16 @@ with a subset derived from the Feather project under the MIT License.
 Full text in LICENSES/Lucide.txt; per-icon provenance in
 docs/dev/icon-provenance.md.
 
+Font assets
+------------
+
+The UI font is Noto Sans (assets/fonts/, vendored from
+notofonts/noto-fonts, the Google Fonts static-instance source).
+Liberation Sans is bundled by pictura-render as the text fallback.
+Both are licensed under the SIL Open Font License 1.1; full texts in
+LICENSES/NotoSans-OFL.txt and
+crates/pictura-render/assets/LICENSES/LiberationSans-OFL.txt.
+
 Full license texts for components that require reproduction are kept in
 LICENSES/. Regenerate this file with scripts/third-party-licenses.py; do
 not edit it by hand.

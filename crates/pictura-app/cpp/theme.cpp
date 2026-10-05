@@ -2,6 +2,7 @@
 
 #include <QtCore/QString>
 #include <QtGui/QColor>
+#include <QtGui/QFont>
 #include <QtGui/QPalette>
 #include <QtGui/QPixmapCache>
 #include <QtWidgets/QApplication>
@@ -12,14 +13,12 @@ namespace pictura {
 namespace {
 
 quint64 g_paletteGeneration = 0;
+int g_level = Theme::kDefaultLevel;
 
 struct Ramp {
-    QColor window;
+    // Text and accent colours are constant across brightness levels.
     QColor windowText;
-    QColor base;
-    QColor alternateBase;
     QColor text;
-    QColor button;
     QColor buttonText;
     QColor highlight;
     QColor highlightedText;
@@ -27,73 +26,82 @@ struct Ramp {
     QColor toolTipText;
     QColor link;
     QColor disabledText;
+    // Surfaces. Level 1 holds the explicit CS6 dark swatches; the other levels
+    // derive from them by shifting every surface with `shade(level - 1)`.
+    QColor window;
+    QColor panel;
+    QColor activeTab;
+    QColor workspace;
+    QColor panelHeader;
+    QColor separator;
+    QColor tableBg;
+    QColor border;
+    QColor inputBg;
+    QColor inputBorder;
+    QColor button;
+    QColor buttonBorder;
+    QColor buttonPressed;
+    QColor iconPressed;
+    QColor iconHoverBorder;
+    QColor hover;
+    QColor iconHover;
 };
 
-// 0 = darkest .. 3 = lightest. Values are a defensible dark ramp; the corpus
-// does not pin exact CS6 colours (M16 open question).
-const Ramp kRamps[Theme::kLevelCount] = {
-    {QColor(26, 26, 26),
-     QColor(216, 216, 216),
-     QColor(18, 18, 18),
-     QColor(33, 33, 33),
-     QColor(216, 216, 216),
-     QColor(38, 38, 38),
-     QColor(216, 216, 216),
-     QColor(61, 111, 153),
-     QColor(255, 255, 255),
-     QColor(42, 42, 42),
-     QColor(232, 232, 232),
-     QColor(111, 168, 220),
-     QColor(96, 96, 96)},
-    {QColor(43, 43, 43),
-     QColor(224, 224, 224),
-     QColor(35, 35, 35),
-     QColor(50, 50, 50),
-     QColor(224, 224, 224),
-     QColor(56, 56, 56),
-     QColor(224, 224, 224),
-     QColor(61, 111, 153),
-     QColor(255, 255, 255),
-     QColor(58, 58, 58),
-     QColor(232, 232, 232),
-     QColor(111, 168, 220),
-     QColor(104, 104, 104)},
-    {QColor(58, 58, 58),
-     QColor(232, 232, 232),
-     QColor(50, 50, 50),
-     QColor(65, 65, 65),
-     QColor(232, 232, 232),
-     QColor(71, 71, 71),
-     QColor(232, 232, 232),
-     QColor(61, 111, 153),
-     QColor(255, 255, 255),
-     QColor(74, 74, 74),
-     QColor(236, 236, 236),
-     QColor(111, 168, 220),
-     QColor(112, 112, 112)},
-    {QColor(74, 74, 74),
-     QColor(240, 240, 240),
-     QColor(66, 66, 66),
-     QColor(81, 81, 81),
-     QColor(240, 240, 240),
-     QColor(87, 87, 87),
-     QColor(240, 240, 240),
-     QColor(61, 111, 153),
-     QColor(255, 255, 255),
-     QColor(90, 90, 90),
-     QColor(240, 240, 240),
-     QColor(111, 168, 220),
-     QColor(120, 120, 120)},
+// The default-brightness (level 1) palette. Other levels are derived from it.
+const Ramp kLevel1Ramp = {
+    QColor(224, 224, 224),    // windowText
+    QColor(224, 224, 224),    // text
+    QColor(224, 224, 224),    // buttonText
+    QColor(61, 111, 153),     // highlight
+    QColor(255, 255, 255),    // highlightedText
+    QColor(58, 58, 58),       // toolTipBase
+    QColor(232, 232, 232),    // toolTipText
+    QColor(111, 168, 220),    // link
+    QColor(104, 104, 104),    // disabledText
+    QColor(0x36, 0x36, 0x36), // window
+    QColor(0x4d, 0x4d, 0x4d), // panel
+    QColor(0x4d, 0x4d, 0x4d), // activeTab
+    QColor(0x1f, 0x1f, 0x1f), // workspace
+    QColor(0x36, 0x36, 0x36), // panelHeader
+    QColor(0x40, 0x40, 0x40), // separator
+    QColor(0x40, 0x40, 0x40), // tableBg
+    QColor(0x2e, 0x2e, 0x2e), // border
+    QColor(0x3b, 0x3b, 0x3b), // inputBg
+    QColor(0x59, 0x59, 0x59), // inputBorder
+    QColor(0x3b, 0x3b, 0x3b), // button
+    QColor(0x59, 0x59, 0x59), // buttonBorder
+    QColor(0x30, 0x30, 0x30), // buttonPressed
+    QColor(0x2e, 0x2e, 0x2e), // iconPressed
+    QColor(0x59, 0x59, 0x59), // iconHoverBorder
+    QColor(),                 // hover (filled in rampFor)
+    QColor(),                 // iconHover (filled in rampFor)
 };
 
-QPalette paletteFor(int level)
+Ramp rampFor(int level)
 {
-    const Ramp& ramp = kRamps[level];
+    Ramp ramp = kLevel1Ramp;
+    const int steps = level - Theme::kDefaultLevel;
+    QColor* surfaces[] = {
+        &ramp.window,        &ramp.panel,        &ramp.activeTab,    &ramp.workspace,
+        &ramp.panelHeader,   &ramp.separator,    &ramp.tableBg,      &ramp.border,
+        &ramp.inputBg,       &ramp.inputBorder,  &ramp.button,       &ramp.buttonBorder,
+        &ramp.buttonPressed, &ramp.iconPressed,  &ramp.iconHoverBorder,
+    };
+    for (QColor* surface : surfaces) {
+        *surface = Theme::shade(*surface, steps);
+    }
+    ramp.hover = Theme::shade(ramp.panel, 1);
+    ramp.iconHover = ramp.hover;
+    return ramp;
+}
+
+QPalette paletteFor(const Ramp& ramp)
+{
     QPalette pal;
     pal.setColor(QPalette::Window, ramp.window);
     pal.setColor(QPalette::WindowText, ramp.windowText);
-    pal.setColor(QPalette::Base, ramp.base);
-    pal.setColor(QPalette::AlternateBase, ramp.alternateBase);
+    pal.setColor(QPalette::Base, ramp.tableBg);
+    pal.setColor(QPalette::AlternateBase, Theme::shade(ramp.tableBg, 1));
     pal.setColor(QPalette::Text, ramp.text);
     pal.setColor(QPalette::Button, ramp.button);
     pal.setColor(QPalette::ButtonText, ramp.buttonText);
@@ -113,15 +121,13 @@ struct ColorToken {
     QColor color;
 };
 
-// ponytail: derived from the existing dark ramp; exact CS6 swatches are
-// unsourced (M23 open question), so the stylesheet only re-colours surfaces.
+// The stylesheet only re-colours surfaces; the CS6 dark swatches are explicit
+// in `kLevel1Ramp` and shifted per brightness level by `rampFor`.
 QString styleSheetFor(const Ramp& ramp)
 {
     const ColorToken tokens[] = {
         {"${window}", ramp.window},
         {"${windowText}", ramp.windowText},
-        {"${base}", ramp.base},
-        {"${alternateBase}", ramp.alternateBase},
         {"${text}", ramp.text},
         {"${button}", ramp.button},
         {"${buttonText}", ramp.buttonText},
@@ -131,40 +137,58 @@ QString styleSheetFor(const Ramp& ramp)
         {"${toolTipText}", ramp.toolTipText},
         {"${link}", ramp.link},
         {"${disabledText}", ramp.disabledText},
-        {"${border}", ramp.window.darker(135)},
-        {"${hover}", ramp.button.lighter(120)},
-        {"${pressed}", ramp.button.darker(120)},
-        {"${activeTab}", ramp.window.lighter(130)},
-        // The panel-group header strip sits between the panel surface and the
-        // darker inactive tab, so the tabs read against it without reaching
-        // the inactive-tab shade.
-        {"${panelHeader}", ramp.window.darker(108)},
+        {"${menuDisabledText}", Theme::shade(ramp.disabledText, 1)},
+        {"${border}", ramp.border},
+        {"${separator}", ramp.separator},
+        {"${tableBg}", ramp.tableBg},
+        {"${alternateTableBg}", Theme::shade(ramp.tableBg, 1)},
+        {"${inputBg}", ramp.inputBg},
+        {"${inputBorder}", ramp.inputBorder},
+        {"${buttonBorder}", ramp.buttonBorder},
+        {"${buttonPressed}", ramp.buttonPressed},
+        {"${panel}", ramp.panel},
+        {"${activeTab}", ramp.activeTab},
+        {"${workspace}", ramp.workspace},
+        {"${panelHeader}", ramp.panelHeader},
+        {"${hover}", ramp.hover},
+        {"${pressed}", ramp.iconPressed},
+        {"${iconHover}", ramp.iconHover},
+        {"${iconHoverBorder}", ramp.iconHoverBorder},
+        {"${iconPressed}", ramp.iconPressed},
+        {"${panelHeaderBorder}", Theme::shade(ramp.panelHeader, -1)},
+        {"${scrollbar}", Theme::shade(ramp.window, 1)},
     };
 
     QString qss = QStringLiteral(R"(
-QMainWindow { background: ${window}; }
+QMainWindow { background: ${panel}; }
 QMainWindow::separator { background: ${border}; width: 3px; height: 3px; }
 
-QMenuBar { background: ${window}; color: ${windowText}; border-bottom: 1px solid ${border}; }
-QMenuBar::item { background: transparent; color: ${windowText}; padding: 4px 8px; }
+QMenuBar { background: ${panel}; color: ${windowText}; }
+QMenuBar::item { background: transparent; color: ${windowText}; padding: 4px 5px; }
 QMenuBar::item:selected { background: ${highlight}; color: ${highlightedText}; }
 QMenuBar::item:pressed { background: ${pressed}; color: ${buttonText}; }
 
-QMenu { background: ${base}; color: ${text}; border: 1px solid ${border}; }
+QMenu { background: ${panel}; color: ${text}; border: 1px solid ${border}; }
 QMenu::item { background: transparent; padding: 4px 22px; }
 QMenu::item:selected { background: ${highlight}; color: ${highlightedText}; }
-QMenu::item:disabled { color: ${disabledText}; }
-QMenu::separator { background: ${border}; height: 1px; margin: 4px 6px; }
+QMenu::item:disabled { color: ${menuDisabledText}; }
+QMenu::separator { background: ${separator}; height: 1px; margin: 4px 6px; }
 
-QToolBar { background: ${window}; color: ${windowText}; border: 0; spacing: 2px; padding: 2px; }
-QToolBar::separator { background: ${border}; width: 1px; margin: 3px 2px; }
-QToolBar#optionsBar { border-bottom: 1px solid ${border}; }
+QToolBar { background: ${panel}; color: ${windowText}; border: 0; spacing: 2px; padding: 2px; }
+QToolBar::separator { background: ${border}; width: ${chromeWidth}px; margin: 3px 2px; }
+QToolBar#optionsBar { border-bottom: ${borderWidth}px solid ${border}; border-top: 1px solid ${separator}; padding-right: 8px; }
 
-QToolButton { background: ${button}; color: ${buttonText}; border: 1px solid ${border}; border-radius: 3px; padding: 3px; }
-QToolButton:hover { background: ${hover}; border-color: ${highlight}; }
-QToolButton:pressed { background: ${pressed}; }
-QToolButton:checked { background: ${pressed}; border-color: ${highlight}; color: ${buttonText}; }
+QToolButton { background: transparent; color: ${buttonText}; border: 1px solid transparent; border-radius: 3px; padding: 3px; }
+QToolButton:hover { background: ${iconHover}; border-color: ${iconHoverBorder}; }
+QToolButton:pressed { background: ${iconPressed}; border-color: ${iconHoverBorder}; }
+QToolButton:checked { background: ${iconPressed}; border-color: ${iconHoverBorder}; color: ${buttonText}; }
 QToolButton:disabled { color: ${disabledText}; }
+/* Tool slots sit flush on the toolbar at rest; only hover/press/active differ. */
+QToolButton#toolSlotButton { background: transparent; border: 1px solid transparent; border-radius: 3px; }
+QToolButton#toolSlotButton:hover { background: ${iconHover}; border-color: ${iconHoverBorder}; }
+QToolButton#toolSlotButton:pressed, QToolButton#toolSlotButton:checked { background: ${iconPressed}; border-color: ${iconHoverBorder}; }
+QToolButton#statusOptionsButton { background: transparent; border: 0; }
+QToolButton#statusOptionsButton::menu-indicator { image: none; width: 0; }
 
 QDockWidget { color: ${windowText}; }
 QDockWidget::title { background: ${window}; color: ${windowText}; padding: 3px 6px; border-bottom: 1px solid ${border}; }
@@ -175,100 +199,124 @@ QTabBar::tab:hover { background: ${hover}; }
 QTabBar::tab:selected { background: ${activeTab}; color: ${windowText}; }
 QTabBar::tab:disabled { color: ${disabledText}; }
 
-/* M44: the active panel tab takes the widget/panel surface (`${window}`) so it
-   reads as continuous with the body; inactive tabs recede to the darker
-   `${base}`. The panel pane is `${window}` too, so active == pane and inactive
-   != pane. M46: the header strip behind the tabs is `${panelHeader}`, a shade
-   between the pane and the inactive tab. The document tab bar keeps the
-   unscoped `QTabBar::tab` rules above. */
-QTabBar#panelTabBar { background: ${panelHeader}; border-top: 1px solid ${windowText}; }
-QTabBar#panelTabBar::tab { background: ${base}; color: ${windowText}; border: ${borderWidth}px solid ${border}; border-bottom: 0; padding: 4px 8px; margin-right: 1px; margin-top: 2px; }
+/* M44: the active panel tab takes the panel surface (`${panel}`) so it reads as
+   continuous with the body; inactive tabs recede to the darker `${panelHeader}`.
+   The panel pane is `${panel}` too, so active == pane and inactive != pane. The
+   header strip behind the tabs is the inactive-tab shade, so it is no lighter
+   than the tabs. The document tab bar keeps the unscoped `QTabBar::tab` rules
+   above. */
+QTabBar#panelTabBar { background: ${panelHeader}; }
+QTabBar#panelTabBar::tab { background: ${panelHeader}; color: ${windowText}; border: ${borderWidth}px solid ${border}; border-bottom: 0; padding: 4px 8px; margin-right: 1px; font-size: ${tabFontSize}px; font-weight: 700; }
 QTabBar#panelTabBar::tab:hover { background: ${hover}; }
-QTabBar#panelTabBar::tab:selected { background: ${window}; color: ${windowText}; }
+QTabBar#panelTabBar::tab:selected { background: ${panel}; color: ${windowText}; }
 
 QSplitter#panelColumnSplitter::handle { background: ${border}; }
-QFrame#panelIconDivider { background: ${border}; border: 0; }
-QWidget#panelIconGroup { background: ${window}; border: 1px solid ${border}; border-radius: 2px; }
-QWidget#panelIconGroupGrip { background: transparent; border-bottom: 1px solid ${border}; color: ${disabledText}; }
+QFrame#panelIconDivider { background: transparent; border: 0; }
+QWidget#panelIconGroup { background: ${panel}; border: 0; border-bottom: 1px solid ${separator}; }
+QWidget#panelIconGroupGrip { background: transparent; color: ${disabledText}; }
 /* M47: a collapsed group's iconic row reuses the docked strip's
    `panelIconGroup` box, so the float and the strip read alike. The header band,
    the reserved corner grip, corner container, and its `▾` button share the
    header strip; the band spans the whole group width behind the tabs and corner
    so no vertical slice of the header is left unpainted. */
-QWidget#panelHeaderBand { background: ${panelHeader}; border-top: 1px solid ${windowText}; }
+QWidget#panelHeaderBand { background: ${panelHeader}; }
 QWidget#panelGroupDragGrip { background: ${panelHeader}; }
 QWidget#panelWidgetCorner { background: ${panelHeader}; }
 QWidget#panelWidgetCorner QToolButton { background: ${panelHeader}; color: ${buttonText}; border: 0; border-radius: 0; padding: 0; }
+QWidget#panelWidgetCorner QToolButton::menu-indicator { image: none; width: 0; }
 QWidget#panelWidgetCorner QToolButton:hover { background: ${hover}; }
 QWidget#panelWidgetCorner QToolButton:pressed { background: ${pressed}; }
 
-QTabWidget::pane { border: ${borderWidth}px solid ${border}; background: ${base}; }
+QTabWidget::pane { border: ${borderWidth}px solid ${border}; background: ${workspace}; }
 QTabWidget#panelGroupTabs { border: ${borderWidth}px solid ${border}; }
-QTabWidget#panelGroupTabs::pane { border: 0; background: ${window}; }
-QTabWidget#documentTabs::pane { border-top: 0; }
-QTabBar#documentTabBar { border-right: ${borderWidth}px solid ${border}; border-top: 0; }
-QTabBar#documentTabBar::tab { font-weight: 500; padding-right: 12px; }
-QWidget#panelColumnContainer { border: ${borderWidth}px solid ${border}; }
-QWidget#panelColumnIconStrip { border: ${borderWidth}px solid ${border}; }
-QWidget#toolsPanel { border: ${borderWidth}px solid ${border}; }
-QWidget#panelIconFlyout { background: ${window}; border: ${borderWidth}px solid ${border}; }
-QWidget#panelFloat { background: ${window}; border: ${borderWidth}px solid ${border}; }
+QTabWidget#panelGroupTabs::pane { border: 0; background: ${panel}; }
+QTabWidget#panelGroupTabs QStackedWidget { background: ${panel}; }
+QTabWidget#documentTabs::pane { border: 0; }
+QTabWidget#documentTabs QStackedWidget { background: ${workspace}; }
+QTabBar#documentTabBar { border: 0; }
+QTabBar#documentTabBar { background: ${panelHeader}; }
+QTabBar#documentTabBar::tab { font-size: ${tabFontSize}px; font-weight: 700; padding-right: 4px; border: 0; }
+QTabBar#documentTabBar::close-button { image: url(:/icons/panel.close.light.png); background: transparent; border: 0; margin-left: 2px; margin-right: 8px; }
+QTabBar#documentTabBar::close-button:hover { background: ${hover}; }
+QTabBar#documentTabBar::close-button:pressed { background: ${hover}; }
+/* Columns keep their side rules only; the top and bottom edges are open, and
+   the header carries no rule of its own. */
+QWidget#panelColumnContainer { border: 0; border-left: ${borderWidth}px solid ${separator}; border-right: ${borderWidth}px solid ${separator}; border-bottom: ${borderWidth}px solid ${separator}; background: ${panel}; }
+QWidget#toolsColumn { border: 0; border-left: ${borderWidth}px solid ${separator}; border-right: ${borderWidth}px solid ${separator}; border-bottom: ${borderWidth}px solid ${separator}; background: ${panel}; }
+/* The central band's 1 px inner frame line; the outer 2 px is the window
+   `${panel}`. The outermost column's frame-side border is suppressed so the
+   band edge reads as exactly 2 px panel + 1 px border. */
+QWidget#workspaceFrameLine { background: ${border}; }
+QWidget#panelColumnContainer[frameEdge="left"], QWidget#toolsColumn[frameEdge="left"] { border-left: 0; }
+QWidget#panelColumnContainer[frameEdge="right"], QWidget#toolsColumn[frameEdge="right"] { border-right: 0; }
+QWidget#panelColumnHeader { background: ${panelHeader}; border: 0; border-bottom: 1px solid ${panelHeaderBorder}; }
+/* The icon strip sits inside the bordered column container, so it must not
+   draw its own side rule (that would double the column border). */
+QWidget#panelColumnIconStrip { border: 0; background: ${panel}; }
+QWidget#toolsPanel { background: ${panel}; border: 0; }
+QWidget#panelIconFlyout { background: ${panel}; border: ${borderWidth}px solid ${border}; }
+QWidget#panelFloat { background: ${panel}; border: ${borderWidth}px solid ${border}; }
 
 /* Info panel readout grid: only the inner cross of the 2x2 table is drawn, in
    the frame shade; the outer edge is the panel pane itself. The blocks flag
    their inner sides with the `gridRight`/`gridBottom` dynamic properties. */
-QWidget#infoBlock[gridRight="true"] { border-right: 1px solid ${border}; }
-QWidget#infoBlock[gridBottom="true"] { border-bottom: 1px solid ${border}; }
-QWidget#infoRule { background: ${border}; }
+QWidget#infoBlock[gridRight="true"] { border-right: 1px solid ${separator}; }
+QWidget#infoBlock[gridBottom="true"] { border-bottom: 1px solid ${separator}; }
+QWidget#infoRule { background: ${separator}; }
 /* The readout icons are menu affordances, not buttons: bare icon at rest. */
 QWidget#infoBlock QToolButton { background: transparent; border: 0; padding: 2px; }
 QWidget#infoBlock QToolButton:hover { background: ${hover}; }
 QWidget#infoBlock QToolButton:pressed { background: ${pressed}; }
 
-QTabWidget::tab-bar { alignment: left; }
 
-QStatusBar { background: ${window}; color: ${windowText}; border-top: 1px solid ${border}; }
+QStatusBar { background: ${panel}; color: ${windowText}; }
 QStatusBar::item { border: 0; }
+QFrame#statusSeparator { background: ${separator}; border: 0; }
 
-QScrollBar:vertical { background: ${window}; width: 12px; border: 0; margin: 0; }
+QScrollBar:vertical { background: ${scrollbar}; width: 12px; border: 0; margin: 0; }
 QScrollBar::handle:vertical { background: ${button}; min-height: 24px; border-radius: 3px; margin: 2px; }
 QScrollBar::handle:vertical:hover { background: ${hover}; }
-QScrollBar:horizontal { background: ${window}; height: 12px; border: 0; margin: 0; }
+QScrollBar:horizontal { background: ${scrollbar}; height: 12px; border: 0; margin: 0; }
 QScrollBar::handle:horizontal { background: ${button}; min-width: 24px; border-radius: 3px; margin: 2px; }
 QScrollBar::handle:horizontal:hover { background: ${hover}; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { background: transparent; border: 0; width: 0; height: 0; }
 QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
+/* The empty cell where the canvas's two scrollbars meet takes the scrollbar
+   track colour instead of the workspace showing through. */
+QWidget#canvasScrollCorner { background: ${scrollbar}; }
 
 QToolTip { background: ${toolTipBase}; color: ${toolTipText}; border: 1px solid ${border}; padding: 2px; }
 
-QListView, QTreeView, QTableView { background: ${base}; color: ${text}; border: 1px solid ${border}; alternate-background-color: ${alternateBase}; selection-background-color: ${highlight}; selection-color: ${highlightedText}; }
-QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit { background: ${base}; color: ${text}; border: 1px solid ${border}; border-radius: 2px; padding: 1px 2px; }
+QListView, QTreeView, QTableView { background: ${tableBg}; color: ${text}; border: 1px solid ${separator}; alternate-background-color: ${alternateTableBg}; selection-background-color: ${highlight}; selection-color: ${highlightedText}; }
+QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit { background: ${inputBg}; color: ${text}; border: 1px solid ${inputBorder}; border-radius: 2px; padding: 1px 2px; }
 QLineEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QComboBox:disabled, QPlainTextEdit:disabled { color: ${disabledText}; }
-QComboBox QAbstractItemView { background: ${base}; color: ${text}; border: 1px solid ${border}; selection-background-color: ${highlight}; selection-color: ${highlightedText}; }
+QComboBox QAbstractItemView { background: ${panel}; color: ${text}; border: 1px solid ${border}; selection-background-color: ${highlight}; selection-color: ${highlightedText}; }
 
-QWidget#percentField QLineEdit { background: ${base}; color: ${text}; border: 1px solid ${border}; border-radius: 2px; padding: 1px 2px; }
+QWidget#percentField QLineEdit { background: ${inputBg}; color: ${text}; border: 1px solid ${inputBorder}; border-radius: 2px; padding: 1px 2px; }
 QWidget#percentField QLineEdit:disabled { color: ${disabledText}; }
 QWidget#percentField QToolButton { background: transparent; color: ${buttonText}; border: 0; border-left: 1px solid ${border}; border-radius: 0; padding: 0 2px; }
 QWidget#percentField QToolButton:hover { background: ${hover}; }
 QWidget#percentField QToolButton:disabled { color: ${disabledText}; }
+QTabWidget::tab-bar { alignment: left; }
+
 QWidget#percentField QSlider::groove:horizontal { height: 4px; background: ${border}; border-radius: 2px; }
 QWidget#percentField QSlider::handle:horizontal { width: 10px; margin: -4px 0; background: ${buttonText}; border-radius: 3px; }
 /* The shared RampSlider keeps its gradient in the widget stylesheet; the frame
    line lives here so it follows the brightness level. */
 QSlider#rampSlider::groove:horizontal { border: 1px solid ${border}; }
 
-QWidget#layersFilterBar { background: ${window}; border-bottom: 1px solid ${border}; }
-QWidget#layersFilterBar QComboBox, QWidget#layersFilterBar QLineEdit { background: ${base}; color: ${text}; border: 1px solid ${border}; border-radius: 2px; padding: 1px 2px; }
+QWidget#layersFilterBar { background: ${panel}; border-bottom: 1px solid ${separator}; }
+QWidget#layersFilterBar QComboBox, QWidget#layersFilterBar QLineEdit { background: ${inputBg}; color: ${text}; border: 1px solid ${inputBorder}; border-radius: 2px; padding: 1px 2px; }
 QWidget#layersFilterBar QComboBox:disabled, QWidget#layersFilterBar QLineEdit:disabled { color: ${disabledText}; }
-QWidget#layersFilterBar QToolButton { background: ${button}; color: ${buttonText}; border: 1px solid ${border}; border-radius: 3px; padding: 2px 4px; }
-QWidget#layersFilterBar QToolButton:hover { background: ${hover}; border-color: ${highlight}; }
-QWidget#layersFilterBar QToolButton:checked { background: ${pressed}; border-color: ${highlight}; }
+QWidget#layersFilterBar QToolButton { background: transparent; color: ${buttonText}; border: 1px solid transparent; border-radius: 3px; padding: 2px 4px; }
+QWidget#layersFilterBar QToolButton:hover { background: ${iconHover}; border-color: ${iconHoverBorder}; }
+QWidget#layersFilterBar QToolButton:checked { background: ${iconPressed}; border-color: ${iconHoverBorder}; }
 QWidget#layersFilterBar QToolButton#layersFilterToggle:checked { background: ${highlight}; color: ${highlightedText}; }
 
-QPushButton { background: ${button}; color: ${buttonText}; border: 1px solid ${border}; border-radius: 3px; padding: 4px 10px; }
-QPushButton:hover { background: ${hover}; }
-QPushButton:pressed { background: ${pressed}; }
+QPushButton { background: ${button}; color: ${buttonText}; border: 1px solid ${buttonBorder}; border-radius: 3px; padding: 4px 10px; }
+QPushButton:hover { background: ${button}; border-color: ${buttonBorder}; }
+QPushButton:pressed { background: ${buttonPressed}; }
 QPushButton:disabled { color: ${disabledText}; }
 )");
 
@@ -276,10 +324,32 @@ QPushButton:disabled { color: ${disabledText}; }
         qss.replace(QLatin1String(token.key), token.color.name(QColor::HexRgb));
     }
     qss.replace(QStringLiteral("${borderWidth}"), QString::number(Theme::kPanelBorderWidth));
+    qss.replace(QStringLiteral("${chromeWidth}"), QString::number(Theme::kChromeBorderWidth));
+    // Tab labels run 2 px under the app default; a point-sized default font
+    // (pixelSize() < 0) falls back to 12 px (~9 pt) at 96 DPI.
+    int baseFontPx = 12;
+    if (QApplication::instance() != nullptr && QApplication::font().pixelSize() > 0) {
+        baseFontPx = QApplication::font().pixelSize();
+    }
+    qss.replace(QStringLiteral("${tabFontSize}"), QString::number(baseFontPx - 2));
     return qss;
 }
 
 } // namespace
+
+QColor Theme::shade(QColor color, int steps)
+{
+    for (int i = 0; i < steps; ++i) {
+        color = color.lighter(kShadeStep);
+    }
+    for (int i = 0; i < -steps; ++i) {
+        color = color.darker(kShadeStep);
+    }
+    // `lighter`/`darker` return an HSV-spec colour, which compares unequal to
+    // an equal-valued RGB-spec QColor; normalise so callers and tests can
+    // compare shades directly.
+    return color.toRgb();
+}
 
 int Theme::clampLevel(int level)
 {
@@ -292,9 +362,24 @@ int Theme::clampLevel(int level)
     return level;
 }
 
+QColor Theme::workspaceColor(int level)
+{
+    return rampFor(clampLevel(level)).workspace;
+}
+
+QColor Theme::workspaceColor()
+{
+    return workspaceColor(g_level);
+}
+
+QColor Theme::panelColor()
+{
+    return rampFor(clampLevel(g_level)).panel;
+}
+
 QString Theme::styleSheet(int level)
 {
-    return styleSheetFor(kRamps[clampLevel(level)]);
+    return styleSheetFor(rampFor(clampLevel(level)));
 }
 
 quint64 Theme::paletteGeneration()
@@ -305,10 +390,11 @@ quint64 Theme::paletteGeneration()
 void Theme::apply(int level)
 {
     const int clamped = clampLevel(level);
+    g_level = clamped;
     ++g_paletteGeneration;
     QPixmapCache::clear();
     QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
-    qApp->setPalette(paletteFor(clamped));
+    qApp->setPalette(paletteFor(rampFor(clamped)));
     qApp->setStyleSheet(styleSheet(clamped));
 }
 

@@ -27,7 +27,7 @@ struct NumericFieldConfig {
     QString objectName;
 };
 
-// A leading label, a right-aligned text editor, and an optional slider popup.
+// A leading label, a left-aligned text editor, and an optional slider popup.
 // Pressing and dragging horizontally on the label, the value, or the suffix
 // scrubs one step per pixel; Shift scales the step up 10x and Ctrl down 10x.
 // `valueChanged` previews user input and `valueCommitted` fires once when the

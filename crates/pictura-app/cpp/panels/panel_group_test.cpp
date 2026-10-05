@@ -2,6 +2,7 @@
 
 #include <QtGui/QAction>
 #include <QtWidgets/QLabel>
+#include <QtWidgets/QLayout>
 #include <QtWidgets/QMenu>
 #include <QtWidgets/QTabBar>
 #include <QtWidgets/QTabWidget>
@@ -12,7 +13,7 @@ namespace pictura {
 int PanelGroup::headerCornerWidthForTest() const
 {
     // M47: the reserved grip plus the per-widget menu button; the float close
-    // button no longer lives in the corner.
+    // button no longer lives in the corner. M48: the corner keeps a right margin.
     int width = 0;
     if (headerGrip_) {
         width += headerGrip_->width();
@@ -20,7 +21,16 @@ int PanelGroup::headerCornerWidthForTest() const
     if (headerButton_) {
         width += headerButton_->width();
     }
+    width += headerCornerRightMarginForTest();
     return width;
+}
+
+int PanelGroup::headerCornerRightMarginForTest() const
+{
+    if (!headerCorner_ || !headerCorner_->layout()) {
+        return 0;
+    }
+    return headerCorner_->layout()->contentsMargins().right();
 }
 
 bool PanelGroup::tabUsesScrollButtonsForTest() const
@@ -59,12 +69,34 @@ QStringList PanelGroup::titleTextsForTest() const
 
 QIcon PanelGroup::titleIconForTest(const QString& title) const
 {
+    // The icon is no longer on the normal tab; read the retained store.
     for (int i = 0; i < tabs_->count(); ++i) {
         if (tabs_->tabText(i) == title) {
-            return tabs_->tabIcon(i);
+            QWidget* panel = tabs_->widget(i);
+            return panel ? panelIcons_.value(panel->objectName()) : QIcon();
         }
     }
     return QIcon();
+}
+
+bool PanelGroup::tabHasIconForTest(const QString& title) const
+{
+    for (int i = 0; i < tabs_->count(); ++i) {
+        if (tabs_->tabText(i) == title) {
+            return !tabs_->tabIcon(i).isNull();
+        }
+    }
+    return false;
+}
+
+QIcon PanelGroup::iconicIconForTest(const QString& objectName) const
+{
+    if (!iconRow_) {
+        return QIcon();
+    }
+    QToolButton* button =
+        iconRow_->findChild<QToolButton*>(QStringLiteral("panelGroupIcon_") + objectName);
+    return button ? button->icon() : QIcon();
 }
 
 bool PanelGroup::groupLabelForTest() const

@@ -246,9 +246,9 @@ int runSessionChecks(pictura::PicturaMainWindow& frame)
         // lpr_workspace_space (400): with no document open the workspace pane
         // stays in the splitter at its minimum width and keeps the stretch, so
         // the widget columns can never absorb it and the splitter keeps a
-        // grabbable handle on both sides; an iconic column stays at its fixed
-        // strip width, and shrinking a normal column gives the slack back to the
-        // workspace rather than to a hidden pane.
+        // grabbable handle on both sides; an iconic column keeps its narrow
+        // minimum but stays resizable, and shrinking a normal column gives the
+        // slack back to the workspace rather than to a hidden pane.
         {
             frame.applyPanelSessionForTest(pictura::SessionState{});
             pump(6);
@@ -276,7 +276,7 @@ int runSessionChecks(pictura::PicturaMainWindow& frame)
                                   && columnsW + wsWidth <= splitterW;
 
             pictura::PanelColumn* primary = frame.panelColumn();
-            bool iconicFixed = false;
+            bool iconicNarrow = false;
             bool wsAbsorbs = false;
             int beforeWs = -1;
             int beforeCol = -1;
@@ -285,9 +285,9 @@ int runSessionChecks(pictura::PicturaMainWindow& frame)
             if (primary) {
                 primary->setRailMode(true);
                 pump(6);
-                iconicFixed = primary->width() > 0
-                              && primary->width() == primary->minimumWidthForTest()
-                              && primary->maximumWidth() == primary->minimumWidth();
+                iconicNarrow = primary->width() > 0
+                               && primary->minimumWidthForTest() <= 60
+                               && primary->maximumWidth() > primary->minimumWidthForTest();
                 primary->setRailMode(false);
                 pump(6);
                 beforeWs = tabs->width();
@@ -307,18 +307,18 @@ int runSessionChecks(pictura::PicturaMainWindow& frame)
                     "colBefore=%d colAfter=%d",
                     paneShown ? 1 : 0, stripHidden ? 1 : 0, handleLeft ? 1 : 0,
                     handleRight ? 1 : 0, wsWidth, columnsW, splitterW,
-                    iconicFixed ? 1 : 0, wsAbsorbs ? 1 : 0, beforeWs, afterWs,
+                    iconicNarrow ? 1 : 0, wsAbsorbs ? 1 : 0, beforeWs, afterWs,
                     beforeCol, afterCol);
             if (!(paneShown && stripHidden && handleLeft && handleRight && reserved
-                  && iconicFixed && wsAbsorbs)) {
+                  && iconicNarrow && wsAbsorbs)) {
                 return pictura::selfTest().fail(400, "workspace space");
             }
             frame.applyPanelSessionForTest(pictura::SessionState{});
             pump(6);
         }
 
-        // ldt_mode_bits (320): an opened raster's tab reads `base (RGB/8)`
-        // rather than a generated `Untitled-N` name.
+        // ldt_mode_bits (320): an opened raster's tab reads `base @ 100%
+        // (RGB/8)` rather than a generated `Untitled-N` name.
         const QString modePath = QDir::tempPath() + QStringLiteral("/modebits.png");
         {
             const QString written =
@@ -326,7 +326,8 @@ int runSessionChecks(pictura::PicturaMainWindow& frame)
             const bool opened = !written.isEmpty() && frame.openImagePath(modePath);
             const int index = frame.activeDocumentIndex();
             const QString tabText = frame.documentTabTextForTest(index);
-            const bool titleOk = opened && tabText == QStringLiteral("modebits.png (RGB/8)");
+            const bool titleOk =
+                opened && tabText == QStringLiteral("modebits.png @ 100% (RGB/8)");
             ST_BEGIN("ldt_mode_bits");
             ST_PASS("ldt_mode_bits opened=%d title=%s", opened ? 1 : 0,
                     qPrintable(tabText));

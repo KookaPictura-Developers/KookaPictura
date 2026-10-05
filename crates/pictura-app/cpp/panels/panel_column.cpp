@@ -47,6 +47,9 @@ namespace {
 constexpr int kPanelMinWidth = 300;
 constexpr int kPanelMaxWidth = 400;
 
+// The invisible width-drag grip kept on a widget column's workspace edge.
+constexpr int kResizeGripWidth = 4;
+
 } // namespace
 
 int gSharedFloor = kPanelMinWidth;
@@ -57,7 +60,10 @@ PanelColumn::PanelColumn(QWidget* parent)
     setObjectName(QStringLiteral("panelColumnContainer"));
     setAttribute(Qt::WA_StyledBackground, true);
     auto* layout = new QVBoxLayout(this);
-    layout->setContentsMargins(0, 0, 0, 0);
+    // The column draws a 1 px side/bottom border (see the theme); the layout is
+    // inset so the children do not paint over it.
+    layout->setContentsMargins(Theme::kPanelBorderWidth, 0, Theme::kPanelBorderWidth,
+                               Theme::kPanelBorderWidth);
     layout->setSpacing(0);
 
     header_ = new QWidget(this);
@@ -65,16 +71,16 @@ PanelColumn::PanelColumn(QWidget* parent)
     // M47: the whole column is draggable from its top header. The filter goes on
     // the header only, never the toggle child, so a toggle click still toggles.
     header_->installEventFilter(this);
-    header_->setCursor(Qt::SizeAllCursor);
+    header_->setCursor(Qt::ArrowCursor);
     header_->setToolTip(tr("Drag to move this panel column"));
     auto* headerLayout = new QHBoxLayout(header_);
-    headerLayout->setContentsMargins(2, 2, 2, 2);
+    headerLayout->setContentsMargins(2, 1, 2, 1);
     headerLayout->setSpacing(2);
     headerLayout->addStretch(1);
     columnToggle_ = new QToolButton(header_);
     columnToggle_->setObjectName(QStringLiteral("panelColumnToggle"));
     columnToggle_->setAutoRaise(true);
-    columnToggle_->setFixedSize(20, 20);
+    columnToggle_->setFixedSize(18, 18);
     connect(columnToggle_, &QToolButton::clicked, this, [this]() {
         if (toolsContent_) {
             if (toolsToggleAction_) {
@@ -113,6 +119,17 @@ PanelColumn::PanelColumn(QWidget* parent)
     iconStrip_->installEventFilter(this);
     iconStrip_->setVisible(false);
     layout->addWidget(iconStrip_, 1);
+
+    // A widget column keeps a width drag even though the splitter handles are
+    // 0-width: an invisible 4 px grip on its workspace-facing edge drives the
+    // adjacent handle (see PicturaMainWindow::beginWidgetColumnResize).
+    resizeGrip_ = new QWidget(this);
+    resizeGrip_->setObjectName(QStringLiteral("panelResizeGrip"));
+    resizeGrip_->setFixedWidth(kResizeGripWidth);
+    resizeGrip_->setCursor(Qt::SizeHorCursor);
+    resizeGrip_->setAttribute(Qt::WA_NoSystemBackground, true);
+    resizeGrip_->installEventFilter(this);
+    resizeGrip_->hide();
 
     // The thick blue insertion line, drawn by whatever is under the drag. It
     // lives in the scroll viewport so group/tab coordinates map straight in.
@@ -499,6 +516,7 @@ void PanelColumn::setToolsContent(QWidget* content, std::function<int()> columns
     content->setVisible(true);
     updateMinimumWidth();
     updateColumnToggle();
+    updateResizeGrip();
 }
 
 void PanelColumn::refreshToolsWidth()
@@ -540,8 +558,9 @@ void PanelColumn::updateMinimumWidth()
         // maximum equals the minimum, so neither a splitter-handle drag (the
         // handle beside it is disabled too) nor a stray programmatic resize can
         // change the toolbar's width.
-        const int want = toolsContent_->minimumWidth() > 0 ? toolsContent_->minimumWidth()
-                                                           : toolsContent_->sizeHint().width();
+        const int want = (toolsContent_->minimumWidth() > 0 ? toolsContent_->minimumWidth()
+                                                            : toolsContent_->sizeHint().width())
+                         + 2 * Theme::kPanelBorderWidth;
         setMinimumWidth(qMax(kIconStripMinWidth, want));
         setMaximumWidth(qMax(kIconStripMinWidth, want));
         return;
@@ -646,6 +665,24 @@ void PanelColumn::showEvent(QShowEvent* event)
         pendingWidth_ = 0;
         setPreferredWidth(width);
     }
+    updateResizeGrip();
+}
+
+void PanelColumn::updateResizeGrip()
+{
+    if (!resizeGrip_) {
+        return;
+    }
+    // Only a docked widget column has a workspace edge to drag against.
+    if (toolsContent_ || !isVisible() || !qobject_cast<QSplitter*>(parentWidget())) {
+        resizeGrip_->hide();
+        return;
+    }
+    const bool left = side() == PanelSide::Left;
+    resizeGrip_->setGeometry(left ? width() - kResizeGripWidth : 0, 0, kResizeGripWidth,
+                             height());
+    resizeGrip_->show();
+    resizeGrip_->raise();
 }
 
 void PanelColumn::resizeEvent(QResizeEvent* event)
@@ -656,6 +693,17 @@ void PanelColumn::resizeEvent(QResizeEvent* event)
     if (!railMode_ && width() > 0) {
         widthFlipPending_ = false;
     }
+    updateResizeGrip();
+}
+
+void PanelColumn::setBorderEdgeSuppressed(bool left, bool right)
+{
+    auto* l = layout();
+    if (!l) {
+        return;
+    }
+    const int b = Theme::kPanelBorderWidth;
+    l->setContentsMargins(left ? 0 : b, 0, right ? 0 : b, b);
 }
 
 QJsonArray PanelColumn::savePanelState() const

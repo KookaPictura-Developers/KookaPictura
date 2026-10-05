@@ -113,6 +113,8 @@ LayersPanel::LayersPanel(QWidget* parent)
 {
     QWidget* body = this;
     auto* layout = new QVBoxLayout(body);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(4);
 
     // Panel Options are session state (schema v3); clamp a corrupt store.
     const SessionState session = pictura::loadSession();
@@ -142,6 +144,9 @@ LayersPanel::LayersPanel(QWidget* parent)
     // Each icon is one flag; "All" is the derived four-bit set. The panel
     // reflects state, so toggling an individual flag off unchecks "All".
     auto* locks = new QHBoxLayout();
+    locks->addSpacing(4);
+    auto* lockLabel = new QLabel(tr("Lock:"), body);
+    locks->addWidget(lockLabel);
     const auto makeLock = [this, body, locks](const QString& assetId, const QString& tooltip,
                                               const QString& flag) {
         auto* button = new QToolButton(body);
@@ -692,7 +697,7 @@ bool LayersPanel::eventFilter(QObject* watched, QEvent* event)
             // Alt-click on the line between two rows (outside the eye column)
             // clips the upper layer to the lower, or releases it, as CS6 does.
             if (index.isValid() && (mouse->modifiers() & Qt::AltModifier)
-                && !delegate_->eyeRect(tree_->visualRect(index)).contains(pos)) {
+                && !delegate_->eyeColumnContains(tree_->visualRect(index), pos)) {
                 const QRect row = tree_->visualRect(index);
                 QModelIndex upper;
                 if (pos.y() >= row.bottom() - kClipLineGrab) {
@@ -705,7 +710,7 @@ bool LayersPanel::eventFilter(QObject* watched, QEvent* event)
                     return true;
                 }
             }
-            if (index.isValid() && delegate_->eyeRect(tree_->visualRect(index)).contains(pos)) {
+            if (index.isValid() && delegate_->eyeColumnContains(tree_->visualRect(index), pos)) {
                 const QString path = pathForProxyIndex(index);
                 const QString kind = index.data(KindRole).toString();
                 if (view_ && kind.startsWith(QLatin1String("smart-filter"))) {
@@ -750,7 +755,7 @@ bool LayersPanel::eventFilter(QObject* watched, QEvent* event)
                     // A control keeps its own action; any other content-band
                     // double-click converts the Background through the dialog.
                     const QRect vr = tree_->visualRect(index);
-                    const bool control = delegate_->eyeRect(vr).contains(pos)
+                    const bool control = delegate_->eyeColumnContains(vr, pos)
                         || delegate_->thumbRect(vr, index).contains(pos);
                     if (!control) {
                         openBackgroundConversion(path);

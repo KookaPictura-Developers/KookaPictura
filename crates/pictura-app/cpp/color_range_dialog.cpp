@@ -1,6 +1,7 @@
 #include "color_range_dialog.h"
 
 #include "icons.h"
+#include "panels/jump_slider.h"
 #include "tools.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
@@ -60,7 +61,7 @@ ColorRangeDialog::ColorRangeDialog(PictureView* view, ToolController* tools, QWi
     fuzziness_->setRange(0, 200);
     fuzziness_->setValue(40);
     form->addWidget(fuzziness_, 1, 1);
-    fuzzinessSlider_ = new QSlider(Qt::Horizontal, this);
+    fuzzinessSlider_ = new JumpSlider(Qt::Horizontal, this);
     fuzzinessSlider_->setRange(0, 200);
     fuzzinessSlider_->setValue(40);
     form->addWidget(fuzzinessSlider_, 2, 0, 1, 3);

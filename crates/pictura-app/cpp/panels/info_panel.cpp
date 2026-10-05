@@ -119,6 +119,16 @@ InfoPanel::InfoPanel(QWidget* parent)
     samplersLabel_->setWordWrap(true);
     outer->addWidget(samplersLabel_);
 
+    toolLabel_ = new QLabel(this);
+    toolLabel_->setObjectName(QStringLiteral("infoTool"));
+    toolLabel_->setWordWrap(true);
+    toolLabel_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    outer->addWidget(toolLabel_);
+
+    // The readouts keep their natural height: a trailing stretch absorbs the
+    // panel's leftover space instead of the top row flex-growing into it.
+    outer->addStretch(1);
+
     refresh();
 }
 
@@ -261,7 +271,7 @@ bool InfoPanel::eventFilter(QObject* watched, QEvent* event)
         if (auto* menu = qobject_cast<QMenu*>(watched)) {
             if (auto* button = qobject_cast<QToolButton*>(menu->parentWidget())) {
                 if (QScreen* screen = button->screen()) {
-                    const QSize menuSize = menu->size();
+                    const QSize menuSize = menu->sizeHint();
                     const QRect area = screen->availableGeometry();
                     const QPoint buttonTopLeft = button->mapToGlobal(QPoint(0, 0));
                     QPoint pos = buttonTopLeft + QPoint(button->width() + 1, 0);
@@ -535,6 +545,29 @@ void InfoPanel::setRulerMode(bool on)
     refresh();
 }
 
+void InfoPanel::setToolInfo(const QString& name, const QStringList& hints)
+{
+    toolName_ = name;
+    toolHints_ = hints;
+    refreshToolLabel();
+}
+
+void InfoPanel::refreshToolLabel()
+{
+    if (!toolLabel_) {
+        return;
+    }
+    if (toolName_.isEmpty() && toolHints_.isEmpty()) {
+        toolLabel_->clear();
+        return;
+    }
+    QString text = toolName_;
+    if (!toolHints_.isEmpty()) {
+        text += QStringLiteral(": ") + toolHints_.join(QStringLiteral("   "));
+    }
+    toolLabel_->setText(text);
+}
+
 void InfoPanel::refresh()
 {
     if (!view_ || !view_->has_document()) {
@@ -544,6 +577,7 @@ void InfoPanel::refresh()
         setValues(size_, {});
         docLabel_->clear();
         samplersLabel_->clear();
+        samplersLabel_->setVisible(false);
         return;
     }
 
@@ -621,6 +655,7 @@ void InfoPanel::refresh()
                                  : QStringLiteral("#%1  %2, %3  —").arg(i + 1).arg(p[0]).arg(p[1]));
     }
     samplersLabel_->setText(samplers.join(QLatin1Char('\n')));
+    samplersLabel_->setVisible(!samplers.isEmpty());
 }
 
 QString InfoPanel::samplerTextForTest() const { return samplersLabel_->text(); }
@@ -671,6 +706,11 @@ QString InfoPanel::rulerTextForTest() const
 }
 
 QString InfoPanel::docTextForTest() const { return docLabel_->text(); }
+
+QString InfoPanel::toolTextForTest() const
+{
+    return toolLabel_ ? toolLabel_->text() : QString();
+}
 
 void InfoPanel::setColorModeForTest(int index, const QString& mode)
 {

@@ -1,4 +1,5 @@
 #include "hdr_toning_dialog.h"
+#include "panels/jump_slider.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/filter_tools.cxxqt.h"
@@ -107,7 +108,7 @@ HdrToningDialog::HdrToningDialog(PictureView* view, const QRect& visible, QWidge
         caption->setFixedWidth(70);
         caption->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         row->addWidget(caption);
-        auto* slider = new QSlider(Qt::Horizontal);
+        auto* slider = new JumpSlider(Qt::Horizontal);
         slider->setRange(min, max);
         slider->setValue(def);
         row->addWidget(slider, 1);
@@ -131,7 +132,7 @@ HdrToningDialog::HdrToningDialog(PictureView* view, const QRect& visible, QWidge
         caption->setFixedWidth(70);
         caption->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         row->addWidget(caption);
-        auto* slider = new QSlider(Qt::Horizontal);
+        auto* slider = new JumpSlider(Qt::Horizontal);
         const int scale = int(std::lround(1.0 / step));
         slider->setRange(int(std::lround(min * scale)), int(std::lround(max * scale)));
         slider->setValue(int(std::lround(def * scale)));

@@ -1035,25 +1035,18 @@ void PicturaMainWindow::registerHandlers()
         QAction* action = registry_->action(command_ids::ViewOptions);
         if (optionsBar_ && action) {
             optionsBar_->setVisible(action->isChecked());
+            layoutWorkspaceFrame();
         }
     });
     registry_->setCheckedProvider(command_ids::ViewOptions,
                                   [this]() { return optionsBar_ && optionsBar_->isVisible(); });
 
-    registry_->setHandler(command_ids::ViewGpuCompute, [this]() {
-        const QAction* action = registry_->action(command_ids::ViewGpuCompute);
-        gpuCompute_ = action && action->isChecked();
-        for (const DocEntry& entry : docs_) {
-            if (entry.view) {
-                entry.view->set_gpu_compute(gpuCompute_);
-            }
-        }
-        saveSession();
-        registry_->refresh();
-        refresh();
+    registry_->setHandler(command_ids::ViewToolHints, [this]() {
+        const QAction* action = registry_->action(command_ids::ViewToolHints);
+        hintsVisible_ = action && action->isChecked();
+        updateStatus();
     });
-    registry_->setEnabledProvider(command_ids::ViewGpuCompute, [this]() { return gpuAvailable_; });
-    registry_->setCheckedProvider(command_ids::ViewGpuCompute, [this]() { return gpuCompute_; });
+    registry_->setCheckedProvider(command_ids::ViewToolHints, [this]() { return hintsVisible_; });
 
     registry_->setHandler(command_ids::ViewShowSelectionEdges, [this]() {
         const QAction* action = registry_->action(command_ids::ViewShowSelectionEdges);
@@ -1083,6 +1076,8 @@ void PicturaMainWindow::registerHandlers()
                           [this]() { showPreferences(PreferencesDialog::kGeneral); });
     registry_->setHandler(command_ids::EditPreferencesInterface,
                           [this]() { showPreferences(PreferencesDialog::kInterface); });
+    registry_->setHandler(command_ids::EditPreferencesPerformance,
+                          [this]() { showPreferences(PreferencesDialog::kPerformance); });
 
     // Every other panel is a content widget hosted by the PanelColumn; the
     // Window > Panels toggles drive and reflect the column's registry rather
