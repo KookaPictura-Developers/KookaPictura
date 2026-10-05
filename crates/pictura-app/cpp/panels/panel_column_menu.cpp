@@ -61,7 +61,7 @@ QStringList columnHeaderMenuTexts()
     return {
         PanelColumn::tr("Collapse to Icons"),
         PanelColumn::tr("Auto-Collapse Iconic Panels"),
-        PanelColumn::tr("Auto-show Hidden Panels"),
+        PanelColumn::tr("Auto-Show Hidden Panels"),
         PanelColumn::tr("Interface Options\u2026"),
     };
 }

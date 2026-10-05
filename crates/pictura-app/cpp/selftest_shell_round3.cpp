@@ -94,13 +94,13 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
         }
     }
 
-    // lss_tab_weight (350): the scoped document-tab rule carries medium weight
+    // lss_tab_weight (350): the scoped document-tab rule carries bold weight
     // and extra right padding without touching the unscoped panel rules.
     {
         const QString sheet = qApp->styleSheet();
         const bool scoped = sheet.contains(QStringLiteral("QTabBar#documentTabBar::tab {"));
-        const bool weight = sheet.contains(QStringLiteral("font-weight: 500"));
-        const bool padding = sheet.contains(QStringLiteral("padding-right: 12px"));
+        const bool weight = sheet.contains(QStringLiteral("font-weight: 700"));
+        const bool padding = sheet.contains(QStringLiteral("padding-right: 4px"));
 
         ST_BEGIN("lss_tab_weight");
         ST_PASS("lss_tab_weight scoped=%d weight=%d padding=%d", scoped ? 1 : 0, weight ? 1 : 0,
@@ -480,7 +480,7 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
         const bool menuComplete =
             texts.contains(QStringLiteral("Collapse to Icons"))
             && texts.contains(QStringLiteral("Auto-Collapse Iconic Panels"))
-            && texts.contains(QStringLiteral("Auto-show Hidden Panels"))
+            && texts.contains(QStringLiteral("Auto-Show Hidden Panels"))
             && texts.contains(QStringLiteral("Interface Options\u2026"));
         const bool railBefore = primary->railMode();
         const bool railFlipped = primary->triggerColumnHeaderMenuForTest(
@@ -493,7 +493,7 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
                                                 != autoCollapseBefore;
         const bool autoShowBefore = primary->autoShowHiddenForTest();
         const bool autoShowFlipped = primary->triggerColumnHeaderMenuForTest(
-                                         QStringLiteral("Auto-show Hidden Panels"))
+                                         QStringLiteral("Auto-Show Hidden Panels"))
                                      && primary->autoShowHiddenForTest() != autoShowBefore;
         bool optionsFired = false;
         const QMetaObject::Connection conn = QObject::connect(
@@ -689,7 +689,7 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
             pump(4);
             const QStringList texts = group->panelMenuTextsForTest();
             hasClose = texts.contains(QStringLiteral("Close"));
-            hasCloseGroup = texts.contains(QStringLiteral("Close Group"));
+            hasCloseGroup = texts.contains(QStringLiteral("Close Tab Group"));
             const QString active = group->currentPanelName();
             closesTab = !active.isEmpty()
                         && column->triggerWidgetMenuForTest(active, QStringLiteral("Close"))
@@ -697,7 +697,7 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
             column->showPanel(active, true);
             pump(4);
             closesGroup = column->triggerWidgetMenuForTest(group->currentPanelName(),
-                                                           QStringLiteral("Close Group"))
+                                                           QStringLiteral("Close Tab Group"))
                           && !group->isVisible();
         }
         ST_BEGIN("lss_panel_menu_close");

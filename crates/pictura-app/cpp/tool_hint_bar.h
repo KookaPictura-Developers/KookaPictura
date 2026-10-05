@@ -27,6 +27,12 @@ public:
     QString keyForTest(int index) const;
     QString textForTest(int index) const;
     bool highlightedForTest(int index) const { return index == pressed_; }
+    // The Move tool's `Arrows` key renders as directional chevrons; the count
+    // and the directions both come from the painter's single source of truth.
+    int chevronCountForTest(int index) const;
+    // The chevron directions the painter draws for `Arrows`, in draw order
+    // (up, left, down, right).
+    QString chevronDirectionsForTest() const;
     QString fallbackForTest() const { return fallbackText_; }
 
     QSize sizeHint() const override;

@@ -15,10 +15,11 @@ namespace pictura {
 
 const QString PreferencesDialog::kGeneral = QStringLiteral("General");
 const QString PreferencesDialog::kInterface = QStringLiteral("Interface");
+const QString PreferencesDialog::kPerformance = QStringLiteral("Performance");
 
 namespace {
 
-// The CS6 pane list; only the first two have real pages in M41.
+// The CS6 pane list; the real pages are the ones present in `realPages_`.
 const char* const kPaneNames[] = {
     "General",
     "Interface",
@@ -52,7 +53,7 @@ PreferencesDialog::PreferencesDialog(QWidget* parent)
     stack_->setObjectName(QStringLiteral("preferencesStack"));
     layout->addWidget(stack_, 1);
 
-    realPages_ = {kGeneral, kInterface};
+    realPages_ = {kGeneral, kInterface, kPerformance};
 
     // General: the app's real theme brightness is the only General setting.
     auto* generalPage = new QWidget(this);
@@ -80,15 +81,31 @@ PreferencesDialog::PreferencesDialog(QWidget* parent)
     interfaceLayout->addStretch(1);
     stack_->addWidget(interfacePage);
 
+    auto* performancePage = new QWidget(this);
+    performancePage->setObjectName(QStringLiteral("preferencesPerformancePage"));
+    auto* performanceLayout = new QVBoxLayout(performancePage);
+    makeCheckbox(QStringLiteral("useGpuCompute"), tr("Use GPU Compute"), performancePage);
+    performanceLayout->addStretch(1);
+    stack_->addWidget(performancePage);
+
+    // List rows carry their pane name in Qt::UserRole: the CS6 pane order does
+    // not match the stack's real-page order, so the row maps by name.
     for (const char* name : kPaneNames) {
-        auto* item = new QListWidgetItem(QString::fromUtf8(name), pageList_);
-        if (!realPages_.contains(QString::fromUtf8(name))) {
+        const QString pageName = QString::fromUtf8(name);
+        auto* item = new QListWidgetItem(pageName, pageList_);
+        item->setData(Qt::UserRole, pageName);
+        if (!realPages_.contains(pageName)) {
             item->setFlags(item->flags() & ~Qt::ItemIsEnabled);
         }
     }
     connect(pageList_, &QListWidget::currentRowChanged, this, [this](int row) {
-        if (row >= 0 && row < realPages_.size()) {
-            stack_->setCurrentIndex(row);
+        const QListWidgetItem* item = pageList_->item(row);
+        if (!item) {
+            return;
+        }
+        const int index = realPages_.indexOf(item->data(Qt::UserRole).toString());
+        if (index >= 0) {
+            stack_->setCurrentIndex(index);
         }
     });
     connect(brightness_, &NumericField::valueChanged, this,
@@ -110,6 +127,8 @@ QCheckBox* PreferencesDialog::makeCheckbox(const QString& key, const QString& la
             emit autoCollapseIconicChanged(on);
         } else if (key == QStringLiteral("autoShowHidden")) {
             emit autoShowHiddenChanged(on);
+        } else if (key == QStringLiteral("useGpuCompute")) {
+            emit gpuComputeChanged(on);
         }
     });
     return box;
@@ -146,13 +165,32 @@ void PreferencesDialog::setBrightnessLevel(int level)
     brightness_->setValue(level);
 }
 
+void PreferencesDialog::setGpuCompute(bool on)
+{
+    if (QCheckBox* box = checkbox(QStringLiteral("useGpuCompute"))) {
+        box->setChecked(on);
+    }
+}
+
+void PreferencesDialog::setGpuComputeEnabled(bool on)
+{
+    if (QCheckBox* box = checkbox(QStringLiteral("useGpuCompute"))) {
+        box->setEnabled(on);
+    }
+}
+
 void PreferencesDialog::showPage(const QString& page)
 {
     const int index = realPages_.indexOf(page);
     if (index < 0) {
         return;
     }
-    pageList_->setCurrentRow(index);
+    for (int row = 0; row < pageList_->count(); ++row) {
+        if (pageList_->item(row)->data(Qt::UserRole).toString() == page) {
+            pageList_->setCurrentRow(row);
+            break;
+        }
+    }
     stack_->setCurrentIndex(index);
 }
 

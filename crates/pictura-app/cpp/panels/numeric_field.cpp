@@ -58,7 +58,7 @@ NumericField::NumericField(const QString& label, const NumericFieldConfig& confi
 
     edit_ = new QLineEdit(this);
     edit_->setObjectName(config_.namePrefix + QStringLiteral("Edit"));
-    edit_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    edit_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     if (config_.decimals == 0) {
         edit_->setValidator(new QIntValidator(int(config_.minimum), int(config_.maximum), edit_));
     } else {

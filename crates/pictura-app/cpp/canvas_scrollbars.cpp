@@ -22,6 +22,12 @@ CanvasScrollBars::CanvasScrollBars(QWidget* parent)
     vbar_ = new QScrollBar(Qt::Vertical, this);
     grid_->addWidget(vbar_, 0, 1);
     grid_->addWidget(hbar_, 1, 0);
+    // The empty corner where the two bars meet: styled to the scrollbar track so
+    // the workspace colour does not show through the notch.
+    auto* corner = new QWidget(this);
+    corner->setObjectName(QStringLiteral("canvasScrollCorner"));
+    corner->setAttribute(Qt::WA_StyledBackground, true);
+    grid_->addWidget(corner, 1, 1);
     grid_->setColumnStretch(0, 1);
     grid_->setRowStretch(0, 1);
     hbar_->hide();

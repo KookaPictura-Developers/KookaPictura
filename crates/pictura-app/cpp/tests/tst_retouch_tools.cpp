@@ -4,11 +4,14 @@
 #include <QtTest/QtTest>
 
 #include "panels/numeric_field.h"
+#include "options_bar.h"
 #include "selftest_paint_fixture.h"
 
 #include <QtGui/QPainter>
 #include <QtWidgets/QCheckBox>
 #include <QtWidgets/QComboBox>
+#include <QtWidgets/QStackedWidget>
+#include <QtWidgets/QToolButton>
 
 #include "qt_test_support.h"
 
@@ -28,6 +31,7 @@ private slots:
     void dodgeTool();
     void burnTool();
     void spongeTool();
+    void brushTipBarIsCompact();
 
 private:
     pictura::test::ScopedStateHome stateHome_;
@@ -295,6 +299,37 @@ void RetouchToolsTest::spongeTool()
     QVERIFY2(f.tools->toneOptions(pictura::ToolId::Sponge).spongeMode == 1, "Saturate not set");
     QVERIFY2(spread(20, 32) > 120, "Saturate lifted nothing");
     mode->setCurrentIndex(options.spongeMode);
+}
+
+void RetouchToolsTest::brushTipBarIsCompact()
+{
+    pictura::PicturaMainWindow& frame = *window_;
+    QImage seed(40, 40, QImage::Format_RGB32);
+    seed.fill(Qt::white);
+    Fixture f(frame, seed, QStringLiteral("pictura_bar_compact_seed"));
+    QVERIFY2(f.ok(), "compact bar fixture");
+    frame.setActiveTool(pictura::ToolId::Blur);
+
+    auto* bar = frame.findChild<pictura::OptionsBar*>(QStringLiteral("optionsBar"));
+    QVERIFY(bar);
+    auto* stack = bar->findChild<QStackedWidget*>();
+    QWidget* page = stack ? stack->currentWidget() : nullptr;
+    QVERIFY(page);
+    auto* tip = page->findChild<QToolButton*>(QStringLiteral("optionsBrushTip"));
+    auto* peer = page->findChild<QComboBox*>(QStringLiteral("optionsBlurMode"));
+    QVERIFY(tip && peer);
+
+    QVERIFY2(tip->styleSheet().contains(QStringLiteral("padding: 0"))
+                 && tip->styleSheet().contains(QStringLiteral("border: 0")),
+             "brush tip is idle-less");
+    QCOMPARE(tip->toolButtonStyle(), Qt::ToolButtonTextBesideIcon);
+    QVERIFY2(tip->sizeHint().height() <= tip->iconSize().height() + 8,
+             "tip is one row, not icon over text");
+
+    QVERIFY2(tip->sizeHint().height() <= peer->sizeHint().height(),
+             "brush tip does not set the bar height");
+    QVERIFY2(page->sizeHint().height() <= peer->sizeHint().height() + 12,
+             "options bar hugs its controls");
 }
 
 QTEST_MAIN(RetouchToolsTest)

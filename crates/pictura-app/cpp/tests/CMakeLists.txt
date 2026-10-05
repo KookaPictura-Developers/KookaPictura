@@ -1,6 +1,7 @@
 # Qt Test suites for the C++ shell. Explicit list, no globbing (repo convention).
 set(PICTURA_QT_TESTS
     tst_smoke
+    tst_fonts
     tst_edit_clipboard
     tst_layers_panel
     tst_align_distribute

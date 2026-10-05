@@ -7,6 +7,7 @@
 #include "panel_group.h"
 #include "theme.h"
 
+#include <QtCore/QCoreApplication>
 #include <QtCore/QEvent>
 #include <QtCore/QJsonObject>
 #include <QtCore/QMetaObject>
@@ -238,6 +239,40 @@ bool PanelColumn::dropForTest(const QPoint& globalPos)
 void PanelColumn::cancelDragForTest()
 {
     cancelDrag();
+}
+
+bool PanelColumn::selfAnchorDockForTest(const QString& objectName, bool toRight)
+{
+    auto* frame = owningFrame();
+    if (!frame) {
+        return false;
+    }
+    PanelColumn* source = frame->columnForPanel(objectName);
+    if (!source) {
+        return false;
+    }
+    const int before = frame->panelColumns().size();
+    const QRect r(source->mapToGlobal(QPoint(0, 0)), source->size());
+    const QPoint point(toRight ? r.right() + 8 : r.left() - 8, r.center().y());
+    if (!source->beginTabDragForTest(objectName)) {
+        return false;
+    }
+    source->dragToForTest(point);
+    const bool dropped = source->dropForTest(point);
+    QCoreApplication::processEvents();
+    PanelColumn* destination = frame->columnForPanel(objectName);
+    if (!dropped || !destination || destination == source
+        || frame->panelColumns().size() != before + 1) {
+        return false;
+    }
+    // The source column survives (the test uses the multi-group primary), so
+    // the new column must sit immediately on the requested side of it.
+    const int destinationIndex = frame->panelColumns().indexOf(destination);
+    const int sourceIndex = frame->panelColumns().indexOf(source);
+    if (destinationIndex < 0 || sourceIndex < 0) {
+        return false;
+    }
+    return toRight ? destinationIndex == sourceIndex + 1 : destinationIndex == sourceIndex - 1;
 }
 
 qreal PanelColumn::dragDimOpacityForTest() const
@@ -776,17 +811,16 @@ bool PanelColumn::popupStyleParityForTest(const QString& objectName) const
         return false;
     }
     const QString sheet = qApp->styleSheet();
-    const QColor windowColor = qApp->palette().color(QPalette::Window);
-    const QString windowHex = windowColor.name(QColor::HexRgb);
-    const QString borderHex = windowColor.darker(135).name(QColor::HexRgb);
+    const QString panelHex = QStringLiteral("#4d4d4d");
+    const QString borderHex = QStringLiteral("#2e2e2e");
     const QString width = QString::number(Theme::kPanelBorderWidth);
-    const QString container = QStringLiteral("background: ") + windowHex + QStringLiteral("; border: ")
+    const QString container = QStringLiteral("background: ") + panelHex + QStringLiteral("; border: ")
         + width + QStringLiteral("px solid ") + borderHex;
     const bool sameContainer =
         sheet.contains(QStringLiteral("QWidget#panelIconFlyout { ") + container + QStringLiteral("; }"))
         && sheet.contains(QStringLiteral("QWidget#panelFloat { ") + container + QStringLiteral("; }"));
     const bool samePane = sheet.contains(
-        QStringLiteral("QTabWidget#panelGroupTabs::pane { border: 0; background: ") + windowHex
+        QStringLiteral("QTabWidget#panelGroupTabs::pane { border: 0; background: ") + panelHex
         + QStringLiteral("; }"));
     return sameContainer && samePane;
 }

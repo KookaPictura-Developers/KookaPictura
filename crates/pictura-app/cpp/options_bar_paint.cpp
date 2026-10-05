@@ -82,14 +82,20 @@ QComboBox* addCombo(QHBoxLayout* layout, QWidget* page, const QString& label,
 
 // The brush Size and Hardness, shared with the paint tools through the same
 // controller fields.
-// CS6's brush tip button: the tip with its size under it; a click opens the
+// CS6's brush tip button: the tip with its size beside it; a click opens the
 // Brush Preset picker (Size, Hardness, and the preset grid).
 void OptionsBar::addBrushTipFields(QHBoxLayout* layout, QWidget* page)
 {
     auto* button = new QToolButton(page);
     button->setObjectName(QStringLiteral("optionsBrushTip"));
-    button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
-    button->setIconSize(QSize(20, 20));
+    // ponytail: at rest this shared control is flat and compact so it sets
+    // neither the bar height nor an idle outline; the scoped selector stops
+    // matching while hovered/pressed so the global hover chrome still shows.
+    button->setStyleSheet(QStringLiteral(
+        "QToolButton#optionsBrushTip:!hover:!pressed { background: transparent; "
+        "border: 0; padding: 0; }"));
+    button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    button->setIconSize(QSize(16, 16));
     button->setAutoRaise(true);
     button->setToolTip(QStringLiteral("Click to open the Brush Preset picker"));
     layout->addWidget(button);
@@ -98,7 +104,7 @@ void OptionsBar::addBrushTipFields(QHBoxLayout* layout, QWidget* page)
     }
     const auto refresh = [this, button] {
         button->setText(QString::number(controller_->brushSize()));
-        button->setIcon(QIcon(BrushPresetPicker::tipIcon(paintTip(*controller_), 20)));
+        button->setIcon(QIcon(BrushPresetPicker::tipIcon(paintTip(*controller_), 16)));
     };
     refresh();
     connect(controller_, &ToolController::brushSizeChanged, button, refresh);

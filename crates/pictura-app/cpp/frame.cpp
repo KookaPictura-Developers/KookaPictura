@@ -2,6 +2,7 @@
 
 #include "file_drop_router.h"
 #include "frame_canvas.h"
+#include "panels/numeric_field.h"
 #include "pictura_debug_timing.h"
 
 #include <QtCore/QTemporaryDir>
@@ -11,15 +12,11 @@ namespace pictura {
 
 namespace {
 
-constexpr int kCanvasColorCount = 4;
 // The document pane keeps a minimum width even with no document open, so the
 // widget columns can never absorb the whole workspace (and the splitter keeps a
 // grabbable handle on each side of it). ponytail: chosen, not a sourced CS6
 // metric.
 constexpr int kWorkspaceMinWidth = 160;
-const QColor kCanvasColors[kCanvasColorCount] = {
-    QColor(37, 37, 37), QColor(82, 82, 82), QColor(0, 0, 0), QColor(255, 255, 255)};
-
 
 // The tab title's mode label: `document_mode()` reports the working mode key.
 QString modeLabel(const QString& mode)
@@ -87,14 +84,19 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
         }
     });
     tabs_->setDocumentMode(true);
-
+    buildDocumentTabs();
     // The document area and the panel columns share the central widget through
     // a splitter; the columns are the only host for the panels. M43: the
     // splitter is an ordered set of left columns, the document tabs, then right
     // columns, with the tabs keeping the stretch.
     panelColumn_ = new PanelColumn(this);
+    // The splitter itself is the central widget, so drop-target geometry keeps
+    // its existing meaning. It reserves the 3 px band on each side; 0-width
+    // handles leave no resize seam between panes.
     centerSplitter_ = new QSplitter(Qt::Horizontal, this);
     centerSplitter_->setObjectName(QStringLiteral("centerSplitter"));
+    centerSplitter_->setHandleWidth(0);
+    centerSplitter_->setContentsMargins(kWorkspaceFrameWidth, 0, kWorkspaceFrameWidth, 0);
     centerSplitter_->addWidget(tabs_);
     centerSplitter_->addWidget(panelColumn_);
     tabs_->setMinimumWidth(kWorkspaceMinWidth);
@@ -127,6 +129,16 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
     buildPanels();
     buildTools(state.toolsColumns, state.useShiftKeyForToolSwitch);
     buildStatusBar();
+    // The two 1 px inner frame lines span the whole central band (options bar
+    // included); the outer 2 px is the window `${panel}` showing through the
+    // reserved margin. They are raised above the chrome in layoutWorkspaceFrame.
+    workspaceFrameLeft_ = new QWidget(this);
+    workspaceFrameRight_ = new QWidget(this);
+    for (QWidget* line : {workspaceFrameLeft_, workspaceFrameRight_}) {
+        line->setObjectName(QStringLiteral("workspaceFrameLine"));
+        line->setAttribute(Qt::WA_StyledBackground, true);
+        line->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    }
     // Route OS file drops by target: a document canvas places into the active
     // document, every other target opens a new tab. Enabling drops is what makes
     // each widget a drop target; per-canvas install happens in addDocument.
@@ -160,11 +172,8 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
     sessionSaveTimer_->setSingleShot(true);
     sessionSaveTimer_->setInterval(400);
     connect(sessionSaveTimer_, &QTimer::timeout, this, &PicturaMainWindow::saveSession);
-    connect(centerSplitter_, &QSplitter::splitterMoved, this, [this](int, int) {
-        if (sessionSaveTimer_) {
-            sessionSaveTimer_->start();
-        }
-    });
+    connect(centerSplitter_, &QSplitter::splitterMoved, this,
+            [this](int pos, int index) { onCenterSplitterMoved(pos, index); });
 
     connect(tabs_, &QTabWidget::currentChanged, this, [this](int) {
         PictureView* active = activeView();
@@ -201,10 +210,15 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
             [this]() { setBrightnessLevel(brightnessLevel_ + 1); });
 
     resize(1100, 700);
+    restoreSessionWindowGeometry(state);
     // A normal launch opens no document; refresh() is the only writer of the
     // tab pane's visibility, so hide the empty ghost canvas at startup.
     refresh();
     setWindowTitle(QStringLiteral("Kooka Pictura"));
+    // Make the splitter handles inert from the start: the widget columns' own
+    // grips are the only width-drag affordance on a workspace-facing edge.
+    reapplyColumnStretch();
+    layoutWorkspaceFrame();
 }
 
 PicturaMainWindow::~PicturaMainWindow()
@@ -322,14 +336,6 @@ QString PicturaMainWindow::documentName(int index) const
     return QStringLiteral("Untitled-%1").arg(entry.untitledNumber);
 }
 
-QString PicturaMainWindow::documentTabTextForTest(int index) const
-{
-    if (!tabs_ || index < 0 || index >= tabs_->count()) {
-        return QString();
-    }
-    return tabs_->tabText(index);
-}
-
 bool PicturaMainWindow::isDocumentDirty(int index) const
 {
     PictureView* view = viewAt(index);
@@ -383,7 +389,7 @@ int PicturaMainWindow::addDocument(PictureView* view, const QString& path)
     } else {
         entry.canvas->replaceImage(view->image());
     }
-    entry.canvas->setCanvasColor(kCanvasColors[canvasColorIndex_]);
+    entry.canvas->setCanvasColor(canvasColorForIndex(canvasColorIndex_));
 
     // Present from the view pyramid: the canvas crops a level instead of
     // scaling the full-resolution image (see frame_canvas.cpp).
@@ -424,7 +430,8 @@ int PicturaMainWindow::addDocument(PictureView* view, const QString& path)
                     registry_->refresh();
                 }
             });
-    connect(entry.canvas, &ImageView::zoomChanged, this, [this](double) { updateStatus(); });
+    connect(entry.canvas, &ImageView::zoomChanged, this,
+            &PicturaMainWindow::onCanvasZoomChanged);
     connect(entry.canvas, &ImageView::mouseMoved, this, [this](const QPointF& p) {
         if (infoPanel_) {
             infoPanel_->setCursorPosition(p);
@@ -807,7 +814,7 @@ void PicturaMainWindow::setScreenMode(ScreenMode mode)
         menuBar()->setVisible(true);
         statusBar()->setVisible(true);
         setChromeVisible(!panelsHidden_);
-        setCanvasColor(kCanvasColors[canvasColorIndex_]);
+        setCanvasColor(canvasColorForIndex(canvasColorIndex_));
         break;
     }
     case ScreenMode::FullWithMenuBar:
@@ -826,6 +833,10 @@ void PicturaMainWindow::setScreenMode(ScreenMode mode)
         break;
     }
     registry_->refresh();
+    if (toolbox_) {
+        toolbox_->setActiveScreenMode(static_cast<int>(mode));
+    }
+    layoutWorkspaceFrame();
 }
 
 void PicturaMainWindow::cycleScreenMode(bool forward)
@@ -834,17 +845,6 @@ void PicturaMainWindow::cycleScreenMode(bool forward)
     index += forward ? 1 : -1;
     index = (index % 3 + 3) % 3;
     setScreenMode(static_cast<ScreenMode>(index));
-}
-
-void PicturaMainWindow::cycleCanvasColor(bool forward)
-{
-    canvasColorIndex_ = (canvasColorIndex_ + (forward ? 1 : -1) + kCanvasColorCount)
-                        % kCanvasColorCount;
-    for (const DocEntry& entry : docs_) {
-        if (entry.canvas) {
-            entry.canvas->setCanvasColor(kCanvasColors[canvasColorIndex_]);
-        }
-    }
 }
 
 void PicturaMainWindow::refresh()
@@ -917,6 +917,9 @@ void PicturaMainWindow::updateTabTitle(int index)
         return;
     }
     QString title = documentName(index);
+    if (ImageView* canvas = canvasAt(index)) {
+        title += QStringLiteral(" @ %1%").arg(qRound(canvas->zoom() * 100.0));
+    }
     if (PictureView* view = viewAt(index); view && view->has_document()) {
         const QString mode = modeLabel(view->document_mode());
         const int bits = view->document_depth_bits();
@@ -946,6 +949,8 @@ void PicturaMainWindow::showPreferences(const QString& page)
         preferencesDialog_->setAutoCollapseIconic(panelColumn_->autoCollapseIconic());
         preferencesDialog_->setAutoShowHidden(panelColumn_->autoShowHidden());
         preferencesDialog_->setBrightnessLevel(brightnessLevel_);
+        preferencesDialog_->setGpuCompute(gpuCompute_);
+        preferencesDialog_->setGpuComputeEnabled(gpuAvailable_);
         connect(preferencesDialog_, &PreferencesDialog::useShiftKeyForToolSwitchChanged,
                 this, [this](bool on) {
                     useShiftKeyForToolSwitch_ = on;
@@ -963,6 +968,8 @@ void PicturaMainWindow::showPreferences(const QString& page)
                     setBrightnessLevel(level);
                     saveSession();
                 });
+        connect(preferencesDialog_, &PreferencesDialog::gpuComputeChanged, this,
+                &PicturaMainWindow::applyGpuComputePreference);
     }
     preferencesDialog_->openOn(page);
 }
@@ -1092,12 +1099,18 @@ void PicturaMainWindow::keyReleaseEvent(QKeyEvent* event)
 
 void PicturaMainWindow::updateStatus()
 {
+    // One owner for footer visibility: an empty workspace shows none of it.
+    const bool hasDoc = !docs_.isEmpty();
     ImageView* canvas = imageView();
-    if (zoomLabel_) {
-        zoomLabel_->setText(
-            canvas ? QStringLiteral("%1%").arg(qRound(canvas->zoom() * 100.0)) : QStringLiteral("—"));
+    if (zoomField_) {
+        zoomField_->setVisible(hasDoc);
+        if (canvas) {
+            // Raw percent so the field formats exactly like the Navigator readout.
+            zoomField_->setValue(canvas->zoom() * 100.0);
+        }
     }
     if (sizeLabel_) {
+        sizeLabel_->setVisible(hasDoc);
         QString text = QStringLiteral("—");
         PictureView* view = activeView();
         if (view && view->has_document()) {
@@ -1106,49 +1119,35 @@ void PicturaMainWindow::updateStatus()
             if (statusReadout_ == QStringLiteral("dimensions")) {
                 text = QStringLiteral("W %1  H %2").arg(width).arg(height);
             } else {
-                text = QStringLiteral("%1 × %2 px").arg(width).arg(height);
+                // ponytail: 72 ppi is the PSD default; wire to document
+                // resolution once the codec surfaces it.
+                text = QStringLiteral("%1 px x %2 px (72 ppi)").arg(width).arg(height);
             }
         }
         sizeLabel_->setText(text);
     }
     if (backendLabel_) {
+        backendLabel_->setVisible(hasDoc);
         PictureView* view = activeView();
         backendLabel_->setText(view ? view->active_backend() : QStringLiteral("—"));
     }
-}
-
-void PicturaMainWindow::updateToolHint()
-{
-    if (!hintBar_) {
-        return;
+    const bool showHints = hasDoc && hintsVisible_;
+    if (hintBar_) {
+        hintBar_->setVisible(showHints);
     }
-    QString fallback = tools_ ? QString::fromLatin1(toolInfo(tools_->activeTool()).hint)
-                              : QStringLiteral("Ready");
-    if (foreground_.isValid()) {
-        fallback += QStringLiteral("  ·  Foreground %1").arg(foreground_.name());
+    if (hintSeparator_) {
+        hintSeparator_->setVisible(showHints);
     }
-    QList<ToolHint> hints;
-    if (tools_) {
-        hints = toolHintEntries(tools_->activeTool());
-        for (ToolHint& hint : hints) {
-            if (!hint.commandId || !registry_) {
-                continue;
-            }
-            if (QAction* action = registry_->action(QString::fromLatin1(hint.commandId))) {
-                const QString key = action->shortcut().toString(QKeySequence::NativeText);
-                if (!key.isEmpty()) {
-                    hint.key = key;
-                }
-            }
-        }
+    if (statusOptionsButton_) {
+        statusOptionsButton_->setVisible(hasDoc);
     }
-    hintBar_->setHints(hints, fallback);
 }
 
 void PicturaMainWindow::applyBrightness(int level)
 {
     brightnessLevel_ = Theme::clampLevel(level);
     Theme::apply(brightnessLevel_);
+    applyWorkspaceCanvasColor();
 }
 
 bool PicturaMainWindow::reorderDocumentsForTest()

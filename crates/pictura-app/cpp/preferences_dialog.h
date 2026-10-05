@@ -13,15 +13,16 @@ namespace pictura {
 
 class NumericField;
 
-// The M41 CS6 Preferences dialog: a left pane list plus a QStackedWidget. Only
-// `General` and `Interface` are real pages; the other CS6 panes are listed but
-// disabled. Modeless so it never blocks the headless self-test.
+// The M41 CS6 Preferences dialog: a left pane list plus a QStackedWidget.
+// General, Interface, and Performance are real pages; the other CS6 panes are
+// listed but disabled. Modeless so it never blocks the headless self-test.
 class PreferencesDialog : public QDialog {
     Q_OBJECT
 
 public:
     static const QString kGeneral;
     static const QString kInterface;
+    static const QString kPerformance;
 
     explicit PreferencesDialog(QWidget* parent = nullptr);
 
@@ -32,6 +33,8 @@ public:
     void setAutoCollapseIconic(bool on);
     void setAutoShowHidden(bool on);
     void setBrightnessLevel(int level);
+    void setGpuCompute(bool on);
+    void setGpuComputeEnabled(bool on);
 
     // Test hooks.
     QStringList pagesForTest() const;
@@ -44,12 +47,12 @@ signals:
     void autoCollapseIconicChanged(bool on);
     void autoShowHiddenChanged(bool on);
     void brightnessLevelChanged(int level);
+    void gpuComputeChanged(bool on);
 
 private:
     void showPage(const QString& page);
     QCheckBox* makeCheckbox(const QString& key, const QString& label, QWidget* page);
     QCheckBox* checkbox(const QString& key) const;
-    int pageIndex(const QString& name) const;
 
     QListWidget* pageList_ = nullptr;
     QStackedWidget* stack_ = nullptr;

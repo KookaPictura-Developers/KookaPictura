@@ -2,6 +2,7 @@
 
 #include "color_picker_dialog.h"
 #include "curve_widget.h"
+#include "jump_slider.h"
 
 #include <QtGui/QPainter>
 #include <QtWidgets/QCheckBox>
@@ -151,7 +152,7 @@ void AdjustmentControls::addSlider(const QStringList& cells)
     spin->setRange(cells.value(6).toDouble(), cells.value(7).toDouble());
     spin->setKeyboardTracking(false);
     column->addWidget(labelled(cells.value(2), spin));
-    auto* slider = new QSlider(Qt::Horizontal, holder);
+    auto* slider = new JumpSlider(Qt::Horizontal, holder);
     slider->setObjectName(QStringLiteral("adjustmentSlider.") + key);
     slider->setRange(qRound(spin->minimum() * factor), qRound(spin->maximum() * factor));
     column->addWidget(slider);

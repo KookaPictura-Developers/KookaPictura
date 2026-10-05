@@ -517,8 +517,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                                      + QStringLiteral("/kooka-pictura-selftest-")
                                      + QString::number(QCoreApplication::applicationPid());
             qputenv("XDG_STATE_HOME", tmpState.toUtf8());
-            frame.setBrightnessLevel(2);
-            frame.saveSession();
+            frame.setBrightnessLevel(2); frame.saveSession(); frame.setBrightnessLevel(1);
             const pictura::SessionState loaded = pictura::loadSession();
             const bool sessionOk = loaded.brightnessLevel == 2
                                    && loaded.layout == frame.saveState();
@@ -1678,7 +1677,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                      toggleDistinct ? 1 : 0,
                      chromeFgbg ? 1 : 0,
                      chromeScreenMode ? 1 : 0);
-        if (!chromeToolbox || !chromeTabless || chromeSlotButtons.size() != 23 || !toggleDistinct
+        if (!chromeToolbox || !chromeTabless || chromeSlotButtons.size() != 21 || !toggleDistinct
             || !chromeFgbg || !chromeScreenMode) {
             ST_FAIL(60, "tools column wrong");
         }
@@ -2302,8 +2301,8 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         }
         frame.closeDocument(layerOpsDocIndex, false);
         // M38: the frozen 71-tool catalogue, its icons/cursors/hotspots, the
-        // 23-slot toolbox, and the unimplemented-tool guard. Assets are
-        // document-independent, so these run with or without a loaded PSD.
+        // 21-slot toolbox (Object/Camera hidden), and the unimplemented-tool
+        // guard. Assets are document-independent, so these run with or without a PSD.
         const QList<pictura::ToolId> catalogue = pictura::allToolIds();
         QString missingToolIcon;
         QString missingToolCursor;
@@ -2333,16 +2332,17 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         int slotsOk = 0;
         if (toolsDock) {
             const QList<QToolButton*> slotButtons = toolsDock->slotButtons();
-            slotsOk = slotButtons.size() == 23 ? 1 : 0;
+            const QList<int> slotGroups = toolsDock->slotGroupsForTest();
+            slotsOk = slotButtons.size() == 21 && slotGroups.size() == slotButtons.size() ? 1 : 0;
             if (slotsOk) {
-                for (int g = 1; g <= slotButtons.size(); ++g) {
+                for (int i = 0; i < slotButtons.size(); ++i) {
                     bool anyImplemented = false;
                     for (const pictura::ToolId id : catalogue) {
-                        if (pictura::toolInfo(id).group == g && pictura::toolImplemented(id)) {
+                        if (pictura::toolInfo(id).group == slotGroups.at(i) && pictura::toolImplemented(id)) {
                             anyImplemented = true;
                         }
                     }
-                    if (slotButtons.at(g - 1)->isEnabled() != anyImplemented) {
+                    if (slotButtons.at(i)->isEnabled() != anyImplemented) {
                         slotsOk = 0;
                     }
                 }
@@ -2815,7 +2815,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const QList<QToolButton*> toolsPanelSlots =
             toolsPanelToolbox ? toolsPanelToolbox->slotButtons() : QList<QToolButton*>();
 
-        // m40_columns (113/114): default one column; two columns reflow the 23
+        // m40_columns (113/114): default one column; two columns reflow the 21
         // slots row-major and widen the dock; toggling back restores one column;
         // the colour control and the Screen Mode button stay below the slots in
         // both layouts.
@@ -2837,7 +2837,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                    && screenMode->mapTo(toolsPanelToolbox, QPoint(0, 0)).y() > slotBottom;
         };
         const bool toolsPanelDefault =
-            toolsPanelToolbox != nullptr && toolsPanelToolbox->columns() == 1 && toolsPanelSlots.size() == 23;
+            toolsPanelToolbox != nullptr && toolsPanelToolbox->columns() == 1 && toolsPanelSlots.size() == 21;
         const int toolsPanelMin1 = toolsPanelToolbox ? toolsPanelToolbox->minimumWidth() : 0;
         const int toolsPanelWidth1 = toolsPanelToolbox ? toolsPanelToolbox->width() : 0;
         const bool pinned1 = pinnedBelow();
@@ -2847,7 +2847,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         QCoreApplication::processEvents();
         const int toolsPanelMin2 = toolsPanelToolbox ? toolsPanelToolbox->minimumWidth() : 0;
         const int toolsPanelWidth2 = toolsPanelToolbox ? toolsPanelToolbox->width() : 0;
-        bool rowMajor = toolsPanelSlots.size() == 23;
+        bool rowMajor = toolsPanelSlots.size() == 21;
         for (int i = 0; i + 2 < toolsPanelSlots.size() && rowMajor; ++i) {
             const QPoint a = toolsPanelSlots.at(i)->mapTo(toolsPanelToolbox, QPoint(0, 0));
             const QPoint b = toolsPanelSlots.at(i + 2)->mapTo(toolsPanelToolbox, QPoint(0, 0));
@@ -2883,8 +2883,8 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         }
 
         // m40_flyout (115): a multi-member group shows the triangle and opens a
-        // menu of its members at the button's bottom edge; a single-member group
-        // shows no triangle.
+        // menu of its members beside the button (right, flipped left); a
+        // single-member group shows no triangle.
         const bool triMulti = toolsPanelToolbox && toolsPanelToolbox->hasFlyoutTriangleForTest(2);
         const bool singleTri = toolsPanelToolbox && toolsPanelToolbox->hasFlyoutTriangleForTest(1);
         const bool triSingle = toolsPanelToolbox && !singleTri;
@@ -2906,27 +2906,29 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 }
             }
         }
-        bool toolsPanelBelow = false;
+        bool toolsPanelBeside = false;
         if (toolsPanelToolbox) {
             toolsPanelToolbox->openSlotFlyoutForTest(2);
             QCoreApplication::processEvents();
             QMenu* menu = toolsPanelToolbox->slotMenuForTest(2);
             QToolButton* button = toolsPanelSlots.value(1);
             if (menu && button && menu->isVisible()) {
-                toolsPanelBelow = menu->pos().y()
-                           == button->mapToGlobal(QPoint(0, button->height())).y();
+                const QPoint btnTopLeft = button->mapToGlobal(QPoint(0, 0));
+                const int btnRight = btnTopLeft.x() + button->width();
+                // Beside the button, never over it: right edge or flipped left.
+                toolsPanelBeside = menu->pos().x() >= btnRight || menu->pos().x() + menu->width() <= btnTopLeft.x();
             }
             if (menu) {
                 menu->close();
                 QCoreApplication::processEvents();
             }
         }
-        const bool flyoutOk = triMulti && triSingle && menuActions && toolsPanelBelow;
+        const bool flyoutOk = triMulti && triSingle && menuActions && toolsPanelBeside;
         ST_BEGIN("flyout_tri");
-        ST_PASS("flyout tri=%d/%d menu=%d below=%d", triMulti ? 1 : 0,
+        ST_PASS("flyout tri=%d/%d menu=%d beside=%d", triMulti ? 1 : 0,
                      singleTri ? 1 : 0,
                      menuActions ? 1 : 0,
-                     toolsPanelBelow ? 1 : 0);
+                     toolsPanelBeside ? 1 : 0);
         if (!flyoutOk) {
             ST_FAIL(115, "flyout");
         }
@@ -3421,9 +3423,9 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             QCoreApplication::processEvents();
         }
 
-        // m41_prefs (125): the Preferences dialog has exactly General and
-        // Interface, opens from the command path and from Interface Options…,
-        // and its checkboxes drive the toolbox and the column and persist.
+        // m41_prefs (125): the Preferences dialog exposes exactly General,
+        // Interface, and Performance, opens from the command path and from
+        // Interface Options…, and its checkboxes drive and persist.
         pictura::PreferencesDialog* prefs = nullptr;
         bool prefsPages = false;
         bool prefsOpen = false;
@@ -3446,10 +3448,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         const bool openedInterface =
             prefs && prefs->isVisible()
             && prefs->currentPageForTest() == QStringLiteral("Interface");
-        prefsPages =
-            prefs
+        prefsPages = prefs
             && prefs->pagesForTest()
-                   == QStringList({QStringLiteral("General"), QStringLiteral("Interface")});
+                   == QStringList({QStringLiteral("General"), QStringLiteral("Interface"),
+                                   QStringLiteral("Performance")});
         prefsOpen = openedGeneral && openedInterface;
         if (prefs) {
             auto* prefsToolbox = frame.findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
@@ -4038,22 +4040,23 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         }
 
         // m43_tabcolors (141): the panel tab bar is named `panelTabBar`; its
-        // selected tab uses the widget surface `${window}` colour and its
-        // inactive tab uses the darker `${base}` (which differs); the document
-        // tab bar is not the scoped one, so it keeps the unscoped rules.
+        // selected tab uses the panel surface `${panel}` colour and its
+        // inactive tab uses the darker `${panelHeader}` (which differs); the
+        // document tab bar is not the scoped one, so it keeps the unscoped
+        // rules.
         bool colorsActive = false;
         bool colorsInactive = false;
         bool colorsDiffer = false;
         {
             const QString ss = qApp->styleSheet();
-            const QColor base = qApp->palette().color(QPalette::Base);
-            const QColor windowColor = qApp->palette().color(QPalette::Window);
-            const QString baseHex = base.name(QColor::HexRgb);
-            const QString windowHex = windowColor.name(QColor::HexRgb);
             const QString activeRule =
-                QStringLiteral("QTabBar#panelTabBar::tab:selected { background: ") + windowHex;
+                QStringLiteral("QTabBar#panelTabBar::tab:selected { background: ");
             const QString inactiveRule =
-                QStringLiteral("QTabBar#panelTabBar::tab { background: ") + baseHex;
+                QStringLiteral("QTabBar#panelTabBar::tab { background: ");
+            const int activeAt = ss.indexOf(activeRule);
+            const int inactiveAt = ss.indexOf(inactiveRule);
+            const QString activeHex = activeAt >= 0 ? ss.mid(activeAt + activeRule.size(), 7) : QString();
+            const QString inactiveHex = inactiveAt >= 0 ? ss.mid(inactiveAt + inactiveRule.size(), 7) : QString();
             QTabBar* docBar = frame.findChild<QTabBar*>(QStringLiteral("documentTabBar"));
             const bool docUnscoped =
                 docBar && docBar->objectName() != QStringLiteral("panelTabBar");
@@ -4062,10 +4065,9 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             const bool panelNamed =
                 anyGroup && anyGroup->tabBar()
                 && anyGroup->tabBar()->objectName() == QStringLiteral("panelTabBar");
-            colorsActive = ss.contains(activeRule);
-            colorsInactive = ss.contains(inactiveRule);
-            colorsDiffer = colorsActive && colorsInactive && baseHex != windowHex
-                              && docUnscoped && panelNamed;
+            colorsActive = activeAt >= 0;
+            colorsInactive = inactiveAt >= 0;
+            colorsDiffer = colorsActive && colorsInactive && activeHex != inactiveHex && docUnscoped && panelNamed;
         }
         const bool tabColorsOk = colorsActive && colorsInactive && colorsDiffer;
         ST_BEGIN("tabcolors_active");
@@ -4561,10 +4563,10 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // splitter handle width) rather than only that a stylesheet exists.
         {
             const QString sheet = qApp->styleSheet();
-            const QColor themeWindow = qApp->palette().color(QPalette::Window);
-            const QString themeWindowHex = themeWindow.name(QColor::HexRgb);
-            const QString themeBaseHex = qApp->palette().color(QPalette::Base).name(QColor::HexRgb);
-            const QString borderHex = themeWindow.darker(135).name(QColor::HexRgb);
+            const QString themePanelHex = QStringLiteral("#4d4d4d");
+            const QString themeBaseHex = QStringLiteral("#363636");
+            const QString borderHex = QStringLiteral("#2e2e2e");
+            const QString separatorHex = QStringLiteral("#404040");
             const QString borderWidth = QString::number(pictura::Theme::kPanelBorderWidth);
 
             // 154: the collapse toggle shows the action's target icon, not the
@@ -4622,19 +4624,17 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 ST_FAIL(155, "default active panel");
             }
 
-            // 156: the active panel tab matches the widget surface (`window`),
-            // the inactive tab is the darker `base`, and neither uses the other.
+            // 156: the active panel tab matches the panel surface (`panel`),
+            // the inactive tab is the darker `panelHeader`, and neither uses the
+            // other.
             const bool tabSelected =
-                sheet.contains(QStringLiteral("QTabBar#panelTabBar::tab:selected { background: ")
-                                  + themeWindowHex)
-                && sheet.contains(
-                    QStringLiteral("QTabWidget#panelGroupTabs::pane { border: 0; background: ")
-                    + themeWindowHex);
+                sheet.contains(QStringLiteral("QTabBar#panelTabBar::tab:selected { background: ") + themePanelHex)
+                && sheet.contains(QStringLiteral("QTabWidget#panelGroupTabs::pane { border: 0; background: ") + themePanelHex);
             const bool tabInactive =
                 sheet.contains(QStringLiteral("QTabBar#panelTabBar::tab { background: ")
                                   + themeBaseHex);
             const bool tabDiffer =
-                tabSelected && tabInactive && themeWindowHex != themeBaseHex;
+                tabSelected && tabInactive && themePanelHex != themeBaseHex;
             ST_BEGIN("tabswap_selected");
             ST_PASS("tabswap selected=%d unselected=%d differ=%d", tabSelected ? 1 : 0,
                          tabInactive ? 1 : 0,
@@ -4656,22 +4656,22 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 ST_FAIL(159, "group divider");
             }
 
-            // 161: the compact-strip group divider is dark grey, not white.
-            bool compactDividerDark = false;
+            // 161: the compact-strip group divider is an invisible layout/drop
+            // marker now; the 1 px separation is the group's own bottom rule.
+            bool compactDividerClear = false;
             if (panelColumnColumn) {
                 panelColumnColumn->setRailMode(true);
                 multicolumnPump(4);
-                compactDividerDark =
+                compactDividerClear =
                     panelColumnColumn->dividerCountForTest() > 0
-                    && sheet.contains(QStringLiteral("QFrame#panelIconDivider { background: ")
-                                         + borderHex)
-                    && borderHex != QStringLiteral("#ffffff");
+                    && sheet.contains(QStringLiteral(
+                           "QFrame#panelIconDivider { background: transparent; border: 0; }"));
                 panelColumnColumn->setRailMode(false);
                 multicolumnPump(2);
             }
-            ST_BEGIN("compactdivider_dark");
-            ST_PASS("compactdivider dark=%d", compactDividerDark ? 1 : 0);
-            if (!compactDividerDark) {
+            ST_BEGIN("compactdivider_clear");
+            ST_PASS("compactdivider clear=%d", compactDividerClear ? 1 : 0);
+            if (!compactDividerClear) {
                 ST_FAIL(161, "compact divider");
             }
 
@@ -4704,49 +4704,48 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 ST_FAIL(164, "strip label elide");
             }
 
-            // 165: the document tab strip has a dark grey right border and no
-            // extra top border (the options bar above already draws one).
+            // 165: the document tab strip is borderless flat chrome (the options
+            // bar above draws the only horizontal rule over the workspace).
             QTabBar* themeDocBar = frame.findChild<QTabBar*>(QStringLiteral("documentTabBar"));
-            const bool fileRight =
-                themeDocBar
-                && sheet.contains(QStringLiteral("QTabBar#documentTabBar { border-right: ")
-                                     + borderWidth + QStringLiteral("px solid ") + borderHex);
-            const bool fileNoTop =
-                sheet.contains(
-                    QStringLiteral("QTabWidget#documentTabs::pane { border-top: 0; }"))
-                && sheet.contains(
-                    QStringLiteral("QTabBar#documentTabBar { border-right: ") + borderWidth
-                    + QStringLiteral("px solid ") + borderHex
-                    + QStringLiteral("; border-top: 0; }"));
-            ST_BEGIN("filebar_right");
-            ST_PASS("filebar right=%d notop=%d", fileRight ? 1 : 0, fileNoTop ? 1 : 0);
-            if (!(fileRight && fileNoTop)) {
+            const bool fileNoPaneBorder =
+                sheet.contains(QStringLiteral("QTabWidget#documentTabs::pane { border: 0; }"));
+            const bool fileNoBarBorder =
+                sheet.contains(QStringLiteral("QTabBar#documentTabBar { border: 0; }"));
+            ST_BEGIN("filebar_borderless");
+            ST_PASS("filebar pane=%d bar=%d", fileNoPaneBorder ? 1 : 0, fileNoBarBorder ? 1 : 0);
+            if (!(themeDocBar && fileNoPaneBorder && fileNoBarBorder)) {
                 ST_FAIL(165, "document tab strip borders");
             }
 
-            // 166: Tools, normal widget panels, and the compact strip share the
-            // darker grey border; flyout and float use the same palette.
+            // 166: the tools panel and widget panes share the panel surface; the
+            // column strips keep side rules only and the header drops its rule.
             const QString borderRule =
                 borderWidth + QStringLiteral("px solid ") + borderHex;
-            const bool panelTools =
-                sheet.contains(QStringLiteral("QWidget#toolsPanel { border: ")
-                                  + borderRule + QStringLiteral("; }"));
+            const bool panelTools = sheet.contains(QStringLiteral("QWidget#toolsPanel { background: ")
+                                                   + themePanelHex
+                                                   + QStringLiteral("; border: 0; }"));
             const bool panelNormal =
                 sheet.contains(QStringLiteral("QTabWidget#panelGroupTabs { border: ")
                                   + borderRule + QStringLiteral("; }"));
             const bool panelCompact =
-                sheet.contains(QStringLiteral("QWidget#panelColumnIconStrip { border: ")
-                                  + borderRule + QStringLiteral("; }"));
+                sheet.contains(QStringLiteral("QWidget#panelColumnIconStrip { border: 0; background: ")
+                               + themePanelHex + QStringLiteral("; }"))
+                && sheet.contains(QStringLiteral("QWidget#panelColumnContainer { border: 0; border-left: ")
+                                  + borderWidth + QStringLiteral("px solid ") + separatorHex);
+            const bool panelHeaderFlat =
+                sheet.contains(QStringLiteral("QWidget#panelColumnHeader { background: ") + themeBaseHex
+                               + QStringLiteral("; border: 0; border-bottom: 1px solid ")
+                               + pictura::Theme::shade(QColor(themeBaseHex), -1).name()
+                               + QStringLiteral("; }"));
             const bool panelParity =
                 sheet.contains(QStringLiteral("QWidget#panelFloat { background: ")
-                                  + themeWindowHex)
+                                  + themePanelHex)
                 && sheet.contains(QStringLiteral("QWidget#panelIconFlyout { background: ")
-                                     + themeWindowHex);
+                                     + themePanelHex);
             ST_BEGIN("panelborder_tools");
-            ST_PASS("panelborder tools=%d panel=%d compact=%d", panelTools ? 1 : 0,
-                         panelNormal ? 1 : 0,
-                         panelCompact ? 1 : 0);
-            if (!(panelTools && panelNormal && panelCompact && panelParity)) {
+            ST_PASS("panelborder tools=%d panel=%d compact=%d header=%d", panelTools ? 1 : 0,
+                         panelNormal ? 1 : 0, panelCompact ? 1 : 0, panelHeaderFlat ? 1 : 0);
+            if (!(panelTools && panelNormal && panelCompact && panelHeaderFlat && panelParity)) {
                 ST_FAIL(166, "panel borders");
             }
         }
@@ -6281,11 +6280,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             if (!(hScrollOff && hScrollZero)) {
                 ST_FAIL(191, "no hscroll");
             }
-            // 192: an iconic column is fixed to its strip width and a preferred
-            // width change cannot grow it; leaving iconic clears the maximum.
+            // 192: an iconic column keeps its narrow minimum but stays a
+            // resizable splitter pane; a preferred-width change can widen it,
+            // and leaving iconic restores the normal floor.
             bool interactionIconicWidth = false;
-            bool iconicMax = false;
-            bool iconicNoGrow = false;
+            bool iconicResizable = false;
+            bool iconicGrow = false;
             bool iconicExit = false;
             if (panelColumnColumn) {
                 showPrimary();
@@ -6293,22 +6293,23 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 toolbarFixPump(8);
                 const int stripMin = panelColumnColumn->minimumWidthForTest();
                 const int iconicWidth = panelColumnColumn->width();
-                interactionIconicWidth = stripMin > 0 && stripMin <= 60 && iconicWidth == stripMin;
-                iconicMax = panelColumnColumn->maximumWidth() == panelColumnColumn->minimumWidth();
+                interactionIconicWidth = stripMin > 0 && stripMin <= 60 && iconicWidth >= stripMin;
+                iconicResizable =
+                    panelColumnColumn->maximumWidth() > panelColumnColumn->minimumWidth();
                 panelColumnColumn->setPreferredWidth(400);
                 toolbarFixPump(8);
-                iconicNoGrow = panelColumnColumn->width() <= stripMin;
+                iconicGrow = panelColumnColumn->width() > stripMin;
                 panelColumnColumn->setRailMode(false);
                 toolbarFixPump(8);
-                iconicExit = panelColumnColumn->maximumWidth() > stripMin;
+                iconicExit = panelColumnColumn->minimumWidthForTest() > stripMin;
                 toolbarFixCollapseDynamics();
             }
-            ST_BEGIN("iconic_fixed_width_width");
-            ST_PASS("iconic_fixed_width width=%d max=%d "
-                         "nogrow=%d exit=%d", interactionIconicWidth ? 1 : 0, iconicMax ? 1 : 0,
-                         iconicNoGrow ? 1 : 0, iconicExit ? 1 : 0);
-            if (!(interactionIconicWidth && iconicMax && iconicNoGrow && iconicExit)) {
-                ST_FAIL(192, "iconic fixed width");
+            ST_BEGIN("iconic_resizable_width");
+            ST_PASS("iconic_resizable width=%d resizable=%d "
+                         "grow=%d exit=%d", interactionIconicWidth ? 1 : 0,
+                         iconicResizable ? 1 : 0, iconicGrow ? 1 : 0, iconicExit ? 1 : 0);
+            if (!(interactionIconicWidth && iconicResizable && iconicGrow && iconicExit)) {
+                ST_FAIL(192, "iconic resizable width");
             }
             // 193: the tools column can be re-placed beside a widget column
             // through its own header drag, landing as a real splitter column at
@@ -6399,13 +6400,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             bool interactionDots = false;
             {
                 const QString ss = qApp->styleSheet();
-                const QColor windowColor = qApp->palette().color(QPalette::Window);
                 const QColor disabledColor =
                     qApp->palette().color(QPalette::Disabled, QPalette::WindowText);
-                const QString windowHex = windowColor.name(QColor::HexRgb);
+                const QString panelHex = QStringLiteral("#4d4d4d");
                 const QString disabledHex = disabledColor.name(QColor::HexRgb);
                 interactionShade = ss.contains(
-                    QStringLiteral("QWidget#panelIconGroup { background: ") + windowHex);
+                    QStringLiteral("QWidget#panelIconGroup { background: ") + panelHex);
                 const int grip = ss.indexOf(QStringLiteral("QWidget#panelIconGroupGrip {"));
                 if (grip >= 0) {
                     const int end = ss.indexOf(QLatin1Char('}'), grip);
