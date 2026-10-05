@@ -89,6 +89,8 @@ pub struct PictureViewRust {
     /// The path calls edit the active shape layer's outline, not the Work
     /// Path (`paths.rs`).
     pub(super) path_on_layer: bool,
+    /// The Paths panel row the path calls edit when not on a shape layer.
+    pub(super) active_path: super::paths::ActivePath,
     pub(super) dirty: bool,
     /// Output format remembered from the import source, used to preselect the
     /// Save As filter: a lowercased extension (`"png"`) or `"psd"` when native.
@@ -210,6 +212,7 @@ impl Default for PictureViewRust {
             path: None,
             active_layer: None,
             path_on_layer: false,
+            active_path: super::paths::ActivePath::Work,
             dirty: false,
             source_format: "psd".to_string(),
             interop: None,

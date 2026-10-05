@@ -33,6 +33,7 @@ mod impl_transform;
 mod layers_smart_filters;
 mod magnetic;
 mod paint_tools;
+mod path_list;
 mod paths;
 mod shapes;
 mod state;
@@ -388,8 +389,7 @@ pub mod qobject {
         #[qinvokable]
         fn set_layers_visible(self: Pin<&mut Self>, paths: &QStringList, visible: bool) -> i32;
 
-        /// Set the blend mode from a 4-byte PSD `key` on every path. Returns
-        /// the number changed; records one undo state only when non-zero.
+        /// Set the blend mode from a 4-byte PSD `key` on every path. Returns the number changed; records one undo state only when non-zero.
         #[qinvokable]
         fn set_layers_blend(self: Pin<&mut Self>, paths: &QStringList, key: &QString) -> i32;
 

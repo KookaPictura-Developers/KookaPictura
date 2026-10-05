@@ -224,6 +224,10 @@ pub struct Document {
     /// ponytail: not yet written to or read from the PSD path resources
     /// (1025 / 2000-2997), which stay preserved verbatim.
     pub work_path: path::VectorPath,
+    /// The saved paths the Paths panel lists above the Work Path, in panel
+    /// order; they ride the history snapshot. ponytail: not yet written to or
+    /// read from the PSD path resources either.
+    pub saved_paths: Vec<path::NamedPath>,
     /// Named character and paragraph styles, carried on the history snapshot so
     /// a style edit is undone with the document. `Basic Paragraph` is always
     /// present. ponytail: not yet written to or read from PSD (the style block's
@@ -259,6 +263,7 @@ impl Document {
             slices: Vec::new(),
             annotations: Annotations::default(),
             work_path: path::VectorPath::default(),
+            saved_paths: Vec::new(),
             text_styles: TextStyleSheet::default(),
         }
     }

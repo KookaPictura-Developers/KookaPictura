@@ -16,16 +16,16 @@ mod line;
 
 pub use custom::{custom_shape_preview, CUSTOM_SHAPE_NAMES};
 
-use crate::path::{PathPoint, Subpath};
+use crate::path::{PathPoint, Subpath, VectorPath};
 
 /// The cubic handle length, as a fraction of the radius, that best fits a
 /// quarter circle.
 const KAPPA: f64 = 0.552_284_749_830_793_4;
 
-/// Flattening tolerance for [`coverage`], in document pixels.
+/// Flattening tolerance for [`coverage`] and [`path_coverage`], in document pixels.
 const COVERAGE_TOLERANCE: f64 = 0.1;
 
-/// Vertical samples per pixel row in [`coverage`].
+/// Vertical samples per pixel row in [`coverage`] and [`path_coverage`].
 const SUBROWS: usize = 4;
 
 /// Which shape tool drew the outline.
@@ -441,35 +441,75 @@ pub fn align_edges(subpath: &Subpath) -> Subpath {
 /// [`SUBROWS`] scanlines and each span's ends are weighted by the fraction of
 /// the pixel they cover. An open subpath is closed implicitly.
 pub fn coverage(subpath: &Subpath, width: u32, height: u32) -> Vec<u8> {
+    rasterize(&[subpath.flatten(COVERAGE_TOLERANCE)], width, height, |w| {
+        w % 2 != 0
+    })
+}
+
+/// [`coverage`] of every subpath of `path` together under the nonzero winding
+/// rule, as CS6 fills a path or loads it as a selection: an inner subpath
+/// drawn in the same direction stays filled, an opposite one cuts a hole. Open
+/// subpaths are closed implicitly; one under three points encloses nothing.
+pub fn path_coverage(path: &VectorPath, width: u32, height: u32) -> Vec<u8> {
+    let contours: Vec<_> = path
+        .subpaths
+        .iter()
+        .map(|sp| sp.flatten(COVERAGE_TOLERANCE))
+        .collect();
+    rasterize(&contours, width, height, |w| w != 0)
+}
+
+/// Scanline-fill the implicitly closed `contours`, a pixel sample being inside
+/// where `inside(winding)` holds.
+fn rasterize(
+    contours: &[Vec<(f64, f64)>],
+    width: u32,
+    height: u32,
+    inside: impl Fn(i32) -> bool,
+) -> Vec<u8> {
     let (w, h) = (width as usize, height as usize);
     let mut mask = vec![0u8; w * h];
-    let contour = subpath.flatten(COVERAGE_TOLERANCE);
-    if contour.len() < 3 || w == 0 || h == 0 {
+    let contours: Vec<_> = contours.iter().filter(|c| c.len() >= 3).collect();
+    if contours.is_empty() || w == 0 || h == 0 {
         return mask;
     }
-    let (top, bottom) = contour
+    let (top, bottom) = contours
         .iter()
+        .flat_map(|c| c.iter())
         .fold((f64::MAX, f64::MIN), |(t, b), p| (t.min(p.1), b.max(p.1)));
     let first_row = top.floor().max(0.0) as usize;
     let last_row = (bottom.ceil().max(0.0) as usize).min(h);
     let mut row = vec![0f32; w + 1];
-    let mut crossings: Vec<f64> = Vec::new();
+    let mut crossings: Vec<(f64, i32)> = Vec::new();
     for y in first_row..last_row {
         row.iter_mut().for_each(|c| *c = 0.0);
         for s in 0..SUBROWS {
             let sy = y as f64 + (s as f64 + 0.5) / SUBROWS as f64;
             crossings.clear();
-            let mut j = contour.len() - 1;
-            for (i, &(xi, yi)) in contour.iter().enumerate() {
-                let (xj, yj) = contour[j];
-                if (yi > sy) != (yj > sy) {
-                    crossings.push(xi + (sy - yi) / (yj - yi) * (xj - xi));
+            for contour in &contours {
+                let mut j = contour.len() - 1;
+                for (i, &(xi, yi)) in contour.iter().enumerate() {
+                    let (xj, yj) = contour[j];
+                    if (yi > sy) != (yj > sy) {
+                        let x = xi + (sy - yi) / (yj - yi) * (xj - xi);
+                        crossings.push((x, if yi > yj { 1 } else { -1 }));
+                    }
+                    j = i;
                 }
-                j = i;
             }
-            crossings.sort_by(f64::total_cmp);
-            for &[x0, x1] in crossings.as_chunks::<2>().0 {
-                add_span(&mut row, x0.max(0.0), x1.min(w as f64));
+            crossings.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let mut winding = 0;
+            let mut span_start = None;
+            for &(x, dir) in &crossings {
+                winding += dir;
+                match (span_start, inside(winding)) {
+                    (None, true) => span_start = Some(x),
+                    (Some(x0), false) => {
+                        add_span(&mut row, f64::max(x0, 0.0), x.min(w as f64));
+                        span_start = None;
+                    }
+                    _ => {}
+                }
             }
         }
         for (x, c) in row[..w].iter().enumerate() {
@@ -757,5 +797,53 @@ mod tests {
         )
         .unwrap();
         assert_eq!(coverage(&off, 8, 8).len(), 64, "clipped to the canvas");
+    }
+
+    /// A closed rectangle path, clockwise unless `reverse`.
+    fn rect_path(path: &mut VectorPath, (l, t, r, b): (f64, f64, f64, f64), reverse: bool) {
+        let mut corners = vec![(l, t), (r, t), (r, b), (l, b)];
+        if reverse {
+            corners.reverse();
+        }
+        for (x, y) in corners {
+            path.append_corner(x, y);
+        }
+        path.close_active_subpath();
+        path.finish_editing();
+    }
+
+    #[test]
+    fn path_coverage_follows_the_nonzero_winding_rule() {
+        let mut same = VectorPath::default();
+        rect_path(&mut same, (0.0, 0.0, 8.0, 8.0), false);
+        rect_path(&mut same, (2.0, 2.0, 6.0, 6.0), false);
+        let m = path_coverage(&same, 8, 8);
+        assert_eq!(
+            m[4 * 8 + 4],
+            255,
+            "a same-direction inner subpath stays filled"
+        );
+        assert_eq!(m[8], 255);
+        let even_odd = coverage(&same.subpaths[1], 8, 8);
+        assert_eq!(even_odd[0], 0, "coverage is one subpath");
+
+        let mut hole = VectorPath::default();
+        rect_path(&mut hole, (0.0, 0.0, 8.0, 8.0), false);
+        rect_path(&mut hole, (2.0, 2.0, 6.0, 6.0), true);
+        let m = path_coverage(&hole, 8, 8);
+        assert_eq!(m[4 * 8 + 4], 0, "an opposite inner subpath cuts a hole");
+        assert_eq!(m[8], 255);
+
+        let mut open = VectorPath::default();
+        for (x, y) in [(0.0, 0.0), (8.0, 0.0), (8.0, 8.0)] {
+            open.append_corner(x, y);
+        }
+        open.finish_editing();
+        let m = path_coverage(&open, 8, 8);
+        assert_eq!(m[8 + 6], 255, "an open subpath closes implicitly");
+        assert_eq!(m[6 * 8 + 1], 0);
+        assert!(path_coverage(&VectorPath::default(), 8, 8)
+            .iter()
+            .all(|&v| v == 0));
     }
 }
