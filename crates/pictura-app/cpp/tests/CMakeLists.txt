@@ -20,6 +20,7 @@ set(PICTURA_QT_TESTS
     tst_swatches_panel
     tst_properties_panel
     tst_channels_panel
+    tst_paths_panel
     tst_icon_assets
     tst_filter_menu
     tst_color_range
