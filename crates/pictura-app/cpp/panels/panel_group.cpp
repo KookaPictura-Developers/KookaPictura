@@ -79,6 +79,9 @@ PanelGroup::PanelGroup(QWidget* parent)
     tabs_->tabBar()->setExpanding(false);
     // M47: overflow squeezes/elides the tabs instead of showing scroll arrows.
     tabs_->tabBar()->setUsesScrollButtons(false);
+    // The theme draws the header's top rule itself; Qt's base frame would
+    // break it under the current tab.
+    tabs_->tabBar()->setDrawBase(false);
     layout->addWidget(tabs_);
 
     // M47: a lowered band behind the tab bar and corner paints the header strip
