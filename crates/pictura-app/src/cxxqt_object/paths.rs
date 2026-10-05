@@ -3,10 +3,12 @@
 //! Selection, Direct Selection). Free functions over a [`PictureView`]
 //! (their own bridge, so the `PictureView` declaration list does not grow).
 //!
-//! The calls edit the Work Path, or the active shape layer's outline while
+//! The calls edit the Paths panel's active path (the Work Path or a saved
+//! path, see [`ActivePath`]), or the active shape layer's outline while
 //! [`path_set_layer_target`] is on: a change there rewrites the layer's `vmsk`
 //! and recomposites, and every edit but a whole-component move turns a live
-//! shape into a regular path.
+//! shape into a regular path. With no active path the calls see an empty path,
+//! and drawing starts a new Work Path in place of the old one.
 //!
 //! Atomic edits (insert, delete, close, convert-click, freeform) record one
 //! history state and emit `changed`. A drag's live steps (placing an anchor and
@@ -22,7 +24,50 @@ use super::PictureViewRust;
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
 use pictura_core::path::{HandleSide, VectorPath};
-use pictura_core::Ruler;
+use pictura_core::{Document, Ruler};
+
+/// The Paths panel row the path calls edit (CS6 shows and edits only the
+/// selected path).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ActivePath {
+    /// No row is selected: no path is shown.
+    None,
+    Work,
+    /// `Document::saved_paths[i]`.
+    Saved(usize),
+}
+
+/// `active` resolved against `doc`: a saved index an undo removed reads as no
+/// active path.
+pub(super) fn active_in(doc: &Document, active: ActivePath) -> ActivePath {
+    match active {
+        ActivePath::Saved(i) if i >= doc.saved_paths.len() => ActivePath::None,
+        other => other,
+    }
+}
+
+fn active_path_mut(doc: &mut Document, active: ActivePath) -> Option<&mut VectorPath> {
+    match active_in(doc, active) {
+        ActivePath::None => None,
+        ActivePath::Work => Some(&mut doc.work_path),
+        ActivePath::Saved(i) => Some(&mut doc.saved_paths[i].path),
+    }
+}
+
+/// Make sure a drawing tool has a path to draw on: with no active path, a new
+/// (empty) Work Path replaces the old one, as CS6's Pen does when no row is
+/// selected. No history: the drawing edit records it.
+pub(super) fn begin_drawing(mut view: Pin<&mut PictureView>) {
+    let mut rust = view.as_mut().rust_mut();
+    let active = rust.active_path;
+    let Some(doc) = rust.doc.as_mut() else {
+        return;
+    };
+    if active_in(doc, active) == ActivePath::None {
+        doc.work_path = VectorPath::default();
+        rust.active_path = ActivePath::Work;
+    }
+}
 
 #[cxx_qt::bridge]
 pub mod ffi {
@@ -173,11 +218,15 @@ fn layer_target(rust: &PictureViewRust) -> Option<String> {
     pictura_render::is_shape_layer(layer).then(|| path.clone())
 }
 
-fn path(view: &PictureView) -> Option<VectorPath> {
+pub(super) fn path(view: &PictureView) -> Option<VectorPath> {
     let rust = view.rust();
     let doc = rust.doc.as_ref()?;
     let Some(target) = layer_target(rust) else {
-        return Some(doc.work_path.clone());
+        return Some(match active_in(doc, rust.active_path) {
+            ActivePath::None => VectorPath::default(),
+            ActivePath::Work => doc.work_path.clone(),
+            ActivePath::Saved(i) => doc.saved_paths[i].path.clone(),
+        });
     };
     let layer = pictura_render::resolve_path(doc, &target)?;
     let mut path = VectorPath::default();
@@ -187,8 +236,11 @@ fn path(view: &PictureView) -> Option<VectorPath> {
     Some(path)
 }
 
-/// Apply `edit` to the Work Path; `None` without a document.
-fn edit<T>(view: Pin<&mut PictureView>, edit: impl FnOnce(&mut VectorPath) -> T) -> Option<T> {
+/// Apply `edit` to the active path; `None` without a document or active path.
+pub(super) fn edit<T>(
+    view: Pin<&mut PictureView>,
+    edit: impl FnOnce(&mut VectorPath) -> T,
+) -> Option<T> {
     edit_target(view, None, edit)
 }
 
@@ -203,7 +255,12 @@ fn edit_target<T>(
 ) -> Option<T> {
     let Some(target) = layer_target(view.rust()) else {
         let mut rust = view.rust_mut();
-        return rust.doc.as_mut().map(|doc| edit(&mut doc.work_path));
+        let active = rust.active_path;
+        return rust
+            .doc
+            .as_mut()
+            .and_then(|doc| active_path_mut(doc, active))
+            .map(edit);
     };
     let before = path(&view)?;
     let mut after = before.clone();
@@ -326,7 +383,8 @@ fn path_editing_subpath(view: &PictureView) -> i32 {
         .map_or(-1, |s| s as i32)
 }
 
-fn path_append_corner(view: Pin<&mut PictureView>, x: f64, y: f64, constrain: bool) -> bool {
+fn path_append_corner(mut view: Pin<&mut PictureView>, x: f64, y: f64, constrain: bool) -> bool {
+    begin_drawing(view.as_mut());
     edit(view, |p| {
         let (x, y) = match p.last_anchor() {
             Some(from) => snap(from, (x, y), constrain),
@@ -481,6 +539,7 @@ fn path_add_freeform(
         .iter()
         .map(|&[x, y]| (x, y))
         .collect();
+    begin_drawing(view.as_mut());
     let added = edit(view.as_mut(), |p| {
         p.add_freeform(&points, tolerance.clamp(0.5, 10.0), close)
     }) == Some(true);

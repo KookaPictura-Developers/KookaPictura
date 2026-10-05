@@ -99,6 +99,14 @@ pub struct VectorPath {
     editing: Option<usize>,
 }
 
+/// A saved path in the Paths panel: a [`VectorPath`] kept under a name, as
+/// opposed to the one temporary Work Path.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct NamedPath {
+    pub name: String,
+    pub path: VectorPath,
+}
+
 /// Recursion cap when flattening a curve.
 const FLATTEN_MAX_DEPTH: u32 = 10;
 

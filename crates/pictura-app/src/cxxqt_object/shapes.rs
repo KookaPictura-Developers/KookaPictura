@@ -295,13 +295,11 @@ fn shape_add_path(mut view: Pin<&mut PictureView>, spec: &ShapeSpec) -> bool {
     let Some((kind, subpath)) = outline(spec) else {
         return false;
     };
-    let added = match view.as_mut().rust_mut().doc.as_mut() {
-        Some(doc) => {
-            doc.work_path.add_subpath(subpath);
-            true
-        }
-        None => false,
-    };
+    super::paths::begin_drawing(view.as_mut());
+    let added = super::paths::edit(view.as_mut(), |p| {
+        p.add_subpath(subpath);
+    })
+    .is_some();
     if added {
         view.as_mut().record(&label(kind));
         view.as_mut().changed();

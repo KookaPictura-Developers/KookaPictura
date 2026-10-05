@@ -152,6 +152,7 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
             slices: Vec::new(),
             annotations: Default::default(),
             work_path: Default::default(),
+            saved_paths: Vec::new(),
             text_styles: Default::default(),
         };
         return Ok(crate::icc::apply_icc_policy(
@@ -241,6 +242,7 @@ pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError>
         slices: Vec::new(),
         annotations: Default::default(),
         work_path: Default::default(),
+        saved_paths: Vec::new(),
         text_styles: Default::default(),
     };
     Ok(crate::icc::apply_icc_policy(
