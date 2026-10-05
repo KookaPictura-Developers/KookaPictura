@@ -181,8 +181,8 @@ QTabBar::tab:disabled { color: ${disabledText}; }
    != pane. M46: the header strip behind the tabs is `${panelHeader}`, a shade
    between the pane and the inactive tab. The document tab bar keeps the
    unscoped `QTabBar::tab` rules above. */
-QTabBar#panelTabBar { background: ${panelHeader}; }
-QTabBar#panelTabBar::tab { background: ${base}; color: ${windowText}; border: ${borderWidth}px solid ${border}; border-bottom: 0; padding: 4px 8px; margin-right: 1px; }
+QTabBar#panelTabBar { background: ${panelHeader}; border-top: 1px solid ${windowText}; }
+QTabBar#panelTabBar::tab { background: ${base}; color: ${windowText}; border: ${borderWidth}px solid ${border}; border-bottom: 0; padding: 4px 8px; margin-right: 1px; margin-top: 2px; }
 QTabBar#panelTabBar::tab:hover { background: ${hover}; }
 QTabBar#panelTabBar::tab:selected { background: ${window}; color: ${windowText}; }
 
@@ -195,7 +195,7 @@ QWidget#panelIconGroupGrip { background: transparent; border-bottom: 1px solid $
    the reserved corner grip, corner container, and its `▾` button share the
    header strip; the band spans the whole group width behind the tabs and corner
    so no vertical slice of the header is left unpainted. */
-QWidget#panelHeaderBand { background: ${panelHeader}; }
+QWidget#panelHeaderBand { background: ${panelHeader}; border-top: 1px solid ${windowText}; }
 QWidget#panelGroupDragGrip { background: ${panelHeader}; }
 QWidget#panelWidgetCorner { background: ${panelHeader}; }
 QWidget#panelWidgetCorner QToolButton { background: ${panelHeader}; color: ${buttonText}; border: 0; border-radius: 0; padding: 0; }
