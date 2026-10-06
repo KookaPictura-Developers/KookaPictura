@@ -9,9 +9,7 @@ Snapshot for resuming after a context break. Update after each milestone.
   corpus is a documentation-first independent reimplementation, not a formal
   two-team process (`docs/00-overview/licensing-and-provenance.md`).
 - **Provenance history:** the git history was rewritten so no reachable commit
-  contains reproduced Adobe Help prose or the old wording — see
-  `docs/dev/verbatim-expression-audit.md` and
-  `docs/dev/legal-hold-and-counsel-handoff.md`.
+  contains reproduced Adobe Help prose or the old wording.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.

@@ -143,9 +143,9 @@ color-management replacement.
 - Oracle only: `opencv-python-headless` is about 60 MB on Linux x86_64. Add it to
   the CI `oracles` job next to ImageMagick and psd-tools. Locally the tests
   self-skip when `cv2` is absent, same as today.
-- Runtime: the `opencv` crate, a system OpenCV, and a licensing-inventory update
-  in `docs/dev/licensing-compliance-notes.md`. OpenCV is Apache-2.0, so the
-  license is compatible. The build cost is the issue: about 118 MB installed for
+- Runtime: the `opencv` crate, a system OpenCV, and a licensing-inventory update.
+  OpenCV is Apache-2.0, so the license is compatible. The build cost is the
+  issue: about 118 MB installed for
   the system package, about 1 GB peak for a source build, about 2 GB for a CUDA
   build.
 - Determinism: OpenCV uses OpenMP, TBB, and IPP-ICV. `setNumThreads(1)` and
