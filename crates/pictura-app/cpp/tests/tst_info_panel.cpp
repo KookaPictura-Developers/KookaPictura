@@ -1,6 +1,7 @@
 #include <QtTest/QtTest>
 
 #include <QtCore/QPointF>
+#include <QtGui/QScreen>
 #include <QtWidgets/QMenu>
 #include <QtWidgets/QToolButton>
 
@@ -28,6 +29,7 @@ private slots:
     void rulerModeSwapsTopRightBlock();
     void offCanvasBlanksColorReadouts();
     void docLineIsPresent();
+    void toolRowDescribesActiveTool();
     void menuOpensBesideItsButton();
 
 private:
@@ -235,6 +237,16 @@ void InfoPanelTest::docLineIsPresent()
     QVERIFY2(panel_->docTextForTest().contains(QStringLiteral("2.0K")), "memory footprint");
 }
 
+void InfoPanelTest::toolRowDescribesActiveTool()
+{
+    openDocument(QStringLiteral("ToolRow"));
+    window_->setActiveTool(pictura::ToolId::Move);
+    QCoreApplication::processEvents();
+    QVERIFY2(!panel_->toolTextForTest().isEmpty(), "tool row populated");
+    QVERIFY2(panel_->toolTextForTest().contains(QStringLiteral("Nudge")),
+             "move hints present");
+}
+
 void InfoPanelTest::menuOpensBesideItsButton()
 {
     openDocument(QStringLiteral("MenuPos"));
@@ -257,8 +269,10 @@ void InfoPanelTest::menuOpensBesideItsButton()
     // and let the panel's Show filter move it aside.
     menu->popup(button->mapToGlobal(QPoint(0, button->height())));
     const bool visible = menu->isVisible();
-    const QRect buttonRect(button->mapToGlobal(QPoint(0, 0)), button->size());
+    const QPoint buttonTopLeft = button->mapToGlobal(QPoint(0, 0));
+    const QRect buttonRect(buttonTopLeft, button->size());
     const QRect menuRect(menu->geometry());
+    const QSize hint = menu->sizeHint();
     // Hide before asserting so a failure never leaves a popup behind.
     menu->hide();
 
@@ -266,6 +280,19 @@ void InfoPanelTest::menuOpensBesideItsButton()
     QVERIFY2(!menuRect.intersects(buttonRect), "menu does not cover its button");
     QVERIFY2(menuRect.left() >= buttonRect.right() || menuRect.right() <= buttonRect.left(),
              "menu sits beside the button");
+    // The panel's Show filter opens the menu flush to the button's right side
+    // (`button width + 1`), flipping left only when that would overflow the
+    // available area, so the first open is placed explicitly, not merely
+    // sized.
+    if (QScreen* screen = button->screen()) {
+        const QRect area = screen->availableGeometry();
+        const int rightPlacement = buttonTopLeft.x() + button->width() + 1;
+        if (rightPlacement + hint.width() <= area.right() + 1) {
+            QCOMPARE(menuRect.left(), rightPlacement);
+        }
+        QVERIFY2(area.contains(menuRect),
+                 "the first-open menu stays inside the available geometry");
+    }
 }
 
 QTEST_MAIN(InfoPanelTest)

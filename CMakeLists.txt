@@ -79,6 +79,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/control_server_input.cpp
     crates/pictura-app/cpp/command_tree.cpp
     crates/pictura-app/cpp/theme.cpp
+    crates/pictura-app/cpp/fonts.cpp
     crates/pictura-app/cpp/session.cpp
     crates/pictura-app/cpp/preferences_dialog.cpp
     crates/pictura-app/cpp/file_info_dialog.cpp
@@ -232,6 +233,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/commands.h
     crates/pictura-app/cpp/control_server.h
     crates/pictura-app/cpp/theme.h
+    crates/pictura-app/cpp/fonts.h
     crates/pictura-app/cpp/session.h
     crates/pictura-app/cpp/preferences_dialog.h
     crates/pictura-app/cpp/file_info_dialog.h

@@ -317,7 +317,7 @@ void populatePanelMenu(QMenu* menu, const QString& panelName,
         QAction* closePanel = menu->addAction(PanelGroup::tr("Close"));
         QObject::connect(closePanel, &QAction::triggered, menu,
                          [dispatch]() { dispatch(QStringLiteral("close")); });
-        QAction* closeGroup = menu->addAction(PanelGroup::tr("Close Group"));
+        QAction* closeGroup = menu->addAction(PanelGroup::tr("Close Tab Group"));
         QObject::connect(closeGroup, &QAction::triggered, menu,
                          [dispatch]() { dispatch(QStringLiteral("closeGroup")); });
     }
@@ -330,28 +330,21 @@ void PanelGroup::updateHeaderMenu()
         return;
     }
     const QString panel = currentPanelName();
-    const bool has = !panel.isEmpty() && panelHasMenu(panel);
-    headerButton_->setVisible(has);
+    // M49: the corner affordance is always present, even for a panel whose
+    // transcribed menu is empty — it still offers Close / Close Tab Group.
+    headerButton_->setVisible(true);
     if (headerCorner_) {
-        // `headerButton_->isVisible()` is false while the corner container is
-        // still hidden, so decide from the explicit flags, not effective state.
-        // M47: the corner always carries the reserved drag grip, so it stays
-        // visible regardless of the per-widget menu; the close button now lives
-        // in the float header and no longer gates the corner.
-        const bool gripPresent = headerGrip_ != nullptr;
-        headerCorner_->setVisible(gripPresent || has
-                                  || (floatCloseButton_ && !floatCloseButton_->isHidden()));
+        headerCorner_->setVisible(true);
     }
     headerButton_->setMenu(nullptr);
     delete headerMenu_;
     headerMenu_ = nullptr;
-    if (!has) {
-        headerButton_->setObjectName(QStringLiteral("panelWidgetMenu"));
-        headerButton_->setToolTip(QString());
-        return;
-    }
-    headerButton_->setObjectName(QStringLiteral("panelWidgetMenu_") + panel);
-    headerButton_->setToolTip(tr("%1 Panel Menu").arg(titleForPanel(panel)));
+    headerButton_->setObjectName(panel.isEmpty()
+                                     ? QStringLiteral("panelWidgetMenu")
+                                     : QStringLiteral("panelWidgetMenu_") + panel);
+    headerButton_->setToolTip(panel.isEmpty()
+                                  ? tr("Panel Menu")
+                                  : tr("%1 Panel Menu").arg(titleForPanel(panel)));
     headerMenu_ = new QMenu(headerButton_);
     populatePanelMenu(headerMenu_, panel,
                       [this](const QString& id) { runPanelMenuAction(id); });

@@ -15,9 +15,9 @@ not edit by hand; change the JSON and regenerate.
   vendored files carry no baked colour. Internal shading uses alpha
   gradients / `stroke-opacity`.
 
-## Summary (180 icons)
+## Summary (181 icons)
 
-- Lucide-derived: **106**
+- Lucide-derived: **107**
 - Custom (Lucide-style): **61**
 - Note / deferred: **3**
 - Out of scope (3D tools, file unchanged): **10**
@@ -96,6 +96,7 @@ hand-authored assets, or the note for deferred entries.
 | `panel.close` | lucide:x | exact |  |
 | `panel.columnsOne` | lucide:chevrons-left | good |  |
 | `panel.columnsTwo` | lucide:chevrons-right | good |  |
+| `panel.menu` | lucide:menu | exact |  |
 | `path.delete` | lucide:trash | exact |  |
 | `path.fill` | lucide:paint-bucket | good |  |
 | `path.loadSelection` | custom | custom | dashed 4:3 rectangle |

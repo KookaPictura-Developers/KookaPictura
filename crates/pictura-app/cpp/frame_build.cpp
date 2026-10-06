@@ -1,7 +1,13 @@
 #include "frame_includes.h"
 
+#include "fonts.h"
+#include "panels/numeric_field.h"
+
 #include <QtCore/QEvent>
+#include <QtGui/QFont>
 #include <QtGui/QMouseEvent>
+#include <QtWidgets/QApplication>
+#include <QtWidgets/QFrame>
 #include <QtWidgets/QStackedWidget>
 
 namespace pictura {
@@ -284,8 +290,26 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
                 toolbox_->setColumns(toolbox_->columns() == 1 ? 2 : 1);
             }
         });
-    connect(toolbox, &Toolbox::screenModeRequested, this,
-            [this]() { cycleScreenMode(true); });
+    // The screen-mode button opens a menu of the same three commands `F` and
+    // `Shift+F` cycle, sharing the registry actions so checks and handlers agree.
+    toolbox->setScreenModeActions({
+        registry_->action(QString::fromLatin1(command_ids::ViewScreenModeStandard)),
+        registry_->action(QString::fromLatin1(command_ids::ViewScreenModeFullWithMenuBar)),
+        registry_->action(QString::fromLatin1(command_ids::ViewScreenModeFull)),
+    });
+    toolbox->setActiveScreenMode(static_cast<int>(screenMode_));
+    // CommandRegistry::refresh() rewrites every action's text from its spec,
+    // which would drop the toolbox's display-only `F` hint. Pin the hinted text
+    // with label providers so the shared action keeps it in both menus.
+    for (const char* id : {command_ids::ViewScreenModeStandard,
+                           command_ids::ViewScreenModeFullWithMenuBar,
+                           command_ids::ViewScreenModeFull}) {
+        const QString commandId = QString::fromLatin1(id);
+        if (QAction* action = registry_->action(commandId)) {
+            const QString label = action->text();
+            registry_->setLabelProvider(commandId, [label]() { return label; });
+        }
+    }
     connect(toolbox, &Toolbox::columnsChanged, this, [this](int) {
         if (toolsColumn_) {
             toolsColumn_->refreshToolsWidth();
@@ -374,6 +398,11 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
     optionsBar_ = new OptionsBar(tools_, this);
     optionsBar_->setObjectName(QStringLiteral("optionsBar"));
     addToolBar(optionsBar_);
+    // The options bar spans the full window width, but its content sits inside
+    // the central band's 3 px frame; inset it so no control touches the line.
+    // The larger left inset leaves breathing room to the right of the toolbar's
+    // drag grip.
+    optionsBar_->setContentsMargins(9, 0, 3, 0);
     connect(optionsBar_, &OptionsBar::panelToggleRequested, this, &PicturaMainWindow::togglePanel);
     connect(optionsBar_, &OptionsBar::alignRequested, this,
             [this](int edge) { alignSelectedLayers(edge, true); });
@@ -431,22 +460,58 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
     }
 }
 
+void PicturaMainWindow::buildDocumentTabs()
+{
+    // The document tab strip is flat chrome (no base line above the tabs) and
+    // carries the shared bold tab font on the bar itself, so the label weight
+    // does not depend on the QSS subcontrol rule and QTabBar's elision metrics
+    // match the painted label.
+    tabs_->tabBar()->setDrawBase(false);
+    applyTabBarFont(tabs_->tabBar());
+}
+
 void PicturaMainWindow::buildStatusBar()
 {
     QStatusBar* bar = statusBar();
-    zoomLabel_ = new QLabel(QStringLiteral("100%"), bar);
-    sizeLabel_ = new QLabel(QStringLiteral("—"), bar);
-    backendLabel_ = new QLabel(QStringLiteral("—"), bar);
-    hintBar_ = new ToolHintBar(bar);
-    bar->addWidget(zoomLabel_);
-    bar->addWidget(sizeLabel_);
-    bar->addWidget(backendLabel_);
-    bar->addWidget(hintBar_);
+    bar->setSizeGripEnabled(false);
+    bar->setContentsMargins(6, 0, 0, 0);
+    bar->setFixedHeight(28);
 
-    auto* optionsButton = new QToolButton(bar);
-    optionsButton->setArrowType(Qt::DownArrow);
-    optionsButton->setPopupMode(QToolButton::InstantPopup);
-    auto* optionsMenu = new QMenu(optionsButton);
+    // Footer text runs 2px under the app default, matching the tab chrome. A
+    // point-sized default font (pixelSize() < 0) falls back to 12px at 96 DPI.
+    int baseFontPx = QApplication::font().pixelSize();
+    if (baseFontPx <= 0) {
+        baseFontPx = 12;
+    }
+    QFont footerFont = bar->font();
+    footerFont.setPixelSize(baseFontPx - 2);
+    bar->setFont(footerFont);
+
+    NumericFieldConfig zoomConfig;
+    zoomConfig.minimum = 1;
+    zoomConfig.maximum = 3200;
+    zoomConfig.decimals = 0;
+    zoomConfig.suffix = QStringLiteral("%");
+    zoomConfig.namePrefix = QStringLiteral("statusZoom");
+    zoomConfig.objectName = QStringLiteral("statusZoomField");
+    zoomField_ = new NumericField(QString(), zoomConfig, bar);
+    // The value hugs its content; leftover status-bar width belongs to the
+    // empty message area, keeping the readouts left-aligned.
+    zoomField_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    sizeLabel_ = new QLabel(QStringLiteral("—"), bar);
+    sizeLabel_->setObjectName(QStringLiteral("statusSizeLabel"));
+
+    // The options button sits with the resolution readout it controls, between
+    // Resolution and GPU. Built in visual order so the widget tree matches.
+    statusOptionsButton_ = new QToolButton(bar);
+    statusOptionsButton_->setObjectName(QStringLiteral("statusOptionsButton"));
+    statusOptionsButton_->setArrowType(Qt::DownArrow);
+    statusOptionsButton_->setPopupMode(QToolButton::InstantPopup);
+    // Flat on the footer surface: the default button chrome reads as a raised
+    // surface, so drop the background and border.
+    statusOptionsButton_->setStyleSheet(
+        QStringLiteral("QToolButton { background: transparent; border: 0; }"));
+    auto* optionsMenu = new QMenu(statusOptionsButton_);
     auto* group = new QActionGroup(optionsMenu);
     for (const QString& key : {QStringLiteral("sizes"), QStringLiteral("dimensions")}) {
         QAction* option = optionsMenu->addAction(
@@ -461,9 +526,89 @@ void PicturaMainWindow::buildStatusBar()
             updateStatus();
         });
     }
-    optionsButton->setMenu(optionsMenu);
-    bar->addPermanentWidget(optionsButton);
+    statusOptionsButton_->setMenu(optionsMenu);
+
+    backendLabel_ = new QLabel(QStringLiteral("—"), bar);
+    backendLabel_->setObjectName(QStringLiteral("statusBackendLabel"));
+    hintBar_ = new ToolHintBar(bar);
+    // A ~28px status strip: cap the readouts and hint so the bar trims 4px
+    // without clipping. (The theme already dropped the bar's top border.)
+    constexpr int kStatusItemHeight = 22;
+    zoomField_->setFixedHeight(kStatusItemHeight);
+    sizeLabel_->setFixedHeight(kStatusItemHeight);
+    statusOptionsButton_->setFixedHeight(kStatusItemHeight);
+    backendLabel_->setFixedHeight(kStatusItemHeight);
+    hintBar_->setFixedHeight(kStatusItemHeight);
+
+    // A 1px themable rule between the footer groups. Mouse-transparent so it
+    // never intercepts the status bar's own clicks.
+    const auto makeSeparator = [bar]() {
+        auto* separator = new QFrame(bar);
+        separator->setObjectName(QStringLiteral("statusSeparator"));
+        separator->setFrameShape(QFrame::VLine);
+        separator->setFrameShadow(QFrame::Sunken);
+        separator->setFixedWidth(1);
+        separator->setFixedHeight(16);
+        separator->setAttribute(Qt::WA_TransparentForMouseEvents);
+        return separator;
+    };
+
+    // Left to right: Zoom | Resolution [options] | GPU | Hints.
+    bar->addWidget(zoomField_);
+    bar->addWidget(makeSeparator());
+    bar->addWidget(sizeLabel_);
+    bar->addWidget(statusOptionsButton_);
+    bar->addWidget(makeSeparator());
+    bar->addWidget(backendLabel_);
+    // The rule before the hint strip travels with the strip's visibility.
+    hintSeparator_ = makeSeparator();
+    bar->addWidget(hintSeparator_);
+    bar->addWidget(hintBar_);
+
+    connect(zoomField_, &NumericField::valueCommitted, this, [this](double percent) {
+        if (ImageView* canvas = imageView()) {
+            canvas->setZoom(percent / 100.0,
+                            QPointF(canvas->width() / 2.0, canvas->height() / 2.0));
+        }
+    });
     updateToolHint();
+}
+
+void PicturaMainWindow::updateToolHint()
+{
+    if (!hintBar_) {
+        return;
+    }
+    QString fallback = tools_ ? QString::fromLatin1(toolInfo(tools_->activeTool()).hint)
+                              : QStringLiteral("Ready");
+    if (foreground_.isValid()) {
+        fallback += QStringLiteral("  ·  Foreground %1").arg(foreground_.name());
+    }
+    QList<ToolHint> hints;
+    if (tools_) {
+        hints = toolHintEntries(tools_->activeTool());
+        for (ToolHint& hint : hints) {
+            if (!hint.commandId || !registry_) {
+                continue;
+            }
+            if (QAction* action = registry_->action(QString::fromLatin1(hint.commandId))) {
+                const QString key = action->shortcut().toString(QKeySequence::NativeText);
+                if (!key.isEmpty()) {
+                    hint.key = key;
+                }
+            }
+        }
+    }
+    hintBar_->setHints(hints, fallback);
+    if (infoPanel_) {
+        QStringList hintTexts;
+        for (const ToolHint& hint : hints) {
+            hintTexts << QStringLiteral("%1 %2").arg(hint.key, hint.text);
+        }
+        const QString name = tools_ ? QString::fromLatin1(toolInfo(tools_->activeTool()).name)
+                                    : QString();
+        infoPanel_->setToolInfo(name, hintTexts);
+    }
 }
 
 void PicturaMainWindow::installWorkspaceOpenGesture()

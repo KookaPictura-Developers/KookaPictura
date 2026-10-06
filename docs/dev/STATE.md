@@ -75,6 +75,22 @@ Snapshot for resuming after a context break. Update after each milestone.
   generated `THIRD-PARTY-LICENSES`; provenance in `docs/dev/icon-provenance.md`
   + `assets/icons/lucide-map.json`, reproduced by `scripts/sync-lucide-icons.py`
   and enforced by `scripts/check-icon-provenance.py`. Cursors are a follow-up.
+- **UI font** (`bundle-noto-sans`, spec `ui/bundled-fonts`): the app now pins the
+  bundled **Noto Sans** as the `QApplication` font. Eight static faces
+  (400/500/600/700, upright + italic) are embedded from `assets/fonts/` via
+  `assets/pictura.qrc` and registered by `fonts.{h,cpp}`;
+  `main.cpp` calls `applyBundledUiFont()` right after the `QApplication`, before
+  any widget, at a fixed 12 px. This fixes the weighted chrome that was silently
+  snapping to a system face because the platform default family has no
+  intermediate weights (DejaVu Sans: Book/Bold only) and makes the UI family
+  OS-independent. The tab labels use Bold (`font-weight: 700`), applied on the
+  bar itself for both the document and panel tab bars via
+  `fonts.cpp:applyTabBarFont` (so elision metrics and weight match, and the file
+  bar no longer relies on the QSS subcontrol rule alone); Medium (500) added
+  only ~1.6 % ink over Regular at the 10 px tab size and SemiBold (600) ~3.7 %,
+  both too subtle, Bold ~5.5 %.
+  License `LICENSES/NotoSans-OFL.txt`; provenance in `assets/PROVENANCE.md`;
+  verified by `tst_fonts`.
 - OpenSpec **1.13.2** (`/usr/bin/openspec`). M0–M47 archived plus the
   content-named `layers-panel-controls`, `layers-filtering-search`,
   `layers-panel-chrome-fixes`, `layers-panel-row-interactions`,

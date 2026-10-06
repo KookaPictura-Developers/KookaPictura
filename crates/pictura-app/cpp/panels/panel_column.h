@@ -172,6 +172,14 @@ public:
     // Re-fit the tools column width to its content (after a 1<->2 column flip).
     void refreshToolsWidth();
 
+    // A widget column's invisible grip on its workspace-facing edge. Placed in
+    // whichever side is adjacent to the workspace; hidden for the tools column
+    // and for a floating (non-splitter) column.
+    void updateResizeGrip();
+    // Suppress the per-side 1 px border margin where the central band's frame
+    // line already provides the edge, so the two never double up.
+    void setBorderEdgeSuppressed(bool left, bool right);
+
     // `normal` (splitter of groups) <-> `iconic` (narrow icon strip).
     void setRailMode(bool iconic);
     bool railMode() const { return railMode_; }
@@ -249,6 +257,9 @@ public:
     void dragToForTest(const QPoint& globalPos);
     bool dropForTest(const QPoint& globalPos);
     void cancelDragForTest();
+    // M48: dock the named panel to the requested side of its own source column
+    // through the real drag path; true when a new column lands there.
+    bool selfAnchorDockForTest(const QString& objectName, bool toRight);
     bool dropIndicatorVisibleForTest() const;
     QRect dropIndicatorGeometryForTest() const;
     QRect dropIndicatorGlobalGeometryForTest() const;
@@ -503,6 +514,8 @@ private:
 
     QWidget* header_ = nullptr;
     QToolButton* columnToggle_ = nullptr;
+    // The 4 px invisible width-drag grip on a widget column's workspace edge.
+    QWidget* resizeGrip_ = nullptr;
     // D1/D2: set while this column hosts a single plain tools content widget.
     QWidget* toolsContent_ = nullptr;
     std::function<int()> toolsColumnsState_;

@@ -160,8 +160,9 @@ int pictura::runShellRound4FloatCheck(pictura::PicturaMainWindow& frame)
     pumpFloat(6);
 
     // docked_tools_fixed_width (441): while docked the Tools column is a
-    // fixed-width splitter pane: its width range is pinned to the content width
-    // and the handle beside it is disabled, so no drag can resize the toolbar.
+    // fixed-width splitter pane: its width range is pinned to the content width,
+    // and the splitter handle beside it has 0 width, so there is no draggable
+    // seam and no drag can resize the toolbar.
     {
         frame.applyPanelSessionForTest(pictura::SessionState{});
         pumpFloat(6);
@@ -169,7 +170,7 @@ int pictura::runShellRound4FloatCheck(pictura::PicturaMainWindow& frame)
         auto* tools = frame.toolsColumn();
         bool isPane = false;
         bool pinned = false;
-        bool handleOff = false;
+        bool handleFlat = false;
         if (splitter && tools) {
             const int idx = splitter->indexOf(tools);
             isPane = idx >= 0;
@@ -181,12 +182,12 @@ int pictura::runShellRound4FloatCheck(pictura::PicturaMainWindow& frame)
             } else if (idx == 0) {
                 handle = splitter->handle(0);
             }
-            handleOff = handle && !handle->isEnabled();
+            handleFlat = handle && handle->width() == 0;
         }
         ST_BEGIN("docked_tools_fixed_width");
-        ST_PASS("docked_tools_fixed_width pane=%d pinned=%d handle_off=%d", isPane ? 1 : 0,
-                pinned ? 1 : 0, handleOff ? 1 : 0);
-        if (!(isPane && pinned && handleOff)) {
+        ST_PASS("docked_tools_fixed_width pane=%d pinned=%d handle_flat=%d", isPane ? 1 : 0,
+                pinned ? 1 : 0, handleFlat ? 1 : 0);
+        if (!(isPane && pinned && handleFlat)) {
             return pictura::selfTest().fail(441, "docked tools fixed width");
         }
         frame.applyPanelSessionForTest(pictura::SessionState{});
@@ -259,6 +260,13 @@ int pictura::runShellRound4FloatCheck(pictura::PicturaMainWindow& frame)
         bool atLeft = false;
         bool redocked = false;
         if (tools && primary && splitter) {
+            // Earlier checks can leave the primary column hidden once its last
+            // visible panel closed, and reordered to the left edge. Re-show a
+            // panel and move the primary to the workspace's right so the left
+            // band this check drags to is a bare workspace edge, not a column.
+            primary->showPanel(QStringLiteral("layersPanel"), true);
+            frame.movePanelColumn(primary, 1, nullptr);
+            pumpFloat(4);
             pictura::PanelFloat* floatWindow = floatToolsColumnForTest(frame, tools);
             floated = floatWindow && floatWindow->isVisible();
             if (floated) {
@@ -390,10 +398,26 @@ int pictura::runShellRound4FloatCheck(pictura::PicturaMainWindow& frame)
         bool stacked = false;
         int iconCount = 0;
         if (column) {
-            column->showPanel(QStringLiteral("layersPanel"), true);
-            column->showPanel(QStringLiteral("channelsPanel"), true);
+            // `applyPanelSessionForTest` does not rebuild the default groups, so
+            // an earlier drag may have left a different arrangement. Pick the
+            // group with the most tabs and show them all, so the fixture always
+            // has a multi-panel group to collapse.
+            pictura::PanelGroup* group = nullptr;
+            for (pictura::PanelGroup* candidate : column->groups()) {
+                if (candidate
+                    && (!group || candidate->panels().size() > group->panels().size())) {
+                    group = candidate;
+                }
+            }
+            if (group) {
+                const QList<QWidget*> members = group->panels();
+                for (QWidget* panel : members) {
+                    if (panel) {
+                        column->showPanel(panel->objectName(), true);
+                    }
+                }
+            }
             pumpFloat(8);
-            pictura::PanelGroup* group = column->groupForPanel(QStringLiteral("layersPanel"));
             if (group && group->visibleTitles().size() >= 2) {
                 const QString panel = group->visiblePanels().first()->objectName();
                 torn = column->tearOffForTest(panel);
@@ -961,7 +985,7 @@ int pictura::runShellRound4FloatCheck(pictura::PicturaMainWindow& frame)
                 groupTorn = index >= 0 && floated != nullptr;
                 if (floated) {
                     const bool asked =
-                        floated->triggerPanelMenuForTest(QStringLiteral("Close Group"));
+                        floated->triggerPanelMenuForTest(QStringLiteral("Close Tab Group"));
                     pumpFloat(8);
                     closedGroup = asked && primary->floatCountForTest() == before
                                   && !primary->isPanelVisible(panel);

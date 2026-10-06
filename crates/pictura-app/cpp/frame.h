@@ -14,12 +14,16 @@
 #include "tools.h"
 
 class QDockWidget;
+class QFrame;
 class QLabel;
 class QListWidget;
+class QResizeEvent;
+class QShowEvent;
 class QSplitter;
 class QTabWidget;
 class QTemporaryDir;
 class QTimer;
+class QToolButton;
 class QWidget;
 
 namespace pictura {
@@ -43,6 +47,7 @@ class InfoPanel;
 class LayersPanel;
 class NavigatorPanel;
 class NotesPanel;
+class NumericField;
 class ColorRangeDialog;
 class ReplaceColorDialog;
 class PathsPanel;
@@ -121,6 +126,13 @@ public:
                                          int* side) const;
     bool movePanelColumn(PanelColumn* column, int side, PanelColumn* anchor);
 
+    // A widget column's invisible resize grip drives the adjacent splitter
+    // handle so the existing anchor logic (`onCenterSplitterMoved`) still keeps
+    // the workspace-side column fixed. The tools column has no grip.
+    void beginWidgetColumnResize(PanelColumn* column, int globalX);
+    void updateWidgetColumnResize(int globalX);
+    void endWidgetColumnResize();
+
     // The tabless, atomic Tools column hosted in the central splitter (default
     // left, index 0). Its content is the `toolbox_` widget.
     PanelColumn* toolsColumn() const { return toolsColumn_; }
@@ -143,6 +155,8 @@ public:
     // stale chrome cannot reappear over the menu bar. v9 moved Tools from a dock
     // into a central-splitter column, so the old layout is discarded.
     static constexpr int kLayoutRevision = 3;
+    // The central-band frame width: 2 px of `${panel}` outside, 1 px `${border}`.
+    static constexpr int kWorkspaceFrameWidth = 3;
     int layoutRevisionForTest() const { return kLayoutRevision; }
     bool restoreStoredLayout(const QByteArray& layout, int revision);
 
@@ -168,6 +182,8 @@ public:
 
     void refresh();
     void saveSession();
+    // Apply a GPU-compute preference change to every open document and persist.
+    void applyGpuComputePreference(bool on);
 
     // Mirror the active document's selection outline onto its canvas (or clear
     // it). Called from refresh() and on toolbar selection commits; view-only.
@@ -241,6 +257,8 @@ protected:
     void keyPressEvent(QKeyEvent* event) override;
     void keyReleaseEvent(QKeyEvent* event) override;
     bool eventFilter(QObject* watched, QEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
+    void showEvent(QShowEvent* event) override;
 
 private:
     struct DocEntry {
@@ -268,6 +286,7 @@ private:
     void buildMenus();
     void buildPanels();
     void buildTools(int toolsColumns, bool useShiftKeyForToolSwitch);
+    void buildDocumentTabs();
     void buildStatusBar();
     // Filter the tab pane so a double-click on the empty workspace (no document
     // open) opens the Open dialog.
@@ -301,6 +320,14 @@ private:
     void wirePanelColumn(PanelColumn* column);
     void clearDynamicColumns();
     void reapplyColumnStretch();
+    // Center-splitter drag: keep the workspace-side column fixed between two
+    // widget columns, then coalesce a session save.
+    void onCenterSplitterMoved(int pos, int index);
+    // Draw the 3 px central-band frame (2 px panel + 1 px border on each edge)
+    // below the menu bar and above the status bar, and suppress the outermost
+    // column's frame-side border so it does not double the 1 px line.
+    void layoutWorkspaceFrame();
+    void updateColumnFrameEdges();
     void showPreferences(const QString& page);
     void retargetDock();
     void refreshPanels();
@@ -308,20 +335,40 @@ private:
     void updateToolHint();
     void updateTabTitle(int index);
     void updateWindowTitle();
+    // Restore the persisted window geometry (and maximized state) at startup, or
+    // fall back to the default size when the stored position is off-screen.
+    void restoreSessionWindowGeometry(const SessionState& state);
+    // A canvas zoom changed: refresh the footer readout and that tab's title.
+    void onCanvasZoomChanged();
     void removeDocument(int index);
     void rememberRecent(const QString& path);
     // Repopulate File > Open Recent from `recent_` each time it opens.
     void refreshRecentMenu(QMenu* menu);
     void openRecent(const QString& path);
     void applyBrightness(int level);
+    QColor canvasColorForIndex(int index) const;
+    void applyWorkspaceCanvasColor();
 
     QList<DocEntry> docs_;
     QList<SmartObjectEditSession> editSessions_;
     QTabWidget* tabs_ = nullptr;
     FileDropRouter* fileDropRouter_ = nullptr;
     QSplitter* centerSplitter_ = nullptr;
+    // The 3 px central-band frame lines (outer 2 px is the window `${panel}`).
+    QWidget* workspaceFrameLeft_ = nullptr;
+    QWidget* workspaceFrameRight_ = nullptr;
     QTimer* panelRefreshTimer_ = nullptr;
     QTimer* sessionSaveTimer_ = nullptr;
+    // M49: while dragging the divider between two widget columns, keep the
+    // workspace-side column's width fixed and let the workspace absorb the delta.
+    PanelColumn* resizeAnchorColumn_ = nullptr;
+    int resizeAnchorWidth_ = -1;
+    bool adjustingColumns_ = false;
+    // A grip drag on a widget column: the splitter handle it drives, the press
+    // global x, and the pane sizes at press so each move maps from the origin.
+    int resizeHandleIndex_ = -1;
+    int resizeStartGlobalX_ = 0;
+    QList<int> resizeStartSizes_;
     CommandRegistry* registry_ = nullptr;
     LayersPanel* layersPanel_ = nullptr;
     HistoryPanel* historyPanel_ = nullptr;
@@ -355,11 +402,15 @@ private:
     Toolbox* toolbox_ = nullptr;
     // The tabless, atomic Tools column that hosts `toolbox_` in the splitter.
     PanelColumn* toolsColumn_ = nullptr;
-    QLabel* zoomLabel_ = nullptr;
+    NumericField* zoomField_ = nullptr;
     QLabel* sizeLabel_ = nullptr;
     ToolHintBar* hintBar_ = nullptr;
+    // The rule between the GPU readout and the hint strip; hidden with the strip.
+    QFrame* hintSeparator_ = nullptr;
     QLabel* backendLabel_ = nullptr;
+    QToolButton* statusOptionsButton_ = nullptr;
     QString statusReadout_ = QStringLiteral("sizes");
+    bool hintsVisible_ = true;
     QColor foreground_;
     QSet<QString> panelNames_;
     QStringList recent_;

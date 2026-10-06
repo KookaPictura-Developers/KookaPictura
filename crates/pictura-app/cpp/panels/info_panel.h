@@ -26,6 +26,8 @@ public:
     // The Ruler tool's mode: the panel shows A/L and points W/H at the ruler.
     void setRulerMode(bool on);
     bool rulerMode() const { return rulerMode_; }
+    // The active tool and its keyboard hints, shown as their own readout row.
+    void setToolInfo(const QString& name, const QStringList& hints);
     void refresh();
 
     QString samplerTextForTest() const;
@@ -37,6 +39,7 @@ public:
     QString sizeTextForTest() const;
     QString rulerTextForTest() const;
     QString docTextForTest() const;
+    QString toolTextForTest() const;
     bool sizeBlockHasMenuForTest() const;
     void setColorModeForTest(int index, const QString& mode);
     void setMeasurementUnitForTest(int index, const QString& unit);
@@ -80,6 +83,7 @@ private:
     void setBitDepth(Readout* readout, int bits);
     void refreshColorBlock(Readout* readout, const QColor& color);
     void rebuildTopRight();
+    void refreshToolLabel();
     QString blockText(const Readout* readout) const;
     QString colorModeName(ColorReadout mode) const;
     QString formatChannel(int value, int bits) const;
@@ -95,6 +99,9 @@ private:
     Readout* size_ = nullptr;
     QLabel* docLabel_ = nullptr;
     QLabel* samplersLabel_ = nullptr;
+    QLabel* toolLabel_ = nullptr;
+    QString toolName_;
+    QStringList toolHints_;
 };
 
 } // namespace pictura

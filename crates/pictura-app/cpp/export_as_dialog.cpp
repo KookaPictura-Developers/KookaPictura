@@ -1,6 +1,7 @@
 #include "export_as_dialog.h"
 
 #include "dialogs.h"
+#include "panels/jump_slider.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/export.cxxqt.h"
@@ -121,7 +122,7 @@ ExportAsDialog::ExportAsDialog(const QString& initialFormat, QWidget* parent)
     form->addRow(tr("Format:"), format_);
 
     qualityLabel_ = new QLabel(tr("Quality:"), this);
-    quality_ = new QSlider(Qt::Horizontal, this);
+    quality_ = new JumpSlider(Qt::Horizontal, this);
     quality_->setRange(1, 100);
     quality_->setValue(90);
     form->addRow(qualityLabel_, quality_);

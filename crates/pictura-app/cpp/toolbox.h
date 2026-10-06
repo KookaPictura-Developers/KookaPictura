@@ -4,6 +4,7 @@
 #include <QtCore/QMap>
 #include <QtCore/QPoint>
 #include <QtCore/QRect>
+#include <QtCore/QSize>
 #include <QtCore/QStringList>
 #include <QtGui/QColor>
 #include <QtWidgets/QWidget>
@@ -13,6 +14,7 @@
 class QAction;
 class QEvent;
 class QGridLayout;
+class QHBoxLayout;
 class QMenu;
 class QMouseEvent;
 class QPaintEvent;
@@ -76,9 +78,22 @@ class Toolbox : public QWidget {
 
 public:
     explicit Toolbox(ToolController* controller, ColorState* colors, QWidget* parent = nullptr);
+    ~Toolbox() override;
 
-    // The 23 group slot buttons in catalogue order (self-test accessor).
+    // The group slot buttons in catalogue order (self-test accessor).
     QList<QToolButton*> slotButtons() const { return slotButtons_; }
+    // The group id of each slot in `slotButtons()` order.
+    QList<int> slotGroupsForTest() const { return slotGroups_; }
+
+    // Base slot/icon metrics (96 DPI) scaled by a logical DPI. Exposed so the
+    // Qt Test can assert the no-double-scale rule without a second screen.
+    static QSize slotSizeForDpi(qreal logicalDpi);
+    static QSize iconSizeForDpi(qreal logicalDpi);
+
+    // The screen-mode button's InstantPopup menu, sharing the registry's
+    // `ViewScreenMode*` actions (checks/handlers come from the one source).
+    void setScreenModeActions(const QList<QAction*>& actions);
+    void setActiveScreenMode(int mode);
 
     // Current column count, 1 or 2.
     int columns() const { return columns_; }
@@ -106,7 +121,7 @@ public:
     ForegroundBackgroundWidget* foregroundBackgroundForTest() const { return fgbg_; }
 
 signals:
-    void screenModeRequested();
+    void paintMaskToggled(bool checked);
     void columnsChanged(int columns);
 
 private:
@@ -117,20 +132,38 @@ private:
     // Freeform Pen, not its anchor tools); null cycles every member.
     void cycleGroup(int group, QChar key = QChar());
     void showSlotMenu(int group);
+    void closeOpenSlotMenu();
+    QToolButton* slotButtonAt(const QPoint& globalPos) const;
+    // Re-derive slot/icon geometry from the current screen's logical DPI.
+    void applyMetrics();
+    // Orient/size the Quick Mask + Screen Mode footer for the current columns.
+    void layoutFooter();
     void reflow();
     void updateContentMetrics();
     int contentWidth(int columns) const;
+
+    bool eventFilter(QObject* watched, QEvent* event) override;
+    bool event(QEvent* event) override;
 
     ToolController* controller_ = nullptr;
     ColorState* colors_ = nullptr;
     QMap<int, ToolId> currentByGroup_;
     QList<QToolButton*> slotButtons_;
-    QList<QMenu*> slotMenus_;
+    QList<int> slotGroups_;
+    QMap<int, QToolButton*> slotButtonByGroup_;
+    QMap<int, QMenu*> slotMenuByGroup_;
     QGridLayout* grid_ = nullptr;
     QWidget* gridWidget_ = nullptr;
     QVBoxLayout* bodyLayout_ = nullptr;
+    QHBoxLayout* footerRow_ = nullptr;
     ForegroundBackgroundWidget* fgbg_ = nullptr;
     QToolButton* screenMode_ = nullptr;
+    QList<QAction*> screenModeActions_;
+    QToolButton* paintMask_ = nullptr;
+    QMenu* openSlotMenu_ = nullptr;
+    QToolButton* openSlotButton_ = nullptr;
+    QSize slotSize_ { 36, 28 };
+    QSize iconSize_ { 24, 20 };
     int columns_ = 1;
     bool shiftKeyForToolSwitch_ = true;
 };

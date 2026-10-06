@@ -1,16 +1,48 @@
 #include <QtTest/QtTest>
 
+#include <QtCore/QAbstractItemModel>
+#include <QtCore/QModelIndex>
+#include <QtCore/QPoint>
+#include <QtCore/QRect>
 #include <QtCore/QStringList>
+#include <QtCore/QTimer>
+#include <QtGui/QAction>
+#include <QtGui/QColor>
+#include <QtGui/QImage>
+#include <QtGui/QPalette>
 
 #include "frame.h"
 #include "panels/layers_panel.h"
+#include "panels/layers_panel_internal.h"
+#include "theme.h"
 #include "commands.h"
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/shapes.cxxqt.h"
 
-#include <QtGui/QAction>
-
 #include "qt_test_support.h"
+
+namespace {
+
+QModelIndex indexForPath(QAbstractItemModel* model, const QString& path,
+                         const QModelIndex& parent = QModelIndex())
+{
+    if (!model) {
+        return {};
+    }
+    for (int row = 0; row < model->rowCount(parent); ++row) {
+        const QModelIndex index = model->index(row, 0, parent);
+        if (index.data(pictura::PathRole).toString() == path) {
+            return index;
+        }
+        const QModelIndex child = indexForPath(model, path, index);
+        if (child.isValid()) {
+            return child;
+        }
+    }
+    return {};
+}
+
+} // namespace
 
 class LayersPanelTest : public QObject {
     Q_OBJECT
@@ -21,6 +53,8 @@ private slots:
     void nestingLockRefusalAndReorder();
     void panelChrome();
     void rowWidgets();
+    void layerRowSurface();
+    void gutterClickTogglesWithoutSelecting();
     void dragReorder();
     void dropOnDelete();
     void clippingMasks();
@@ -144,6 +178,137 @@ void LayersPanelTest::rowWidgets()
     QVERIFY2(panel_->opacitySuffixPresentForTest(), "percent suffix");
     QVERIFY2(panel_->lockIconsPresentForTest(), "semantic lock icons");
     QVERIFY2(panel_->treeDragEnabledForTest(), "tree drag enabled");
+    window_->closeDocument(doc, false);
+}
+
+void LayersPanelTest::layerRowSurface()
+{
+    QVERIFY2(setupNest(), "row surface fixture");
+    const int doc = window_->activeDocumentIndex();
+    // The row image seams read the painted row, so the tree must be laid out.
+    window_->show();
+    panel_->setView(view_);
+    panel_->refresh();
+    panel_->expandForTest(group_);
+    QTest::qWait(50);
+
+    // The paint helper seeds the palette with a fixed neutral grey, so the
+    // exact surfaces are deterministic without depending on the live palette.
+    const QColor canvasBase(128, 128, 128);
+    const QColor rowSurface = pictura::Theme::shade(canvasBase, 1);
+
+    panel_->selectPaths({}, QString());
+    const QImage unselected = panel_->rowImageForTest(a_);
+    const QColor bg = unselected.pixelColor(unselected.width() - 4, 1);
+    QCOMPARE(bg.rgba(), rowSurface.rgba());
+    QVERIFY2(bg.rgba() != canvasBase.rgba(), "row surface steps lighter than the list");
+
+    // The content column begins kContentPad past the gutter; the name shares
+    // that left, and the 4 px name gap (kNameGap) follows the thumbnail.
+    const QRect thumb = panel_->rowThumbRectForTest(a_);
+    const QRect name = panel_->rowNameRectForTest(a_);
+    QCOMPARE(thumb.left(), pictura::LayerRowDelegate::kEyeColumn
+                               + pictura::LayerRowDelegate::kContentPad
+                               + pictura::LayerRowDelegate::kIndent);
+    QCOMPARE(name.left(), thumb.left() + thumb.width()
+                              + pictura::LayerRowDelegate::kNameGap);
+
+    // The paint helper seeds Highlight with blue; the delegate must paint the
+    // neutral grey list-selection fill instead, and keep the eye gutter on the
+    // row surface so a selected row's gutter matches an unselected one.
+    panel_->selectPaths({a_}, a_);
+    const QImage selected = panel_->rowImageForTest(a_);
+    const QColor expectedSelection = pictura::Theme::shade(canvasBase, 3);
+    const QColor selPixel = selected.pixelColor(selected.width() - 4, 1);
+    QCOMPARE(selPixel.rgba(), expectedSelection.rgba());
+    QVERIFY2(selPixel.rgba() != bg.rgba(), "selection changes the row surface");
+    QVERIFY2(selPixel.red() == selPixel.green() && selPixel.green() == selPixel.blue(),
+             "selection uses grey, not the palette blue");
+    const QRect eye = panel_->rowEyeRectForTest(a_);
+    QCOMPARE(selected.pixel(eye.left() + 2, eye.top() + 1),
+             unselected.pixel(eye.left() + 2, eye.top() + 1));
+
+    window_->closeDocument(doc, false);
+}
+
+void LayersPanelTest::gutterClickTogglesWithoutSelecting()
+{
+    QVERIFY2(setupNest(), "gutter fixture");
+    const int doc = window_->activeDocumentIndex();
+    panel_->setView(view_);
+    panel_->refresh();
+    panel_->expandForTest(group_);
+    window_->show();
+    QTest::qWait(50);
+
+    QTreeView* tree = panel_->findChild<QTreeView*>();
+    QVERIFY(tree != nullptr);
+    QWidget* viewport = tree->viewport();
+    QVERIFY(viewport != nullptr);
+    const auto rowRect = [&]() -> QRect { return panel_->rowViewportRectForTest(a_); };
+
+    const int kEyeColumn = pictura::LayerRowDelegate::kEyeColumn;
+    QRect vr = rowRect();
+    QVERIFY2(vr.isValid() && vr.width() > kEyeColumn, "layer A row is laid out");
+
+    panel_->selectPaths({b_}, b_);
+    const bool before = view_->layer_row_visible(rowOf(a_));
+    QCOMPARE(panel_->selectedPaths(), QStringList{b_});
+
+    // Re-read the row geometry: selecting b_ may scroll the view, which moves
+    // layer A's rect.
+    vr = rowRect();
+    QVERIFY2(vr.isValid() && vr.width() > kEyeColumn, "layer A row is laid out after select");
+
+    // The whole left gutter toggles visibility and never selects: the first
+    // column pixel and the last gutter pixel before the padded content both
+    // work.
+    QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
+                      QPoint(vr.left(), vr.center().y()));
+    QCoreApplication::processEvents();
+    QVERIFY2(view_->layer_row_visible(rowOf(a_)) != before, "gutter left edge toggles visibility");
+    QCOMPARE(panel_->selectedPaths(), QStringList{b_});
+
+    // Restore, then the last gutter pixel toggles identically.
+    view_->set_layers_visible({a_}, before);
+    QCoreApplication::processEvents();
+    vr = rowRect();
+    QVERIFY2(vr.isValid(), "layer A row still laid out");
+    QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
+                      QPoint(vr.left() + kEyeColumn - 1, vr.center().y()));
+    QCoreApplication::processEvents();
+    QVERIFY2(view_->layer_row_visible(rowOf(a_)) != before, "gutter last column toggles visibility");
+    QCOMPARE(panel_->selectedPaths(), QStringList{b_});
+
+    // The padded content column just past the gutter selects instead of toggling.
+    vr = rowRect();
+    QVERIFY2(vr.isValid(), "layer A row still laid out");
+    const bool visibleBeforeContent = view_->layer_row_visible(rowOf(a_));
+    QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
+                      QPoint(vr.left() + kEyeColumn, vr.center().y()));
+    QCoreApplication::processEvents();
+    QVERIFY2(view_->layer_row_visible(rowOf(a_)) == visibleBeforeContent,
+             "content click leaves visibility alone");
+    QVERIFY2(panel_->selectedPaths().contains(a_), "content click selects the row");
+
+    // Right-clicking the gutter opens the eye menu but must not disturb the
+    // selection. The old glyph-only guard fell through to the row menu and
+    // re-selected the row; the widened gutter guard does not. Emit the
+    // custom-context-menu signal the tree emits on a real right-click and close
+    // the menu at once so its nested event loop returns headlessly.
+    panel_->selectPaths({b_}, b_);
+    QTimer::singleShot(0, qApp, []() {
+        if (QWidget* popup = QApplication::activePopupWidget()) {
+            popup->close();
+        }
+    });
+    vr = rowRect();
+    QVERIFY2(vr.isValid(), "layer A row still laid out");
+    QMetaObject::invokeMethod(tree, "customContextMenuRequested", Qt::DirectConnection,
+                              Q_ARG(QPoint, QPoint(vr.left() + 1, vr.center().y())));
+    QCoreApplication::processEvents();
+    QCOMPARE(panel_->selectedPaths(), QStringList{b_});
+
     window_->closeDocument(doc, false);
 }
 

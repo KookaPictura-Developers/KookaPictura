@@ -8,6 +8,7 @@
 
 #include "panels/angle_dial.h"
 #include "panels/curve_widget.h"
+#include "panels/jump_slider.h"
 #include "panels/ramp_slider.h"
 #include "panels/spectrum_bar.h"
 
@@ -22,6 +23,7 @@ private slots:
     void rampSliderRampAndTracking();
     void spectrumBarHueShiftRepaints();
     void curveWidgetDefaultsAndLut();
+    void jumpSliderJumpsToClickAndTracks();
 };
 
 void SharedWidgetsTest::angleDialWrapsAndEmits()
@@ -114,6 +116,23 @@ void SharedWidgetsTest::curveWidgetDefaultsAndLut()
     uint8_t resetLut[256];
     curve.buildLut(resetLut);
     QCOMPARE(int(resetLut[128]), 128);
+}
+
+void SharedWidgetsTest::jumpSliderJumpsToClickAndTracks()
+{
+    pictura::JumpSlider slider(Qt::Horizontal);
+    slider.setRange(0, 100);
+    slider.setPageStep(10);
+    slider.setValue(0);
+    slider.resize(200, 24);
+
+    QTest::mousePress(&slider, Qt::LeftButton, Qt::NoModifier, QPoint(190, 12));
+    QVERIFY2(slider.value() > 50, "a groove press jumps to the click, not a page step");
+    const int pressed = slider.value();
+
+    QTest::mouseMove(&slider, QPoint(15, 12));
+    QVERIFY2(slider.value() < pressed, "a held drag tracks the cursor");
+    QTest::mouseRelease(&slider, Qt::LeftButton, Qt::NoModifier, QPoint(15, 12));
 }
 
 QTEST_MAIN(SharedWidgetsTest)

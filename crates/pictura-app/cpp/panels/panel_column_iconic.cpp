@@ -42,8 +42,10 @@ namespace {
 constexpr int kIconLabelMinWidth = 16;
 constexpr int kIconButtonSize = 34;
 constexpr int kIconPixmapSize = 24;
-// ponytail: chosen compact-strip divider height, not a sourced CS6 metric.
-constexpr int kCompactDividerHeight = 2;
+// The divider is kept as a layout/drop marker but draws nothing: a zero-height
+// frame with a transparent rule. The 1 px between groups is each group's own
+// bottom rule. ponytail: chosen, not a sourced CS6 metric.
+constexpr int kCompactDividerHeight = 0;
 
 } // namespace
 
@@ -68,10 +70,10 @@ void PanelColumn::setRailMode(bool iconic)
         iconStrip_->setVisible(true);
         scroll_->setVisible(false);
         updateMinimumWidth();
-        // M47: a compact column is fixed-width so a neighbour resize cannot
-        // change it.
-        setFixedWidth(kIconStripMinWidth);
-        setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+        // M49: the compact column stays a freely resizable splitter pane (the
+        // neighbour drag can widen it), not a fixed-width strip.
+        setMaximumWidth(QWIDGETSIZE_MAX);
+        setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
         setPreferredWidth(kIconStripMinWidth);
     } else {
         closeIconFlyout();
@@ -87,6 +89,9 @@ void PanelColumn::setRailMode(bool iconic)
                                                        : minimumWidth());
     }
     updateColumnToggle();
+    // Re-place the workspace-edge width grip for the new mode/width (a rail
+    // column is resizable from its workspace-facing edge like a normal one).
+    updateResizeGrip();
     // A whole-column overlay snaps to the icon strip's content when the rail
     // mode flips while the column is floating.
     if (columnFloat_) {
@@ -199,6 +204,9 @@ void PanelColumn::buildIconStrip()
             auto* label = new QLabel(title, row);
             label->setObjectName(QStringLiteral("panelIconLabel"));
             label->setProperty("fullTitle", title);
+            label->setProperty("iconButton", QVariant::fromValue<QObject*>(iconButton));
+            label->setCursor(Qt::PointingHandCursor);
+            label->installEventFilter(this);
             label->setVisible(iconLabelsShown_);
             rowLayout->addWidget(label);
             rowLayout->addStretch(1);

@@ -9,7 +9,7 @@ class PicturaMainWindow;
 //                            simulated restart
 //   lpr_v7_width (319)       a v6 store loads a default width, seeded from the
 //                            legacy `railWidth` for the primary column
-//   ldt_mode_bits (320)      an opened raster's tab reads `base (RGB/8)`
+//   ldt_mode_bits (320)      an opened raster's tab reads `base @ 100% (RGB/8)`
 //   ldt_untitled (321)       a nameless document still reads `Untitled-N`
 //   lim_opaque_background (322) an opaque import is a locked Background
 //   lim_transparent_layer (323) a non-opaque import stays a regular alpha layer

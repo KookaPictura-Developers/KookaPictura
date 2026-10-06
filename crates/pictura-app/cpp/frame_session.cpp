@@ -2,6 +2,9 @@
 
 #include "pictura_debug_timing.h"
 
+#include <QtGui/QGuiApplication>
+#include <QtGui/QScreen>
+
 namespace pictura {
 
 void PicturaMainWindow::setPanelsHidden(bool hidden)
@@ -86,6 +89,19 @@ void PicturaMainWindow::refreshPanels()
     retargetDock();
 }
 
+void PicturaMainWindow::applyGpuComputePreference(bool on)
+{
+    gpuCompute_ = on;
+    for (const DocEntry& entry : docs_) {
+        if (entry.view) {
+            entry.view->set_gpu_compute(on);
+        }
+    }
+    saveSession();
+    registry_->refresh();
+    refresh();
+}
+
 void PicturaMainWindow::saveSession()
 {
     // A session restore rebuilds the columns from the store; re-saving mid
@@ -96,6 +112,8 @@ void PicturaMainWindow::saveSession()
     SessionState state = pictura::loadSession();
     state.layout = saveState();
     state.layoutRevision = kLayoutRevision;
+    state.windowGeometry = saveGeometry();
+    state.windowMaximized = isMaximized();
     state.brightnessLevel = brightnessLevel_;
     state.gpuCompute = gpuCompute_;
     state.colorPolicy = colorPolicy_;
@@ -176,6 +194,48 @@ void PicturaMainWindow::saveSession()
     state.schemaVersion = 9;
     state.recent = recent_;
     pictura::saveSession(state);
+}
+
+void PicturaMainWindow::restoreSessionWindowGeometry(const SessionState& state)
+{
+    // A stored geometry (from the last close) overrides the default size; a
+    // stale one that lands fully off-screen (a removed monitor) falls back to
+    // the default so the window is never unreachable.
+    if (!state.windowGeometry.isEmpty() && restoreGeometry(state.windowGeometry)) {
+        bool onScreen = false;
+        for (const QScreen* screen : QGuiApplication::screens()) {
+            if (screen->availableGeometry().intersects(frameGeometry())) {
+                onScreen = true;
+                break;
+            }
+        }
+        if (!onScreen) {
+            resize(1100, 700);
+        }
+    }
+    if (state.windowMaximized) {
+        setWindowState(windowState() | Qt::WindowMaximized);
+    }
+}
+
+void PicturaMainWindow::onCanvasZoomChanged()
+{
+    updateStatus();
+    auto* canvas = qobject_cast<ImageView*>(sender());
+    for (int i = 0; i < docs_.size(); ++i) {
+        if (docs_.at(i).canvas == canvas) {
+            updateTabTitle(i);
+            return;
+        }
+    }
+}
+
+QString PicturaMainWindow::documentTabTextForTest(int index) const
+{
+    if (!tabs_ || index < 0 || index >= tabs_->count()) {
+        return QString();
+    }
+    return tabs_->tabText(index);
 }
 
 bool PicturaMainWindow::restoreStoredLayout(const QByteArray& layout, int revision)

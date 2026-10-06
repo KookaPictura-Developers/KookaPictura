@@ -191,7 +191,8 @@ void addDefaultCommands(CommandRegistry& registry) {
     registry.add(command_ids::EditPreferencesInterface, {"Edit", "Preferences", "Interface"},
                  QStringLiteral("Interface"), QKeySequence(), true);
     leaf(registry, {"Edit", "Preferences", "File Handling"}, QStringLiteral("File Handling"));
-    leaf(registry, {"Edit", "Preferences", "Performance"}, QStringLiteral("Performance"));
+    registry.add(command_ids::EditPreferencesPerformance, {"Edit", "Preferences", "Performance"},
+                 QStringLiteral("Performance"), QKeySequence(), true);
     leaf(registry, {"Edit", "Preferences", "Cursors"}, QStringLiteral("Cursors"));
     leaf(registry, {"Edit", "Preferences", "Transparency & Gamut"},
          QStringLiteral("Transparency & Gamut"));
@@ -784,10 +785,8 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"View", "Align"}, QStringLiteral("Align"));
     leaf(registry, {"View", "Align To"}, QStringLiteral("Align To"));
     registry.addSeparator({"View"});
-    registry.add(CommandSpec{command_ids::ViewOptions, {"View", "Options"},
-                             QStringLiteral("Options"), QKeySequence(), true, true});
-    registry.add(CommandSpec{command_ids::ViewGpuCompute, {"View", "Use GPU Compute"},
-                             QStringLiteral("Use GPU Compute"), QKeySequence(), true, true});
+    registry.add(CommandSpec{command_ids::ViewToolHints, {"View", "Tool Hints"},
+                             QStringLiteral("Tool Hints"), QKeySequence(), true, true});
 
     // Window
     leaf(registry, {"Window", "Arrange", "Cascade"}, QStringLiteral("Cascade"));
@@ -872,7 +871,8 @@ void addDefaultCommands(CommandRegistry& registry) {
     registry.add(CommandSpec{command_ids::WindowPanelsTools, {"Window", "Panels", "Tools"},
                              QStringLiteral("Tools"), QKeySequence(), true, true});
     registry.addSeparator({"Window"});
-    leaf(registry, {"Window", "3D"}, QStringLiteral("3D"));
+    registry.add(CommandSpec{command_ids::ViewOptions, {"Window", "Options"},
+                             QStringLiteral("Options"), QKeySequence(), true, true});
 
     // Help
     leaf(registry, {"Help", "Kooka Pictura Help"}, QStringLiteral("Kooka Pictura Help"),
