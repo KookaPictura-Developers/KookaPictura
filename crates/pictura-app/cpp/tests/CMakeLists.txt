@@ -2,6 +2,7 @@
 set(PICTURA_QT_TESTS
     tst_smoke
     tst_edit_clipboard
+    tst_image_ops
     tst_layers_panel
     tst_align_distribute
     tst_command_tree
@@ -15,6 +16,7 @@ set(PICTURA_QT_TESTS
     tst_type_tools
     tst_type_panels
     tst_character_paragraph_panels
+    tst_paragraph_styles_panel
     tst_shared_widgets
     tst_info_panel
     tst_swatches_panel

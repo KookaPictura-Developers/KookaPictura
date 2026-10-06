@@ -8,6 +8,7 @@
 #include "frame.h"
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/clipboard.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/impl_history/purge.cxxqt.h"
 
 #include "qt_test_support.h"
 
@@ -17,6 +18,7 @@ class EditClipboardTest : public QObject {
 private slots:
     void initTestCase();
     void editClipboard();
+    void purgeCommands();
 
 private:
     pictura::test::ScopedStateHome stateHome_;
@@ -117,6 +119,52 @@ void EditClipboardTest::editClipboard()
     QVERIFY2(imported, "import foreign image");
     QVERIFY2(merged, "copy merged");
     QVERIFY2(purged, "purge clipboard");
+    frame.closeDocument(doc, false);
+}
+
+void EditClipboardTest::purgeCommands()
+{
+    pictura::PicturaMainWindow& frame = *window_;
+    const bool created = frame.newDocument(QStringLiteral("PurgeCtl"), 8, 8,
+                                           QStringLiteral("rgb"), 8, QStringLiteral("white"));
+    pictura::PictureView* view = frame.activeView();
+    QVERIFY2(created && view, "purge fixture");
+    const int doc = frame.activeDocumentIndex();
+    pictura::CommandRegistry* registry = frame.registry();
+    const auto dispatch = [registry](const char* id) {
+        registry->refresh();
+        QVERIFY(registry->dispatch(QString::fromLatin1(id)));
+    };
+
+    // A copy and two pastes give a multi-step undo stack.
+    pictura::clipboard_copy(*view, view->active_layer_path(), false);
+    dispatch(pictura::command_ids::EditPaste);
+    dispatch(pictura::command_ids::EditPaste);
+    view->history_add_snapshot(QStringLiteral("Snap 1"));
+    QVERIFY(view->history_count() > 1);
+    QVERIFY(view->can_undo());
+    QCOMPARE(view->history_snapshot_count(), 1);
+
+    // Purge Histories drops the restore point but keeps the undo stack.
+    dispatch(pictura::command_ids::EditPurgeHistories);
+    QCOMPARE(view->history_snapshot_count(), 0);
+    QVERIFY(view->history_count() > 1);
+    QVERIFY(view->can_undo());
+
+    // Purge Undo collapses the stack to the current state, keeping one row.
+    dispatch(pictura::command_ids::EditPurgeUndo);
+    QCOMPARE(view->history_count(), 1);
+    QVERIFY(!view->can_undo());
+
+    // Purge All also empties the clipboard.
+    view->history_add_snapshot(QStringLiteral("Snap 2"));
+    pictura::clipboard_copy(*view, view->active_layer_path(), false);
+    QVERIFY(pictura::clipboard_has_contents());
+    dispatch(pictura::command_ids::EditPurgeAll);
+    QCOMPARE(view->history_snapshot_count(), 0);
+    QCOMPARE(view->history_count(), 1);
+    QVERIFY(!pictura::clipboard_has_contents());
+
     frame.closeDocument(doc, false);
 }
 

@@ -53,6 +53,10 @@ void PicturaMainWindow::retargetDock()
         paragraphPanel_->setView(view);
         paragraphPanel_->refresh();
     }
+    if (paragraphStylesPanel_) {
+        paragraphStylesPanel_->setView(view);
+        paragraphStylesPanel_->refresh();
+    }
     if (notesPanel_) {
         notesPanel_->setView(view);
     }

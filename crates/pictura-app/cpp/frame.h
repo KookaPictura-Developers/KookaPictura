@@ -37,6 +37,7 @@ class CloneSourcePanel;
 class CharacterPanel;
 class ParagraphPanel;
 class GlyphsPanel;
+class ParagraphStylesPanel;
 class ImageView;
 class InfoPanel;
 class LayersPanel;
@@ -284,6 +285,8 @@ private:
     // frame_menus_align.cpp: Layer > Align / Align Layers To Selection /
     // Distribute, and the Move tool's buttons, over the selected layers.
     void wireAlignMenu();
+    // frame_menus_image.cpp: Image > Mode, Crop, Trim, and Duplicate.
+    void wireImageMenu();
     // frame_menus_adjust.cpp: Image > Adjustments and the Image > Auto commands.
     void wireImageAdjustments();
     // frame_menus_adjust.cpp: Layer > New Adjustment Layer, the sixteen
@@ -338,6 +341,7 @@ private:
     CharacterPanel* characterPanel_ = nullptr;
     ParagraphPanel* paragraphPanel_ = nullptr;
     GlyphsPanel* glyphsPanel_ = nullptr;
+    ParagraphStylesPanel* paragraphStylesPanel_ = nullptr;
     PropertiesPanel* propertiesPanel_ = nullptr;
     PlaceholderPanel* adjustmentsPanel_ = nullptr;
     ChannelsPanel* channelsPanel_ = nullptr;

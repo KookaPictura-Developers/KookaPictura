@@ -5,6 +5,7 @@
 
 #include "color_picker_dialog.h"
 #include "commands.h"
+#include "font_combo.h"
 #include "icons.h"
 
 #include <QtCore/QLocale>
@@ -121,6 +122,7 @@ QWidget* OptionsBar::buildTypePage(ToolId id)
 
     auto* family = new QFontComboBox(page);
     family->setObjectName(QStringLiteral("optionsTypeFamily"));
+    useFastFontPreviews(family);
     family->setToolTip(QStringLiteral("Font family"));
     layout->addWidget(family);
 

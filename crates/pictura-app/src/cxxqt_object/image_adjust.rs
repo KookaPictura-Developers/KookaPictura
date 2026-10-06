@@ -9,6 +9,8 @@
 //!
 //! [`PictureView`]: super::qobject::PictureView
 
+mod image_ops;
+
 use super::adjustment_edit::{format_points, page_rows, parse_points};
 use super::impl_filters::{apply_op_active_region, ActiveOp};
 use super::qobject::PictureView;

@@ -3,6 +3,8 @@
 #include <QtTest/QtTest>
 
 #include "panels/numeric_field.h"
+#include "fill_dialog.h"
+#include "stroke_dialog.h"
 #include "selftest_paint_fixture.h"
 
 #include <QtGui/QPainter>
@@ -50,6 +52,8 @@ private slots:
     void initTestCase();
     void gradientTool();
     void paintBucketTool();
+    void fillCommand();
+    void strokeCommand();
 
 private:
     pictura::test::ScopedStateHome stateHome_;
@@ -256,6 +260,68 @@ void FillToolsTest::paintBucketTool()
     QVERIFY2(refused, "refused");
     QVERIFY2(global, "global");
     QVERIFY2(patterned, "patterned");
+}
+
+void FillToolsTest::fillCommand()
+{
+    pictura::PicturaMainWindow& frame = *window_;
+    QImage seed(16, 16, QImage::Format_RGB32);
+    seed.fill(QColor(0, 128, 0));
+    Fixture f(frame, seed, QStringLiteral("pictura_fill_command"));
+    QVERIFY2(f.ok(), "fill fixture");
+
+    // The dialog reports its widgets' values and defaults to Foreground 100 %.
+    pictura::FillDialog dialog(QColor(10, 20, 30), QColor(200, 210, 220));
+    QVERIFY(!dialog.isPatternFill());
+    QCOMPARE(dialog.fillColor(), QColor(10, 20, 30));
+    QCOMPARE(dialog.blendMode(), QStringLiteral("normal"));
+    QCOMPARE(dialog.opacity(), 100);
+    QVERIFY(!dialog.preserveTransparency());
+
+    // The Edit > Fill command fills the active layer through the engine and
+    // records one "Fill" state.
+    const QColor foreground(10, 20, 30);
+    const int base = f.view->history_index();
+    QVERIFY(pictura::edit_fill(*f.view, foreground.rgba(), -1, QStringLiteral("normal"), 100,
+                               false));
+    QVERIFY2(f.committedOnce(base, "Fill"), "one fill state");
+    QCOMPARE(f.view->sample_argb(8, 8), foreground.rgba());
+
+    // A pattern fill uses the tile from the document origin.
+    const int patterned = f.view->history_index();
+    QVERIFY(pictura::edit_fill(*f.view, 0, 0, QStringLiteral("normal"), 100, false));
+    QVERIFY2(f.committedOnce(patterned, "Fill"), "one pattern state");
+    QCOMPARE(f.view->sample_argb(0, 0), QColor(215, 215, 215).rgba());
+}
+
+void FillToolsTest::strokeCommand()
+{
+    pictura::PicturaMainWindow& frame = *window_;
+    QImage seed(24, 24, QImage::Format_RGB32);
+    seed.fill(Qt::white);
+    Fixture f(frame, seed, QStringLiteral("pictura_stroke_command"));
+    QVERIFY2(f.ok(), "stroke fixture");
+
+    // The dialog reports its widgets' values and defaults to Center 1 px black.
+    pictura::StrokeDialog dialog(QColor(Qt::black));
+    QCOMPARE(dialog.strokeWidth(), 1);
+    QCOMPARE(dialog.strokeColor(), QColor(Qt::black));
+    QCOMPARE(dialog.location(), 1);
+    QCOMPARE(dialog.blendMode(), QStringLiteral("normal"));
+    QCOMPARE(dialog.opacity(), 100);
+
+    // Select a 10×10 square in the middle, then stroke it 2 px Outside in red.
+    QVERIFY(f.view->select_rect(7, 7, 10, 10, QStringLiteral("new"), 0.0));
+    QVERIFY(f.view->has_selection());
+    const QColor red(220, 0, 0);
+    const int base = f.view->history_index();
+    QVERIFY(pictura::edit_stroke(*f.view, red.rgba(), 2, 2, QStringLiteral("normal"), 100));
+    QVERIFY2(f.committedOnce(base, "Stroke"), "one stroke state");
+    // The band rings the selection just outside it; the selection and the far
+    // corner stay white.
+    QCOMPARE(f.view->sample_argb(6, 12), red.rgba());
+    QCOMPARE(f.view->sample_argb(12, 12), QColor(Qt::white).rgba());
+    QCOMPARE(f.view->sample_argb(0, 0), QColor(Qt::white).rgba());
 }
 
 QTEST_MAIN(FillToolsTest)

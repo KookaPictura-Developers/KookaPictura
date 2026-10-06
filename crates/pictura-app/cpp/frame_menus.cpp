@@ -361,63 +361,7 @@ void PicturaMainWindow::registerHandlers()
                                       [this]() { return activeView() && activeView()->has_document(); });
     }
 
-    registry_->setHandler(command_ids::ImageMode16Bits, [this]() {
-        PictureView* view = activeView();
-        if (!view) {
-            return;
-        }
-        HdrConversionSpec spec;
-        if (!HdrConversionDialog::get(this, &spec)) {
-            return;
-        }
-        if (view->convert_depth(16, spec.exposure_ev, spec.gamma)) {
-            refresh();
-        }
-    });
-    registry_->setHandler(command_ids::ImageMode8Bits, [this]() {
-        PictureView* view = activeView();
-        if (!view) {
-            return;
-        }
-        HdrConversionSpec spec;
-        if (!HdrConversionDialog::get(this, &spec)) {
-            return;
-        }
-        if (view->convert_depth(8, spec.exposure_ev, spec.gamma)) {
-            refresh();
-        }
-    });
-    for (const char* id : {command_ids::ImageMode16Bits, command_ids::ImageMode8Bits}) {
-        registry_->setEnabledProvider(id, [this]() {
-            PictureView* view = activeView();
-            return view && view->has_document() && view->document_depth_bits() == 32;
-        });
-    }
-
-    registry_->setHandler(command_ids::ImageCrop, [this]() {
-        if (tools_ && tools_->hasPendingCrop()) {
-            commitCrop();
-            return;
-        }
-        PictureView* view = activeView();
-        if (!view) {
-            return;
-        }
-        const QString bounds = view->selection_bounds();
-        if (bounds.isEmpty()) {
-            return;
-        }
-        const QStringList parts = bounds.split(QLatin1Char(' '), Qt::SkipEmptyParts);
-        if (parts.size() != 4) {
-            return;
-        }
-        if (view->crop(parts.at(0).toInt(), parts.at(1).toInt(), parts.at(2).toInt(),
-                       parts.at(3).toInt())) {
-            refresh();
-        }
-    });
-    registry_->setEnabledProvider(command_ids::ImageCrop,
-                                  [this]() { return activeView() && activeView()->has_document(); });
+    wireImageMenu();
 
     registry_->setHandler(command_ids::SelectAll, [this]() {
         if (PictureView* view = activeView()) {
@@ -1112,8 +1056,10 @@ void PicturaMainWindow::registerHandlers()
         {command_ids::WindowPanelsCharacter, "characterPanel"},
         {command_ids::WindowPanelsParagraph, "paragraphPanel"},
         {command_ids::WindowPanelsGlyphs, "glyphsPanel"},
+        {command_ids::WindowPanelsParagraphStyles, "paragraphStylesPanel"},
         {command_ids::TypePanelsCharacter, "characterPanel"},
         {command_ids::TypePanelsParagraph, "paragraphPanel"},
+        {command_ids::TypePanelsParagraphStyles, "paragraphStylesPanel"},
     };
     for (const PanelToggle& toggle : kPanelToggles) {
         const QString command = QString::fromLatin1(toggle.command);

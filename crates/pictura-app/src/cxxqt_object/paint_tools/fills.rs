@@ -98,6 +98,36 @@ pub mod ffi {
             contiguous: bool,
             all_layers: bool,
         ) -> bool;
+
+        /// `Edit ▸ Fill…`: fill the active pixel layer (its selection when there
+        /// is one) with `foreground` (`0xAARRGGBB`), or built-in pattern
+        /// `pattern` when it is not negative, at `opacity` 0–100 % in Brush mode
+        /// `mode`. `preserve_transparency` confines the fill to pixels that are
+        /// already opaque. One "Fill" state; false without a visible lone pixel
+        /// layer, when its pixels are locked, or when nothing changed.
+        fn edit_fill(
+            view: Pin<&mut PictureView>,
+            foreground: u32,
+            pattern: i32,
+            mode: &QString,
+            opacity: i32,
+            preserve_transparency: bool,
+        ) -> bool;
+
+        /// `Edit ▸ Stroke…`: outline the active selection on the active pixel
+        /// layer with a solid `color` (`0xAARRGGBB`) band `width` px wide,
+        /// `position` 0 Inside / 1 Center / 2 Outside, at `opacity` 0–100 % in
+        /// Brush mode `mode`. One "Stroke" state; false without a pixel
+        /// selection, without a visible lone pixel layer, or when nothing
+        /// changed.
+        fn edit_stroke(
+            view: Pin<&mut PictureView>,
+            color: u32,
+            width: i32,
+            position: i32,
+            mode: &QString,
+            opacity: i32,
+        ) -> bool;
     }
 }
 
@@ -213,6 +243,76 @@ fn bucket_fill_at(
 
 pub(crate) fn selection(rust: &PictureViewRust) -> Option<&[u8]> {
     rust.selection.as_ref().map(|s| s.data.as_slice())
+}
+
+fn edit_fill(
+    view: Pin<&mut PictureView>,
+    foreground: u32,
+    pattern: i32,
+    mode: &QString,
+    opacity: i32,
+    preserve_transparency: bool,
+) -> bool {
+    let tile = match usize::try_from(pattern) {
+        Ok(index) => match pattern::tile(index) {
+            Some(tile) => Some(tile),
+            None => return false,
+        },
+        Err(_) => None,
+    };
+    let paint = match &tile {
+        Some(tile) => BucketPaint::Pattern(tile),
+        None => BucketPaint::Foreground(rgba_from_argb(foreground)),
+    };
+    let mode = paint_mode_from(&mode.to_string());
+    let opacity = opacity.clamp(0, 100) as f32 / 100.0;
+    apply(view, "Fill", |doc, path, rust| {
+        let (width, height) = (doc.width as i32, doc.height as i32);
+        // A whole-layer fill is a document-sized mask of full coverage; Preserve
+        // Transparency narrows it to the pixels the layer already has.
+        let mask = if preserve_transparency {
+            let surface = layer_surface(doc, path)?;
+            surface
+                .data
+                .iter()
+                .map(|px| if px[3] > 0 { 255 } else { 0 })
+                .collect::<Vec<u8>>()
+        } else {
+            vec![255u8; (width * height) as usize]
+        };
+        bucket::fill(doc, path, &mask, paint, mode, opacity, selection(rust))
+    })
+}
+
+fn edit_stroke(
+    view: Pin<&mut PictureView>,
+    color: u32,
+    width: i32,
+    position: i32,
+    mode: &QString,
+    opacity: i32,
+) -> bool {
+    let Some(selection) = view.rust().selection.as_ref() else {
+        return false;
+    };
+    let selection = selection.data.clone();
+    let align = match position {
+        0 => bucket::StrokeAlign::Inside,
+        2 => bucket::StrokeAlign::Outside,
+        _ => bucket::StrokeAlign::Center,
+    };
+    apply(view, "Stroke", |doc, path, _| {
+        bucket::stroke_selection(
+            doc,
+            path,
+            &selection,
+            rgba_from_argb(color),
+            width.clamp(0, 250) as u32,
+            align,
+            paint_mode_from(&mode.to_string()),
+            opacity.clamp(0, 100) as f32 / 100.0,
+        )
+    })
 }
 
 /// Run `edit` on a copy of the document and its visible lone active pixel

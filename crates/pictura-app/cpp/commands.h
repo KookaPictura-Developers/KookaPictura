@@ -43,7 +43,12 @@ inline constexpr char EditPasteInPlace[] = "edit.pasteSpecial.pasteInPlace";
 inline constexpr char EditPasteInto[] = "edit.pasteSpecial.pasteInto";
 inline constexpr char EditPasteOutside[] = "edit.pasteSpecial.pasteOutside";
 inline constexpr char EditClear[] = "edit.clear";
+inline constexpr char EditFill[] = "edit.fill";
+inline constexpr char EditStroke[] = "edit.stroke";
 inline constexpr char EditPurgeClipboard[] = "edit.purge.clipboard";
+inline constexpr char EditPurgeUndo[] = "edit.purge.undo";
+inline constexpr char EditPurgeHistories[] = "edit.purge.histories";
+inline constexpr char EditPurgeAll[] = "edit.purge.all";
 inline constexpr char EditFreeTransform[] = "edit.freeTransform";
 inline constexpr char EditTransformSkew[] = "edit.transform.skew";
 inline constexpr char EditTransformDistort[] = "edit.transform.distort";
@@ -64,6 +69,9 @@ inline constexpr char ImageRotate180[] = "image.rotate180";
 inline constexpr char ImageFlipHorizontal[] = "image.flipHorizontal";
 inline constexpr char ImageFlipVertical[] = "image.flipVertical";
 inline constexpr char ImageCrop[] = "image.crop";
+inline constexpr char ImageTrim[] = "image.trim";
+inline constexpr char ImageRevealAll[] = "image.revealAll";
+inline constexpr char ImageDuplicate[] = "image.duplicate";
 inline constexpr char ImageMode8Bits[] = "image.mode.8.bits";
 inline constexpr char ImageMode16Bits[] = "image.mode.16.bits";
 inline constexpr char SelectAll[] = "select.all";
@@ -148,8 +156,10 @@ inline constexpr char WindowPanelsCharacter[] = "window.panels.character";
 inline constexpr char WindowPanelsParagraph[] = "window.panels.paragraph";
 // Not a CS6 panel (Photoshop CC 2015); kept for the photorust port (#65).
 inline constexpr char WindowPanelsGlyphs[] = "window.panels.glyphs";
+inline constexpr char WindowPanelsParagraphStyles[] = "window.panels.paragraphStyles";
 inline constexpr char TypePanelsCharacter[] = "type.panels.character";
 inline constexpr char TypePanelsParagraph[] = "type.panels.paragraph";
+inline constexpr char TypePanelsParagraphStyles[] = "type.panels.paragraphStyles";
 inline constexpr char HelpAbout[] = "help.about";
 } // namespace command_ids
 
