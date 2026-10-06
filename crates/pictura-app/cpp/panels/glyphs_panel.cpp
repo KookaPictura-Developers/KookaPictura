@@ -1,5 +1,6 @@
 #include "glyphs_panel.h"
 
+#include "font_combo.h"
 #include "jump_slider.h"
 #include "tools.h"
 
@@ -64,6 +65,7 @@ GlyphsPanel::GlyphsPanel(QWidget* parent)
     fontRow->setSpacing(4);
     family_ = new QFontComboBox(this);
     family_->setObjectName(QStringLiteral("glyphsFamily"));
+    useFastFontPreviews(family_);
     family_->setToolTip(QStringLiteral("Show the glyphs of this font family"));
     // A font combo asks for a very wide minimum; the panel column must not scroll.
     family_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);

@@ -9,6 +9,7 @@
 
 use pictura_core::{
     AntiAlias, CharacterAttrs, Composer, Justify, KerningMode, Leading, ParagraphAttrs, TextStyle,
+    DEFAULT_LANGUAGE,
 };
 
 use crate::error::PsdError;
@@ -190,6 +191,24 @@ pub fn extract_style(root: &EngineValue, fonts: &[String]) -> TextStyle {
         underline: pick_bool("Underline").unwrap_or(false),
         strikethrough: pick_bool("Strikethrough").unwrap_or(false),
         fractional_widths,
+        faux_bold: pick_bool("FauxBold").unwrap_or(false),
+        faux_italic: pick_bool("FauxItalic").unwrap_or(false),
+        standard_ligatures: pick_bool("Ligatures").unwrap_or(true),
+        contextual_alternates: pick_bool("ContextualLigatures").unwrap_or(true),
+        discretionary_ligatures: pick_bool("DiscretionaryLigatures").unwrap_or(false),
+        swash: pick_bool("Swash").unwrap_or(false),
+        oldstyle: pick_bool("OldStyle").unwrap_or(false),
+        stylistic_alternates: pick_bool("StylisticAlternates").unwrap_or(false),
+        titling_alternates: pick_bool("TitlingAlternates").unwrap_or(false),
+        ornaments: pick_bool("Ornaments").unwrap_or(false),
+        ordinals: pick_bool("Ordinals").unwrap_or(false),
+        fractions: pick_bool("Fractions").unwrap_or(false),
+        language: run
+            .and_then(|v| get(v, "Language"))
+            .and_then(as_str)
+            .unwrap_or(DEFAULT_LANGUAGE)
+            .to_string(),
+        vertical_roman_alignment: pick_bool("VerticalRomanAlignment").unwrap_or(true),
     };
 
     let p_int = |key: &str| {
@@ -247,6 +266,13 @@ pub fn extract_style(root: &EngineValue, fonts: &[String]) -> TextStyle {
         } else {
             Composer::SingleLine
         },
+        auto_leading: p_num("AutoLeading").map(|v| v * 100.0).unwrap_or(120.0),
+        hyphenate_word_size: p_int("HyphenatedWordSize").unwrap_or(5) as i32,
+        hyphenate_pre: p_int("PreHyphen").unwrap_or(2) as i32,
+        hyphenate_post: p_int("PostHyphen").unwrap_or(2) as i32,
+        hyphen_limit: p_int("ConsecutiveHyphens").unwrap_or(2) as i32,
+        hyphenation_zone: p_num("Zone").unwrap_or(36.0),
+        hyphenate_caps: p_bool("HyphenateCaps").unwrap_or(true),
     };
 
     TextStyle {
@@ -752,6 +778,32 @@ mod tests {
             let root = parse_engine_data(source.as_bytes()).expect("parses");
             assert_eq!(extract_style(&root, &[]).paragraph.justify, expected);
         }
+    }
+
+    #[test]
+    fn extended_character_and_paragraph_keys_are_read() {
+        let root = parse_engine_data(
+            b"<< /EngineDict << /StyleRun << /RunArray [ << /StyleSheet << /StyleSheetData << \
+              /FauxBold true /FauxItalic true /Ligatures false /ContextualLigatures false \
+              /Fractions true /Language (French) >> >> >> ] >> \
+              /ParagraphRun << /RunArray [ << /ParagraphSheet << /Properties << \
+              /AutoLeading 1.5 /HyphenatedWordSize 8 /PreHyphen 3 /PostHyphen 4 \
+              /ConsecutiveHyphens 5 /Zone 24.0 >> >> >> ] >> >> >>",
+        )
+        .expect("parses");
+        let style = extract_style(&root, &[]);
+        assert!(style.character.faux_bold);
+        assert!(style.character.faux_italic);
+        assert!(!style.character.standard_ligatures);
+        assert!(!style.character.contextual_alternates);
+        assert!(style.character.fractions);
+        assert_eq!(style.character.language, "French");
+        assert_eq!(style.paragraph.auto_leading, 150.0);
+        assert_eq!(style.paragraph.hyphenate_word_size, 8);
+        assert_eq!(style.paragraph.hyphenate_pre, 3);
+        assert_eq!(style.paragraph.hyphenate_post, 4);
+        assert_eq!(style.paragraph.hyphen_limit, 5);
+        assert_eq!(style.paragraph.hyphenation_zone, 24.0);
     }
 
     #[test]

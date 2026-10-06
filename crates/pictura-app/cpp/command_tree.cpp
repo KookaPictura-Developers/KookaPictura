@@ -117,8 +117,10 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Edit", "Check Spelling…"}, QStringLiteral("Check Spelling…"));
     leaf(registry, {"Edit", "Find And Replace Text…"}, QStringLiteral("Find And Replace Text…"));
     registry.addSeparator({"Edit"});
-    leaf(registry, {"Edit", "Fill…"}, QStringLiteral("Fill…"), QStringLiteral("Shift+F5"));
-    leaf(registry, {"Edit", "Stroke…"}, QStringLiteral("Stroke…"));
+    registry.add(command_ids::EditFill, {"Edit", "Fill…"}, QStringLiteral("Fill…"),
+                 QKeySequence(QStringLiteral("Shift+F5")), true);
+    registry.add(command_ids::EditStroke, {"Edit", "Stroke…"}, QStringLiteral("Stroke…"),
+                 QKeySequence(), true);
     registry.addSeparator({"Edit"});
     // Photoshop's "Content-Aware Scale"; the UI uses a descriptive label so it
     // does not ship Adobe's coined feature name as our own.
@@ -157,12 +159,15 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Edit", "Define Pattern…"}, QStringLiteral("Define Pattern…"));
     leaf(registry, {"Edit", "Define Custom Shape…"}, QStringLiteral("Define Custom Shape…"));
     registry.addSeparator({"Edit"});
-    leaf(registry, {"Edit", "Purge", "Undo"}, QStringLiteral("Undo"));
-    leaf(registry, {"Edit", "Purge", "Histories"}, QStringLiteral("Histories"));
+    registry.add(command_ids::EditPurgeUndo, {"Edit", "Purge", "Undo"},
+                 QStringLiteral("Undo"), QKeySequence(), true);
+    registry.add(command_ids::EditPurgeHistories, {"Edit", "Purge", "Histories"},
+                 QStringLiteral("Histories"), QKeySequence(), true);
     registry.add(command_ids::EditPurgeClipboard, {"Edit", "Purge", "Clipboard"},
                  QStringLiteral("Clipboard"), QKeySequence(), true);
     leaf(registry, {"Edit", "Purge", "Video Cache"}, QStringLiteral("Video Cache"));
-    leaf(registry, {"Edit", "Purge", "All"}, QStringLiteral("All"));
+    registry.add(command_ids::EditPurgeAll, {"Edit", "Purge", "All"},
+                 QStringLiteral("All"), QKeySequence(), true);
     registry.addSeparator({"Edit"});
     leaf(registry, {"Edit", "PDF Presets…"}, QStringLiteral("PDF Presets…"));
     leaf(registry, {"Edit", "Presets", "Preset Manager…"}, QStringLiteral("Preset Manager…"));
@@ -273,8 +278,10 @@ void addDefaultCommands(CommandRegistry& registry) {
     registry.addSeparator({"Image"});
     registry.add(command_ids::ImageCrop, {"Image", "Crop"}, QStringLiteral("Crop"),
                  QKeySequence(), true);
-    leaf(registry, {"Image", "Trim…"}, QStringLiteral("Trim…"));
-    leaf(registry, {"Image", "Reveal All"}, QStringLiteral("Reveal All"));
+    registry.add(command_ids::ImageTrim, {"Image", "Trim…"}, QStringLiteral("Trim…"),
+                 QKeySequence(), true);
+    registry.add(command_ids::ImageDuplicate, {"Image", "Duplicate…"},
+                 QStringLiteral("Duplicate…"), QKeySequence(), true);
     registry.addSeparator({"Image"});
     leaf(registry, {"Image", "Variables", "Define…"}, QStringLiteral("Define…"));
     leaf(registry, {"Image", "Variables", "Data Sets…"}, QStringLiteral("Data Sets…"));
@@ -497,7 +504,9 @@ void addDefaultCommands(CommandRegistry& registry) {
     registry.add(CommandSpec{command_ids::TypePanelsParagraph, {"Type", "Panels", "Paragraph"},
                              QStringLiteral("Paragraph"), QKeySequence(), true, true});
     leaf(registry, {"Type", "Panels", "Character Styles"}, QStringLiteral("Character Styles"));
-    leaf(registry, {"Type", "Panels", "Paragraph Styles"}, QStringLiteral("Paragraph Styles"));
+    registry.add(CommandSpec{command_ids::TypePanelsParagraphStyles,
+                             {"Type", "Panels", "Paragraph Styles"},
+                             QStringLiteral("Paragraph Styles"), QKeySequence(), true, true});
     leaf(registry, {"Type", "Anti-Alias", "None"}, QStringLiteral("None"));
     leaf(registry, {"Type", "Anti-Alias", "Sharp"}, QStringLiteral("Sharp"));
     leaf(registry, {"Type", "Anti-Alias", "Crisp"}, QStringLiteral("Crisp"));
@@ -845,7 +854,9 @@ void addDefaultCommands(CommandRegistry& registry) {
                              QStringLiteral("Notes"), QKeySequence(), true, true});
     registry.add(CommandSpec{command_ids::WindowPanelsParagraph, {"Window", "Panels", "Paragraph"},
                              QStringLiteral("Paragraph"), QKeySequence(), true, true});
-    leaf(registry, {"Window", "Panels", "Paragraph Styles"}, QStringLiteral("Paragraph Styles"));
+    registry.add(CommandSpec{command_ids::WindowPanelsParagraphStyles,
+                             {"Window", "Panels", "Paragraph Styles"},
+                             QStringLiteral("Paragraph Styles"), QKeySequence(), true, true});
     registry.add(CommandSpec{command_ids::WindowPanelsPaths, {"Window", "Panels", "Paths"},
                              QStringLiteral("Paths"), QKeySequence(), true, true});
     registry.add(CommandSpec{command_ids::WindowPanelsPatterns, {"Window", "Panels", "Patterns"},

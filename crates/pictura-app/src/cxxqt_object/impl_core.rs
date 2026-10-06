@@ -877,7 +877,7 @@ impl super::PictureViewRust {
     /// drop the selection, history, in-progress stroke, and move-preview drag.
     /// The caller assigns `doc` (and a fallback `image` when there is none)
     /// before calling; the fresh image and pyramid are built here.
-    fn reset_edit_state(&mut self) {
+    pub(super) fn reset_edit_state(&mut self) {
         self.selection = None;
         self.history = History::default();
         self.stroke = None;

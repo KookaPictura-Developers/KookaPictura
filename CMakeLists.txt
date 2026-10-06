@@ -99,6 +99,9 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/hdr_toning_dialog.cpp
     crates/pictura-app/cpp/print_dialog.cpp
     crates/pictura-app/cpp/export_as_dialog.cpp
+    crates/pictura-app/cpp/duplicate_image_dialog.cpp
+    crates/pictura-app/cpp/fill_dialog.cpp
+    crates/pictura-app/cpp/stroke_dialog.cpp
     crates/pictura-app/cpp/image_view.cpp
     crates/pictura-app/cpp/image_view_overlays.cpp
     crates/pictura-app/cpp/image_view_annotations.cpp
@@ -118,6 +121,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/frame_menus_filter.cpp
     crates/pictura-app/cpp/frame_menus_align.cpp
     crates/pictura-app/cpp/frame_menus_adjust.cpp
+    crates/pictura-app/cpp/frame_menus_image.cpp
     crates/pictura-app/cpp/frame_recent.cpp
     crates/pictura-app/cpp/frame_test.cpp
     crates/pictura-app/cpp/frame_build.cpp
@@ -143,6 +147,10 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/panels/adjustment_controls.cpp
     crates/pictura-app/cpp/panels/character_panel.cpp
     crates/pictura-app/cpp/panels/paragraph_panel.cpp
+    crates/pictura-app/cpp/panels/paragraph_styles_panel.cpp
+    crates/pictura-app/cpp/paragraph_style_dialog.cpp
+    crates/pictura-app/cpp/paragraph_style_dialog_pages.cpp
+    crates/pictura-app/cpp/font_combo.cpp
     crates/pictura-app/cpp/panels/glyphs_panel.cpp
     crates/pictura-app/cpp/panels/navigator_panel.cpp
     crates/pictura-app/cpp/panels/color_panel.cpp
@@ -238,6 +246,9 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/color_settings_dialog.h
     crates/pictura-app/cpp/color_picker_dialog.h
     crates/pictura-app/cpp/export_as_dialog.h
+    crates/pictura-app/cpp/duplicate_image_dialog.h
+    crates/pictura-app/cpp/fill_dialog.h
+    crates/pictura-app/cpp/stroke_dialog.h
     crates/pictura-app/cpp/image_view.h
     crates/pictura-app/cpp/pictura_debug_timing.h
     crates/pictura-app/cpp/canvas_range.h
@@ -268,6 +279,8 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/panels/channels_panel.h
     crates/pictura-app/cpp/panels/character_panel.h
     crates/pictura-app/cpp/panels/paragraph_panel.h
+    crates/pictura-app/cpp/panels/paragraph_styles_panel.h
+    crates/pictura-app/cpp/paragraph_style_dialog.h
     crates/pictura-app/cpp/panels/panel_group.h
     crates/pictura-app/cpp/panels/panel_column.h
     crates/pictura-app/cpp/tools.h

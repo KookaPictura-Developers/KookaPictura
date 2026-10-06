@@ -112,6 +112,130 @@ pub fn fill(
     })
 }
 
+/// The stroke band around a selection: a solid `color` laid over the pixels
+/// within `width` px of the selection edge, `Inside` / `Outside` / `Center`
+/// choosing which side. `selection` is a document-sized 0–255 coverage mask.
+/// Returns the document rectangle changed; `None` when nothing changed, the
+/// selection is empty, or the layer cannot be filled.
+///
+/// ponytail: the band is built from integer max/min (dilate/erode) filters, so
+/// it is a square-capped approximation of CS6's round stroke; the brush-mode
+/// blend rides through `fill_layer` and `opacity` is `0.0`–`1.0`.
+#[allow(clippy::too_many_arguments)]
+pub fn stroke_selection(
+    doc: &mut Document,
+    path: &str,
+    selection: &[u8],
+    color: Rgba,
+    width: u32,
+    position: StrokeAlign,
+    mode: PaintMode,
+    opacity: f32,
+) -> Option<PsdRect> {
+    let (w, h) = (doc.width as i32, doc.height as i32);
+    if width == 0 || opacity <= 0.0 || selection.len() < (w * h) as usize {
+        return None;
+    }
+    if !selection.iter().any(|&v| v > 0) {
+        return None;
+    }
+    let radius = width.min(u32::from(u16::MAX)) as i32;
+    let (out_r, in_r) = match position {
+        StrokeAlign::Outside => (radius, 0),
+        StrokeAlign::Inside => (0, radius),
+        StrokeAlign::Center => ((radius + 1) / 2, radius / 2),
+    };
+    let dilated = dilate(selection, w, h, out_r);
+    let eroded = erode(selection, w, h, in_r);
+    let band: Vec<u8> = selection
+        .iter()
+        .zip(&dilated)
+        .zip(&eroded)
+        .map(|((&m, &d), &e)| match position {
+            StrokeAlign::Outside => d.saturating_sub(m),
+            StrokeAlign::Inside => m.saturating_sub(e),
+            StrokeAlign::Center => d.saturating_sub(e),
+        })
+        .collect();
+    fill(
+        doc,
+        path,
+        &band,
+        BucketPaint::Foreground(color),
+        mode,
+        opacity,
+        None,
+    )
+}
+
+/// Which side of the selection edge the stroke band covers.
+#[derive(Clone, Copy, Debug)]
+pub enum StrokeAlign {
+    Inside,
+    Outside,
+    Center,
+}
+
+/// A separable 3×3 max filter of radius `r` (0 returns the mask unchanged).
+fn dilate(mask: &[u8], w: i32, h: i32, r: i32) -> Vec<u8> {
+    if r <= 0 {
+        return mask.to_vec();
+    }
+    let mut out = mask.to_vec();
+    for y in 0..h {
+        for x in 0..w {
+            let mut m = 0u8;
+            for k in -r..=r {
+                let nx = (x + k).clamp(0, w - 1);
+                m = m.max(out[(y * w + nx) as usize]);
+            }
+            out[(y * w + x) as usize] = m;
+        }
+    }
+    let mut out2 = out.clone();
+    for y in 0..h {
+        for x in 0..w {
+            let mut m = 0u8;
+            for k in -r..=r {
+                let ny = (y + k).clamp(0, h - 1);
+                m = m.max(out[(ny * w + x) as usize]);
+            }
+            out2[(y * w + x) as usize] = m;
+        }
+    }
+    out2
+}
+
+/// A separable 3×3 min filter of radius `r` (0 returns the mask unchanged).
+fn erode(mask: &[u8], w: i32, h: i32, r: i32) -> Vec<u8> {
+    if r <= 0 {
+        return mask.to_vec();
+    }
+    let mut out = mask.to_vec();
+    for y in 0..h {
+        for x in 0..w {
+            let mut m = 255u8;
+            for k in -r..=r {
+                let nx = (x + k).clamp(0, w - 1);
+                m = m.min(out[(y * w + nx) as usize]);
+            }
+            out[(y * w + x) as usize] = m;
+        }
+    }
+    let mut out2 = out.clone();
+    for y in 0..h {
+        for x in 0..w {
+            let mut m = 255u8;
+            for k in -r..=r {
+                let ny = (y + k).clamp(0, h - 1);
+                m = m.min(out[(ny * w + x) as usize]);
+            }
+            out2[(y * w + x) as usize] = m;
+        }
+    }
+    out2
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -275,5 +399,49 @@ mod tests {
         };
         let paint = BucketPaint::Pattern(&empty);
         assert!(fill(&mut d, "0", &[255; 12], paint, PaintMode::Normal, 1.0, None).is_none());
+    }
+
+    #[test]
+    fn a_selection_stroke_bands_the_edge_where_asked() {
+        let red = RED;
+        // An 8×1 row: selection covers the middle four pixels.
+        let selection = [0, 0, 255, 255, 255, 255, 0, 0];
+        let mut d = doc(8, 1, WHITE);
+
+        // Outside 1 px: the two pixels just outside the selection take the
+        // colour; the selection itself is untouched.
+        stroke_selection(
+            &mut d,
+            "0",
+            &selection,
+            red,
+            1,
+            StrokeAlign::Outside,
+            PaintMode::Normal,
+            1.0,
+        )
+        .expect("outside stroke");
+        assert_eq!(pixel(&d, 1, 0), [220, 0, 0, 255]);
+        assert_eq!(pixel(&d, 6, 0), [220, 0, 0, 255]);
+        assert_eq!(pixel(&d, 2, 0), WHITE, "the selection was painted");
+        assert_eq!(pixel(&d, 0, 0), WHITE, "the band spread too far");
+
+        // Inside 1 px: the selection's border takes the colour; its middle and
+        // the outside stay white.
+        let mut d = doc(8, 1, WHITE);
+        stroke_selection(
+            &mut d,
+            "0",
+            &selection,
+            red,
+            1,
+            StrokeAlign::Inside,
+            PaintMode::Normal,
+            1.0,
+        )
+        .expect("inside stroke");
+        assert_eq!(pixel(&d, 2, 0), [220, 0, 0, 255]);
+        assert_eq!(pixel(&d, 5, 0), [220, 0, 0, 255]);
+        assert_eq!(pixel(&d, 1, 0), WHITE);
     }
 }

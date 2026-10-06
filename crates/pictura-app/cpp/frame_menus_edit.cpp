@@ -1,6 +1,8 @@
 #include "frame_includes.h"
 
 #include "pictura_app/src/cxxqt_object/clipboard.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/paint_tools/fills.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/impl_history/purge.cxxqt.h"
 
 #include <QtCore/QMimeData>
 #include <QtGui/QClipboard>
@@ -139,6 +141,49 @@ void PicturaMainWindow::registerEditHandlers()
     registry_->setHandler(command_ids::EditPasteInPlace, [paste]() { paste(PasteKind::InPlace); });
     registry_->setHandler(command_ids::EditPasteInto, [paste]() { paste(PasteKind::Into); });
     registry_->setHandler(command_ids::EditPasteOutside, [paste]() { paste(PasteKind::Outside); });
+
+    // Edit > Fill… fills the active pixel layer (within the selection) through
+    // the fill engine. The dialog's contents, mode, opacity, and Preserve
+    // Transparency drive one "Fill" state.
+    registry_->setHandler(command_ids::EditFill, [this, currentPath]() {
+        PictureView* view = activeView();
+        if (!view || !view->has_document() || !tools_ || currentPath().isEmpty()) {
+            return;
+        }
+        FillDialog dialog(tools_->foreground(), tools_->background(), this);
+        if (runDialog(dialog, this) != QDialog::Accepted) {
+            return;
+        }
+        const bool pattern = dialog.isPatternFill();
+        const QColor color = dialog.fillColor();
+        const int patternIndex = pattern ? dialog.selectedPatternIndex() : -1;
+        const int argb = pattern ? 0 : int(color.rgba());
+        if (edit_fill(*view, uint32_t(argb), patternIndex, dialog.blendMode(),
+                      dialog.opacity(), dialog.preserveTransparency())) {
+            refresh();
+        }
+    });
+
+    // Edit > Stroke… outlines the active selection on the active pixel layer
+    // through the stroke engine. Width, colour, location, mode, and opacity
+    // drive one "Stroke" state.
+    registry_->setHandler(command_ids::EditStroke, [this, currentPath]() {
+        PictureView* view = activeView();
+        if (!view || !view->has_document() || !view->has_selection()
+            || currentPath().isEmpty()) {
+            return;
+        }
+        StrokeDialog dialog(tools_ ? tools_->foreground() : QColor(Qt::black), this);
+        if (runDialog(dialog, this) != QDialog::Accepted) {
+            return;
+        }
+        const int argb = int(dialog.strokeColor().rgba());
+        if (edit_stroke(*view, uint32_t(argb), dialog.strokeWidth(), dialog.location(),
+                        dialog.blendMode(), dialog.opacity())) {
+            refresh();
+        }
+    });
+
     // Purge drops our copy and, if the system clipboard still holds our export,
     // that too; another application's clipboard is left alone.
     registry_->setHandler(command_ids::EditPurgeClipboard, [this]() {
@@ -171,6 +216,45 @@ void PicturaMainWindow::registerEditHandlers()
     }
     registry_->setEnabledProvider(command_ids::EditPurgeClipboard,
                                   []() { return clipboard_has_contents(); });
+
+    // Purge Undo drops the undo stack; Purge Histories drops the named restore
+    // points; Purge All does both (and the clipboard, as CS6's All does).
+    const auto purgeView = [this](auto run) {
+        PictureView* view = activeView();
+        if (view && view->has_document() && run(*view)) {
+            refresh();
+        }
+    };
+    registry_->setHandler(command_ids::EditPurgeUndo,
+                          [purgeView]() { purgeView([](PictureView& v) { return purge_history(v); }); });
+    registry_->setHandler(command_ids::EditPurgeHistories, [purgeView]() {
+        purgeView([](PictureView& v) { return purge_named_history(v); });
+    });
+    registry_->setHandler(command_ids::EditPurgeAll, [this, purgeView]() {
+        purgeView([](PictureView& v) { return purge_all(v); });
+        clipboard_purge();
+        if (clipboardExported_) {
+            clipboardSetting_ = true;
+            QGuiApplication::clipboard()->clear();
+            clipboardSetting_ = false;
+        }
+        clipboardMirrored_ = false;
+        clipboardExported_ = false;
+        refresh();
+    });
+    const auto purgeEnabled = [this]() {
+        return activeView() && activeView()->has_document();
+    };
+    for (const char* id :
+         {command_ids::EditPurgeUndo, command_ids::EditPurgeHistories, command_ids::EditPurgeAll}) {
+        registry_->setEnabledProvider(id, purgeEnabled);
+    }
+    registry_->setEnabledProvider(command_ids::EditFill, [hasDocument, currentPath]() {
+        return hasDocument() && !currentPath().isEmpty();
+    });
+    registry_->setEnabledProvider(command_ids::EditStroke, [this, hasDocument, currentPath]() {
+        return hasDocument() && activeView()->has_selection() && !currentPath().isEmpty();
+    });
 }
 
 } // namespace pictura

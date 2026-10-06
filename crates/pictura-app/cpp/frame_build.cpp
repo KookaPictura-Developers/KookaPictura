@@ -88,6 +88,9 @@ void PicturaMainWindow::buildPanels()
     glyphsPanel_ = new GlyphsPanel(this);
     glyphsPanel_->setObjectName(QStringLiteral("glyphsPanel"));
 
+    paragraphStylesPanel_ = new ParagraphStylesPanel(this);
+    paragraphStylesPanel_->setObjectName(QStringLiteral("paragraphStylesPanel"));
+
     // Content widgets, not docks: the PanelColumn hosts them. Registering the
     // objectNames keeps the Window menu and the duplicate-name guard working.
     registerPanel(layersPanel_, Qt::RightDockWidgetArea);
@@ -111,6 +114,7 @@ void PicturaMainWindow::buildPanels()
     registerPanel(characterPanel_, Qt::RightDockWidgetArea);
     registerPanel(paragraphPanel_, Qt::RightDockWidgetArea);
     registerPanel(glyphsPanel_, Qt::RightDockWidgetArea);
+    registerPanel(paragraphStylesPanel_, Qt::RightDockWidgetArea);
 
     // CS6 Essentials groups and order. The tab text is the panel title and the
     // tab icon reuses the panel's `window.panels.<name>` asset.
@@ -188,6 +192,8 @@ void PicturaMainWindow::buildPanels()
              QString::fromLatin1(command_ids::WindowPanelsParagraph));
     addPanel(typeGroup, glyphsPanel_, tr("Glyphs"),
              QString::fromLatin1(command_ids::WindowPanelsGlyphs));
+    addPanel(typeGroup, paragraphStylesPanel_, tr("Paragraph Styles"),
+             QString::fromLatin1(command_ids::WindowPanelsParagraph));
     panelColumn_->addGroup(typeGroup);
 
     // Default visibility matches the pre-M41 layout: Color/Swatches/Styles,
@@ -204,6 +210,7 @@ void PicturaMainWindow::buildPanels()
     panelColumn_->showPanel(QStringLiteral("glyphsPanel"), false);
     panelColumn_->showPanel(QStringLiteral("characterPanel"), false);
     panelColumn_->showPanel(QStringLiteral("paragraphPanel"), false);
+    panelColumn_->showPanel(QStringLiteral("paragraphStylesPanel"), false);
 
     connect(layersPanel_, &LayersPanel::selectionChanged, this, [this] {
         if (propertiesPanel_) {
@@ -217,6 +224,9 @@ void PicturaMainWindow::buildPanels()
         }
         if (paragraphPanel_) {
             paragraphPanel_->refresh();
+        }
+        if (paragraphStylesPanel_) {
+            paragraphStylesPanel_->refresh();
         }
     });
 }

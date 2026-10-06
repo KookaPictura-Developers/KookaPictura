@@ -1,6 +1,7 @@
 #include "character_panel.h"
 
 #include "color_picker_dialog.h"
+#include "font_combo.h"
 #include "type_fonts.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
@@ -57,6 +58,7 @@ CharacterPanel::CharacterPanel(QWidget* parent)
     auto* fontForm = new QFormLayout(font);
     family_ = new QFontComboBox(font);
     family_->setObjectName(QStringLiteral("characterFamily"));
+    useFastFontPreviews(family_);
     fontForm->addRow(tr("Family"), family_);
     size_ = spin(font, QStringLiteral("characterSize"), 0.0, 1296.0, 1);
     fontForm->addRow(tr("Size"), size_);

@@ -179,7 +179,9 @@ fn re_author_preserves_unmodeled_keys_and_merges_the_model() {
         .and_then(|entry| path(entry, &["StyleSheet", "StyleSheetData"]))
         .expect("style data");
     assert_eq!(get(data, "NoBreak"), Some(&EngineValue::Bool(true)));
-    assert_eq!(get(data, "Ligatures"), Some(&EngineValue::Bool(false)));
+    // `Ligatures` is modelled now, so the model's default (true) wins over the
+    // source's false; `NoBreak` above proves unmodelled keys survive.
+    assert_eq!(get(data, "Ligatures"), Some(&EngineValue::Bool(true)));
 }
 
 #[test]
@@ -191,6 +193,12 @@ fn no_existing_engine_data_authors_a_complete_skeleton() {
     assert_eq!(style.character.size, 36.0);
     assert_eq!(style.font.as_deref(), Some("LiberationSans"));
     assert_eq!(style.paragraph.justify, Justify::Center);
+    assert!(style.character.standard_ligatures);
+    assert!(style.character.contextual_alternates);
+    assert!(!style.character.faux_bold);
+    assert_eq!(style.paragraph.auto_leading, 120.0);
+    assert_eq!(style.paragraph.hyphenate_word_size, 5);
+    assert_eq!(style.paragraph.hyphen_limit, 2);
     assert_eq!(tool.text, "New");
 }
 

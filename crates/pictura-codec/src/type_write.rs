@@ -329,6 +329,37 @@ fn merge_character(data: &mut EngineValue, spec: &TypeSpec, font_index: i64) {
     set_child(data, "FontBaseline", EngineValue::Int(font_baseline(c)));
     set_child(data, "Underline", EngineValue::Bool(c.underline));
     set_child(data, "Strikethrough", EngineValue::Bool(c.strikethrough));
+    set_child(data, "FauxBold", EngineValue::Bool(c.faux_bold));
+    set_child(data, "FauxItalic", EngineValue::Bool(c.faux_italic));
+    // ponytail: the OpenType keys are the CS6 names; `language` and
+    // `vertical_roman_alignment` stay in the model (their EngineData encoding —
+    // a script index — is not modelled).
+    set_child(data, "Ligatures", EngineValue::Bool(c.standard_ligatures));
+    set_child(
+        data,
+        "ContextualLigatures",
+        EngineValue::Bool(c.contextual_alternates),
+    );
+    set_child(
+        data,
+        "DiscretionaryLigatures",
+        EngineValue::Bool(c.discretionary_ligatures),
+    );
+    set_child(data, "Swash", EngineValue::Bool(c.swash));
+    set_child(data, "OldStyle", EngineValue::Bool(c.oldstyle));
+    set_child(
+        data,
+        "StylisticAlternates",
+        EngineValue::Bool(c.stylistic_alternates),
+    );
+    set_child(
+        data,
+        "TitlingAlternates",
+        EngineValue::Bool(c.titling_alternates),
+    );
+    set_child(data, "Ornaments", EngineValue::Bool(c.ornaments));
+    set_child(data, "Ordinals", EngineValue::Bool(c.ordinals));
+    set_child(data, "Fractions", EngineValue::Bool(c.fractions));
     let mut fill = EngineValue::Dict(Vec::new());
     set_child(&mut fill, "Type", EngineValue::Int(1));
     set_child(
@@ -364,6 +395,34 @@ fn merge_paragraph(props: &mut EngineValue, spec: &TypeSpec) {
     set_child(props, "SpaceAfter", EngineValue::Double(p.space_after));
     set_child(props, "AutoHyphenate", EngineValue::Bool(p.hyphenate));
     set_child(props, "Hanging", EngineValue::Bool(p.hanging));
+    // ponytail: `hyphenate_caps` stays in the model (its EngineData key is not
+    // confirmed); the rest of the hyphenation dictionary is authored.
+    set_child(
+        props,
+        "HyphenatedWordSize",
+        EngineValue::Int(i64::from(p.hyphenate_word_size)),
+    );
+    set_child(
+        props,
+        "PreHyphen",
+        EngineValue::Int(i64::from(p.hyphenate_pre)),
+    );
+    set_child(
+        props,
+        "PostHyphen",
+        EngineValue::Int(i64::from(p.hyphenate_post)),
+    );
+    set_child(
+        props,
+        "ConsecutiveHyphens",
+        EngineValue::Int(i64::from(p.hyphen_limit)),
+    );
+    set_child(props, "Zone", EngineValue::Double(p.hyphenation_zone));
+    set_child(
+        props,
+        "AutoLeading",
+        EngineValue::Double(p.auto_leading / 100.0),
+    );
     for (key, values) in [
         ("WordSpacing", p.word_spacing),
         ("LetterSpacing", p.letter_spacing),
@@ -659,15 +718,15 @@ fn paragraph_sheet(d: &mut Dump, depth: usize, spec: &TypeSpec) {
         format!("/SpaceBefore {}", number(p.space_before)),
         format!("/SpaceAfter {}", number(p.space_after)),
         format!("/AutoHyphenate {}", p.hyphenate),
-        "/HyphenatedWordSize 6".into(),
-        "/PreHyphen 2".into(),
-        "/PostHyphen 3".into(),
-        "/ConsecutiveHyphens 8".into(),
-        "/Zone 36.0".into(),
+        format!("/HyphenatedWordSize {}", p.hyphenate_word_size),
+        format!("/PreHyphen {}", p.hyphenate_pre),
+        format!("/PostHyphen {}", p.hyphenate_post),
+        format!("/ConsecutiveHyphens {}", p.hyphen_limit),
+        format!("/Zone {}", number(p.hyphenation_zone)),
         format!("/WordSpacing {}", triplet(p.word_spacing)),
         format!("/LetterSpacing {}", triplet(p.letter_spacing)),
         format!("/GlyphSpacing {}", triplet(p.glyph_spacing)),
-        "/AutoLeading 1.2".into(),
+        format!("/AutoLeading {}", number(p.auto_leading / 100.0)),
         "/LeadingType 0".into(),
         format!("/Hanging {}", p.hanging),
         "/Burasagari false".into(),
@@ -739,7 +798,21 @@ fn style_sheet(d: &mut Dump, depth: usize, spec: &TypeSpec, font_index: usize) {
     lines.push(format!("/FontBaseline {}", font_baseline(c)));
     lines.push(format!("/Underline {}", c.underline));
     lines.push(format!("/Strikethrough {}", c.strikethrough));
-    lines.push("/Ligatures true".into());
+    lines.push(format!("/FauxBold {}", c.faux_bold));
+    lines.push(format!("/FauxItalic {}", c.faux_italic));
+    lines.push(format!("/Ligatures {}", c.standard_ligatures));
+    lines.push(format!("/ContextualLigatures {}", c.contextual_alternates));
+    lines.push(format!(
+        "/DiscretionaryLigatures {}",
+        c.discretionary_ligatures
+    ));
+    lines.push(format!("/Swash {}", c.swash));
+    lines.push(format!("/OldStyle {}", c.oldstyle));
+    lines.push(format!("/StylisticAlternates {}", c.stylistic_alternates));
+    lines.push(format!("/TitlingAlternates {}", c.titling_alternates));
+    lines.push(format!("/Ornaments {}", c.ornaments));
+    lines.push(format!("/Ordinals {}", c.ordinals));
+    lines.push(format!("/Fractions {}", c.fractions));
     lines.push("/StyleRunAlignment 2".into());
     lines.push("/NoBreak false".into());
     d.open(depth, "/StyleSheet");

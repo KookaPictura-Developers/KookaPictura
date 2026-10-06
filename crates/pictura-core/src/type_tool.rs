@@ -114,6 +114,9 @@ pub enum Composer {
     EveryLine,
 }
 
+/// The default spelling-dictionary language, as CS6 names it.
+pub const DEFAULT_LANGUAGE: &str = "English: USA";
+
 /// The character attribute set. `fill_color` keeps EngineData's `Values` order:
 /// alpha, red, green, blue, as fractions. Scales are percentages, tracking and
 /// baseline shift are 1/1000 em and pixels respectively; `leading` is auto or a
@@ -138,6 +141,24 @@ pub struct CharacterAttrs {
     pub underline: bool,
     pub strikethrough: bool,
     pub fractional_widths: bool,
+    pub faux_bold: bool,
+    pub faux_italic: bool,
+    pub standard_ligatures: bool,
+    pub contextual_alternates: bool,
+    pub discretionary_ligatures: bool,
+    pub swash: bool,
+    pub oldstyle: bool,
+    pub stylistic_alternates: bool,
+    pub titling_alternates: bool,
+    pub ornaments: bool,
+    pub ordinals: bool,
+    pub fractions: bool,
+    /// The spelling-dictionary language, by its CS6 display name
+    /// (`English: USA`). The EngineData language index is not modelled.
+    pub language: String,
+    /// `Standard Vertical Roman Alignment`: upright Roman characters in
+    /// vertical type.
+    pub vertical_roman_alignment: bool,
 }
 
 impl Default for CharacterAttrs {
@@ -161,6 +182,20 @@ impl Default for CharacterAttrs {
             underline: false,
             strikethrough: false,
             fractional_widths: true,
+            faux_bold: false,
+            faux_italic: false,
+            standard_ligatures: true,
+            contextual_alternates: true,
+            discretionary_ligatures: false,
+            swash: false,
+            oldstyle: false,
+            stylistic_alternates: false,
+            titling_alternates: false,
+            ornaments: false,
+            ordinals: false,
+            fractions: false,
+            language: DEFAULT_LANGUAGE.to_string(),
+            vertical_roman_alignment: true,
         }
     }
 }
@@ -193,6 +228,17 @@ pub struct ParagraphAttrs {
     pub hanging: bool,
     pub hyphenate: bool,
     pub composer: Composer,
+    /// Auto-leading percentage (CS6's `120%`).
+    pub auto_leading: f64,
+    /// Hyphenation details, the Paragraph panel menu's dictionary values:
+    /// the minimum word length, the letters required after the first and
+    /// before the last, the consecutive-hyphen limit, and the zone in points.
+    pub hyphenate_word_size: i32,
+    pub hyphenate_pre: i32,
+    pub hyphenate_post: i32,
+    pub hyphen_limit: i32,
+    pub hyphenation_zone: f64,
+    pub hyphenate_caps: bool,
 }
 
 impl Default for ParagraphAttrs {
@@ -210,6 +256,13 @@ impl Default for ParagraphAttrs {
             hanging: false,
             hyphenate: false,
             composer: Composer::SingleLine,
+            auto_leading: 120.0,
+            hyphenate_word_size: 5,
+            hyphenate_pre: 2,
+            hyphenate_post: 2,
+            hyphen_limit: 2,
+            hyphenation_zone: 36.0,
+            hyphenate_caps: true,
         }
     }
 }
@@ -288,6 +341,20 @@ pub struct CharacterOverrides {
     pub underline: Option<bool>,
     pub strikethrough: Option<bool>,
     pub fractional_widths: Option<bool>,
+    pub faux_bold: Option<bool>,
+    pub faux_italic: Option<bool>,
+    pub standard_ligatures: Option<bool>,
+    pub contextual_alternates: Option<bool>,
+    pub discretionary_ligatures: Option<bool>,
+    pub swash: Option<bool>,
+    pub oldstyle: Option<bool>,
+    pub stylistic_alternates: Option<bool>,
+    pub titling_alternates: Option<bool>,
+    pub ornaments: Option<bool>,
+    pub ordinals: Option<bool>,
+    pub fractions: Option<bool>,
+    pub language: Option<String>,
+    pub vertical_roman_alignment: Option<bool>,
 }
 
 /// A run's locally-set paragraph attributes; `None` inherits.
@@ -305,6 +372,13 @@ pub struct ParagraphOverrides {
     pub hanging: Option<bool>,
     pub hyphenate: Option<bool>,
     pub composer: Option<Composer>,
+    pub auto_leading: Option<f64>,
+    pub hyphenate_word_size: Option<i32>,
+    pub hyphenate_pre: Option<i32>,
+    pub hyphenate_post: Option<i32>,
+    pub hyphen_limit: Option<i32>,
+    pub hyphenation_zone: Option<f64>,
+    pub hyphenate_caps: Option<bool>,
 }
 
 /// A run's manual formatting, the top of the resolution order.
@@ -567,6 +641,20 @@ fn merge_character(attrs: &mut CharacterAttrs, over: &CharacterOverrides) {
         underline,
         strikethrough,
         fractional_widths,
+        faux_bold,
+        faux_italic,
+        standard_ligatures,
+        contextual_alternates,
+        discretionary_ligatures,
+        swash,
+        oldstyle,
+        stylistic_alternates,
+        titling_alternates,
+        ornaments,
+        ordinals,
+        fractions,
+        language,
+        vertical_roman_alignment,
     );
 }
 
@@ -590,6 +678,13 @@ fn merge_paragraph(attrs: &mut ParagraphAttrs, over: &ParagraphOverrides) {
         hanging,
         hyphenate,
         composer,
+        auto_leading,
+        hyphenate_word_size,
+        hyphenate_pre,
+        hyphenate_post,
+        hyphen_limit,
+        hyphenation_zone,
+        hyphenate_caps,
     );
 }
 
@@ -726,6 +821,20 @@ mod tests {
         assert!(!character.underline);
         assert!(!character.strikethrough);
         assert!(character.fractional_widths);
+        assert!(!character.faux_bold);
+        assert!(!character.faux_italic);
+        assert!(character.standard_ligatures);
+        assert!(character.contextual_alternates);
+        assert!(!character.discretionary_ligatures);
+        assert!(!character.swash);
+        assert!(!character.oldstyle);
+        assert!(!character.stylistic_alternates);
+        assert!(!character.titling_alternates);
+        assert!(!character.ornaments);
+        assert!(!character.ordinals);
+        assert!(!character.fractions);
+        assert_eq!(character.language, DEFAULT_LANGUAGE);
+        assert!(character.vertical_roman_alignment);
 
         let paragraph = ParagraphAttrs::default();
         assert_eq!(paragraph.justify, Justify::Left);
@@ -740,6 +849,13 @@ mod tests {
         assert!(!paragraph.hanging);
         assert!(!paragraph.hyphenate);
         assert_eq!(paragraph.composer, Composer::SingleLine);
+        assert_eq!(paragraph.auto_leading, 120.0);
+        assert_eq!(paragraph.hyphenate_word_size, 5);
+        assert_eq!(paragraph.hyphenate_pre, 2);
+        assert_eq!(paragraph.hyphenate_post, 2);
+        assert_eq!(paragraph.hyphen_limit, 2);
+        assert_eq!(paragraph.hyphenation_zone, 36.0);
+        assert!(paragraph.hyphenate_caps);
 
         let sheet = TextStyleSheet::default();
         assert!(sheet
@@ -856,6 +972,43 @@ mod tests {
         let resolved = sheet.resolve(&manual, Some("Heading"), None);
         assert_eq!(resolved.character.tracking, 120.0);
         assert_eq!(resolved.character.size, 33.0);
+    }
+
+    #[test]
+    fn a_paragraph_style_resolves_its_extended_attributes() {
+        let mut sheet = TextStyleSheet::default();
+        sheet
+            .create_paragraph_style(
+                "Heading",
+                CharacterOverrides {
+                    faux_bold: Some(true),
+                    fractions: Some(true),
+                    language: Some("French".to_string()),
+                    ..Default::default()
+                },
+                ParagraphOverrides {
+                    auto_leading: Some(150.0),
+                    hyphenate: Some(true),
+                    hyphen_limit: Some(3),
+                    hyphenate_caps: Some(false),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let resolved = sheet
+            .apply_paragraph_style("Heading", &StyleOverrides::default())
+            .unwrap();
+        assert!(resolved.character.faux_bold);
+        assert!(resolved.character.fractions);
+        assert_eq!(resolved.character.language, "French");
+        assert!(
+            resolved.character.standard_ligatures,
+            "a field the style leaves unset keeps the default"
+        );
+        assert_eq!(resolved.paragraph.auto_leading, 150.0);
+        assert!(resolved.paragraph.hyphenate);
+        assert_eq!(resolved.paragraph.hyphen_limit, 3);
+        assert!(!resolved.paragraph.hyphenate_caps);
     }
 
     #[test]

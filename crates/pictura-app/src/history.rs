@@ -150,6 +150,49 @@ impl History {
         self.cursor > 0
     }
 
+    /// Drop every state but the current one and every named restore point, so
+    /// the stack restarts at a single anchor. The History Brush's source resets
+    /// to the oldest (the kept state); no snapshot survives to point at.
+    pub fn purge(&mut self) {
+        self.purge_states();
+        self.snapshots.clear();
+        self.pinned = None;
+        if let BrushSource::Snapshot(_) = self.brush_source {
+            self.brush_source = BrushSource::Oldest;
+        }
+    }
+
+    /// Drop every undo state but the current one, keeping the named restore
+    /// points. The stack restarts at a single anchor.
+    pub fn purge_states(&mut self) {
+        if let Some(current) = self.current.clone() {
+            let label = self.label(self.cursor).to_string();
+            self.states = vec![Entry {
+                label,
+                stored: Stored::Full(current),
+            }];
+            self.cursor = 0;
+        } else {
+            self.states.clear();
+            self.cursor = 0;
+        }
+        self.pinned = None;
+        if matches!(
+            self.brush_source,
+            BrushSource::Oldest | BrushSource::State(_)
+        ) {
+            self.brush_source = BrushSource::Oldest;
+        }
+    }
+
+    /// Drop the named restore points only. The undo history is untouched.
+    pub fn purge_snapshots(&mut self) {
+        self.snapshots.clear();
+        if let BrushSource::Snapshot(_) = self.brush_source {
+            self.brush_source = BrushSource::Oldest;
+        }
+    }
+
     pub fn can_redo(&self) -> bool {
         self.cursor + 1 < self.states.len()
     }

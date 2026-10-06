@@ -24,6 +24,32 @@ Snapshot for resuming after a context break. Update after each milestone.
   The C++ self-test reports **480 passed, 0 failed, 0 skipped** standalone; the
   unified report (`scripts/verify-fast.sh`, which reruns both plus the workspace
   probes) reports **2344 passed, 13 skipped, 0 failed**.
+- **In flight:** `paragraph-styles-panel` + `edit-image-menu-commands` (branch
+  `feat/76-84-paragraph-styles-and-menu-commands`, in review). #76 adds the
+  Paragraph Styles panel (`panels/paragraph_styles_panel.*`,
+  `paragraph_style_dialog.*` + `paragraph_style_dialog_pages.cpp`, the
+  resolved-attribute read-back in `type_tools.rs`) with the Window/Type ▸ Panels
+  ▸ Paragraph Styles toggles; the `Basic Paragraph` default is protected and a
+  rename is delete-then-create. The options dialog now carries all seven CS6
+  pages (Basic/Advanced Character Formats, OpenType Features, Indents and
+  Spacing, Composition, Justification, Hyphenation) over an extended type model
+  (faux bold/italic, the ten OpenType features, language, vertical Roman
+  alignment, auto leading, and the hyphenation dictionary; the codec reads and
+  authors the EngineData keys), with a live Preview
+  (`type_preview_paragraph_style`, no history) that Cancel restores.
+  #84 wires Edit ▸ Fill… / Stroke… / Purge ▸ Undo|Histories|All and Image ▸
+  Trim… / Duplicate… (`paint_tools/fills.rs`, `impl_history/purge.rs`,
+  `image_adjust/image_ops.rs`, `frame_menus_edit.cpp`, `frame_menus_image.cpp`).
+  Every `QFontComboBox` goes through `font_combo.*`, which draws emoji faces’
+  names in the UI font with no sample (their previews cost ~400 ms a repaint).
+  Both OpenSpec changes validate; `verify-fast` is green. Ceilings
+  (`ponytail:`): no style-override "+" marker or `.psd` persistence; faux
+  bold/italic and the OpenType features are stored and authored, not painted;
+  `language`/`vertical_roman_alignment` are model-only and Preview is disabled
+  while creating a style; the stroke band is a square-capped dilate/erode
+  approximation; Image ▸ Reveal All, Edit ▸
+  Find And Replace Text / Define Brush|Pattern|Custom Shape, and Type ▸ Create
+  Work Path / Convert to Shape stay disabled stubs.
 - **In flight:** `port-adjustments-filters-smart-filters` (branch
   `feat/167-cs6-adjustments-filters-smart-filters`, PR pending). Closes the
   remaining CS6 Image ▸ Adjustments / Filter gaps from #82/#83/#87 — Artistic

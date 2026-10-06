@@ -1,3 +1,5 @@
+mod purge;
+
 use super::qobject;
 use core::pin::Pin;
 use cxx_qt::CxxQtType;

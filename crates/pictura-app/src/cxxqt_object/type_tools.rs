@@ -19,10 +19,7 @@ use super::qobject::PictureView;
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::QString;
-use pictura_core::{
-    AntiAlias, CharacterAttrs, CharacterOverrides, Composer, Justify, KerningMode, Leading,
-    ParagraphAttrs, ParagraphOverrides, StyleOverrides, TypeSpec,
-};
+use pictura_core::{CharacterAttrs, ParagraphAttrs, StyleOverrides, TypeSpec};
 use pictura_select::Selection;
 
 #[cxx_qt::bridge]
@@ -72,6 +69,20 @@ pub mod ffi {
         underline: bool,
         strikethrough: bool,
         fractional_widths: bool,
+        faux_bold: bool,
+        faux_italic: bool,
+        standard_ligatures: bool,
+        contextual_alternates: bool,
+        discretionary_ligatures: bool,
+        swash: bool,
+        oldstyle: bool,
+        stylistic_alternates: bool,
+        titling_alternates: bool,
+        ornaments: bool,
+        ordinals: bool,
+        fractions: bool,
+        language: QString,
+        vertical_roman_alignment: bool,
     }
 
     /// The paragraph attribute set as the bridge carries it: `justify` 0 Left,
@@ -100,6 +111,13 @@ pub mod ffi {
         hyphenate: bool,
         direction: i32,
         composer: i32,
+        auto_leading: f64,
+        hyphenate_word_size: i32,
+        hyphenate_pre: i32,
+        hyphenate_post: i32,
+        hyphen_limit: i32,
+        hyphenation_zone: f64,
+        hyphenate_caps: bool,
     }
 
     unsafe extern "C++" {
@@ -250,8 +268,32 @@ pub mod ffi {
             paragraph: &ParagraphSetting,
         ) -> bool;
 
+        /// Edit the named paragraph style for a live Preview, re-resolving every applying type layer and recording no history state; false (unchanged) for a missing style.
+        fn type_preview_paragraph_style(
+            view: Pin<&mut PictureView>,
+            name: &QString,
+            font: &QString,
+            character: &CharacterSetting,
+            paragraph: &ParagraphSetting,
+        ) -> bool;
+
         /// Delete the named paragraph style and record one "Delete Paragraph Style" state; false (no state) for a missing or protected style.
         fn type_delete_paragraph_style(view: Pin<&mut PictureView>, name: &QString) -> bool;
+
+        /// The number of paragraph styles in the document (0 without one).
+        fn type_paragraph_style_count(view: &PictureView) -> i32;
+
+        /// The paragraph style name at `index` in panel order (the default `Basic Paragraph` first); empty out of range.
+        fn type_paragraph_style_name(view: &PictureView, index: i32) -> QString;
+
+        /// The named paragraph style's effective character attribute set, resolved against the style sheet; the default set for an unknown name.
+        fn type_paragraph_style_character(view: &PictureView, name: &QString) -> CharacterSetting;
+
+        /// The named paragraph style's effective paragraph attribute set, resolved against the style sheet; the default set for an unknown name.
+        fn type_paragraph_style_paragraph(view: &PictureView, name: &QString) -> ParagraphSetting;
+
+        /// The named paragraph style's font family (its effective character font), empty for an unknown name.
+        fn type_paragraph_style_font(view: &PictureView, name: &QString) -> QString;
 
         /// Merge `text`'s coverage into the selection with `mode` ("new", "add", "subtract", "intersect") and record one "Horizontal Type Mask" / "Vertical Type Mask" state. False (no state) for blank text or without a document.
         fn type_commit_mask(
@@ -268,145 +310,12 @@ pub mod ffi {
 
 use ffi::{CharacterSetting, ParagraphSetting, TypeSetting};
 
-fn rgba_color(color: u32) -> [f64; 4] {
-    let [a, r, g, b] = color.to_be_bytes();
-    [
-        f64::from(a) / 255.0,
-        f64::from(r) / 255.0,
-        f64::from(g) / 255.0,
-        f64::from(b) / 255.0,
-    ]
-}
+mod attrs;
 
-fn character_attrs(setting: &CharacterSetting) -> CharacterAttrs {
-    CharacterAttrs {
-        font_style: setting.font_style.to_string(),
-        size: setting.size,
-        leading: if setting.leading_mode == 1 {
-            Leading::Fixed(setting.leading_value)
-        } else {
-            Leading::Auto
-        },
-        kerning: match setting.kerning_mode {
-            1 => KerningMode::Metrics,
-            2 => KerningMode::Manual(setting.kerning_value),
-            _ => KerningMode::Metrics,
-        },
-        tracking: setting.tracking,
-        horizontal_scale: setting.horizontal_scale,
-        vertical_scale: setting.vertical_scale,
-        baseline_shift: setting.baseline_shift,
-        anti_alias: AntiAlias::from_index(setting.anti_alias),
-        fill_color: rgba_color(setting.color),
-        all_caps: setting.all_caps,
-        small_caps: setting.small_caps,
-        superscript: setting.superscript,
-        subscript: setting.subscript,
-        underline: setting.underline,
-        strikethrough: setting.strikethrough,
-        fractional_widths: setting.fractional_widths,
-        ..CharacterAttrs::default()
-    }
-}
-
-fn paragraph_attrs(setting: &ParagraphSetting) -> ParagraphAttrs {
-    ParagraphAttrs {
-        justify: Justify::from_index(setting.justify.clamp(0, 6) as u8).unwrap_or_default(),
-        word_spacing: [
-            setting.word_spacing_min,
-            setting.word_spacing_desired,
-            setting.word_spacing_max,
-        ],
-        letter_spacing: [
-            setting.letter_spacing_min,
-            setting.letter_spacing_desired,
-            setting.letter_spacing_max,
-        ],
-        glyph_spacing: [
-            setting.glyph_spacing_min,
-            setting.glyph_spacing_desired,
-            setting.glyph_spacing_max,
-        ],
-        start_indent: setting.start_indent,
-        end_indent: setting.end_indent,
-        first_line_indent: setting.first_line_indent,
-        space_before: setting.space_before,
-        space_after: setting.space_after,
-        hanging: setting.hanging,
-        hyphenate: setting.hyphenate,
-        composer: if setting.composer == 1 {
-            Composer::EveryLine
-        } else {
-            Composer::SingleLine
-        },
-    }
-}
-
-fn character_setting(attrs: &CharacterAttrs) -> CharacterSetting {
-    let [r, g, b, a] = attrs.rgba();
-    CharacterSetting {
-        font_style: QString::from(attrs.font_style.as_str()),
-        size: attrs.size,
-        leading_mode: match attrs.leading {
-            Leading::Auto => 0,
-            Leading::Fixed(_) => 1,
-        },
-        leading_value: match attrs.leading {
-            Leading::Fixed(value) => value,
-            Leading::Auto => 0.0,
-        },
-        kerning_mode: match attrs.kerning {
-            KerningMode::Metrics => 0,
-            KerningMode::Manual(_) => 2,
-        },
-        kerning_value: match attrs.kerning {
-            KerningMode::Manual(value) => value,
-            _ => 0,
-        },
-        tracking: attrs.tracking,
-        horizontal_scale: attrs.horizontal_scale,
-        vertical_scale: attrs.vertical_scale,
-        baseline_shift: attrs.baseline_shift,
-        anti_alias: attrs.anti_alias.index(),
-        color: u32::from_be_bytes([a, r, g, b]),
-        all_caps: attrs.all_caps,
-        small_caps: attrs.small_caps,
-        superscript: attrs.superscript,
-        subscript: attrs.subscript,
-        underline: attrs.underline,
-        strikethrough: attrs.strikethrough,
-        fractional_widths: attrs.fractional_widths,
-    }
-}
-
-fn paragraph_setting(attrs: &ParagraphAttrs) -> ParagraphSetting {
-    ParagraphSetting {
-        justify: i32::from(attrs.justify.index()),
-        word_spacing_min: attrs.word_spacing[0],
-        word_spacing_desired: attrs.word_spacing[1],
-        word_spacing_max: attrs.word_spacing[2],
-        letter_spacing_min: attrs.letter_spacing[0],
-        letter_spacing_desired: attrs.letter_spacing[1],
-        letter_spacing_max: attrs.letter_spacing[2],
-        glyph_spacing_min: attrs.glyph_spacing[0],
-        glyph_spacing_desired: attrs.glyph_spacing[1],
-        glyph_spacing_max: attrs.glyph_spacing[2],
-        start_indent: attrs.start_indent,
-        end_indent: attrs.end_indent,
-        first_line_indent: attrs.first_line_indent,
-        space_before: attrs.space_before,
-        space_after: attrs.space_after,
-        hanging: attrs.hanging,
-        hyphenate: attrs.hyphenate,
-        // Kept on the bridge struct so the generated C++ header is unchanged;
-        // the model no longer carries a paragraph direction.
-        direction: 0,
-        composer: match attrs.composer {
-            Composer::SingleLine => 0,
-            Composer::EveryLine => 1,
-        },
-    }
-}
+use attrs::{
+    character_attrs, character_setting, edited_overrides, paragraph_attrs, paragraph_overrides,
+    paragraph_setting, style_character_overrides,
+};
 
 fn type_default_character_setting() -> CharacterSetting {
     character_setting(&CharacterAttrs::default())
@@ -703,53 +612,6 @@ fn type_apply_style(
     applied
 }
 
-fn character_overrides(attrs: &CharacterAttrs) -> CharacterOverrides {
-    CharacterOverrides {
-        font_family: Some(attrs.font_family.clone()),
-        font_style: Some(attrs.font_style.clone()),
-        size: Some(attrs.size),
-        leading: Some(attrs.leading),
-        kerning: Some(attrs.kerning),
-        tracking: Some(attrs.tracking),
-        horizontal_scale: Some(attrs.horizontal_scale),
-        vertical_scale: Some(attrs.vertical_scale),
-        baseline_shift: Some(attrs.baseline_shift),
-        anti_alias: Some(attrs.anti_alias),
-        fill_color: Some(attrs.fill_color),
-        all_caps: Some(attrs.all_caps),
-        small_caps: Some(attrs.small_caps),
-        superscript: Some(attrs.superscript),
-        subscript: Some(attrs.subscript),
-        underline: Some(attrs.underline),
-        strikethrough: Some(attrs.strikethrough),
-        fractional_widths: Some(attrs.fractional_widths),
-    }
-}
-
-fn paragraph_overrides(attrs: &ParagraphAttrs) -> ParagraphOverrides {
-    ParagraphOverrides {
-        justify: Some(attrs.justify),
-        word_spacing: Some(attrs.word_spacing),
-        letter_spacing: Some(attrs.letter_spacing),
-        glyph_spacing: Some(attrs.glyph_spacing),
-        start_indent: Some(attrs.start_indent),
-        end_indent: Some(attrs.end_indent),
-        first_line_indent: Some(attrs.first_line_indent),
-        space_before: Some(attrs.space_before),
-        space_after: Some(attrs.space_after),
-        hanging: Some(attrs.hanging),
-        hyphenate: Some(attrs.hyphenate),
-        composer: Some(attrs.composer),
-    }
-}
-
-/// The character style's sparse overrides, with the bridge's separate family.
-fn style_character_overrides(font: &QString, character: &CharacterSetting) -> CharacterOverrides {
-    let mut attrs = character_attrs(character);
-    attrs.font_family = font.to_string();
-    character_overrides(&attrs)
-}
-
 /// Run a style operation on the document and record one history state when it
 /// changed anything.
 fn commit_style(
@@ -837,100 +699,78 @@ fn type_delete_paragraph_style(view: Pin<&mut PictureView>, name: &QString) -> b
     })
 }
 
-/// Record `after` as a manual override for one field only when it differs from
-/// the layer's `before`; an unchanged field stays inherited from the styles.
-fn changed<T: Clone + PartialEq>(current: &mut Option<T>, before: &T, after: &T) {
-    if after != before {
-        *current = Some(after.clone());
+/// A live Preview edit: the style sheet and every applying layer change, the
+/// display refreshes, and nothing is recorded; Cancel restores by previewing
+/// the style's pre-dialog values back.
+fn type_preview_paragraph_style(
+    mut view: Pin<&mut PictureView>,
+    name: &QString,
+    font: &QString,
+    character: &CharacterSetting,
+    paragraph: &ParagraphSetting,
+) -> bool {
+    let name = name.to_string();
+    let character = style_character_overrides(font, character);
+    let paragraph = paragraph_overrides(&paragraph_attrs(paragraph));
+    let changed = view.as_mut().rust_mut().doc.as_mut().is_some_and(|doc| {
+        crate::history::edit_paragraph_style(doc, &name, character, paragraph).is_ok()
+    });
+    if changed {
+        view.as_mut().clear_link_sets();
+        view.as_mut().recomposite();
+        view.as_mut().changed();
     }
+    changed
 }
 
-/// The run's manual overrides after a bridge edit: the layer's existing
-/// overrides plus every attribute that changed from its previous effective
-/// value. Unchanged fields stay unset, so a later style application still
-/// updates them.
-fn edited_overrides(previous: &TypeSpec, next: &TypeSpec) -> StyleOverrides {
-    let mut overrides = previous.overrides.clone();
-    let (before, after) = (&previous.character, &next.character);
-    let c = &mut overrides.character;
-    changed(&mut c.font_family, &before.font_family, &after.font_family);
-    changed(&mut c.font_style, &before.font_style, &after.font_style);
-    changed(&mut c.size, &before.size, &after.size);
-    changed(&mut c.leading, &before.leading, &after.leading);
-    changed(&mut c.kerning, &before.kerning, &after.kerning);
-    changed(&mut c.tracking, &before.tracking, &after.tracking);
-    changed(
-        &mut c.horizontal_scale,
-        &before.horizontal_scale,
-        &after.horizontal_scale,
-    );
-    changed(
-        &mut c.vertical_scale,
-        &before.vertical_scale,
-        &after.vertical_scale,
-    );
-    changed(
-        &mut c.baseline_shift,
-        &before.baseline_shift,
-        &after.baseline_shift,
-    );
-    changed(&mut c.anti_alias, &before.anti_alias, &after.anti_alias);
-    changed(&mut c.fill_color, &before.fill_color, &after.fill_color);
-    changed(&mut c.all_caps, &before.all_caps, &after.all_caps);
-    changed(&mut c.small_caps, &before.small_caps, &after.small_caps);
-    changed(&mut c.superscript, &before.superscript, &after.superscript);
-    changed(&mut c.subscript, &before.subscript, &after.subscript);
-    changed(&mut c.underline, &before.underline, &after.underline);
-    changed(
-        &mut c.strikethrough,
-        &before.strikethrough,
-        &after.strikethrough,
-    );
-    changed(
-        &mut c.fractional_widths,
-        &before.fractional_widths,
-        &after.fractional_widths,
-    );
+fn type_paragraph_style_count(view: &PictureView) -> i32 {
+    view.rust()
+        .doc
+        .as_ref()
+        .map_or(0, |doc| doc.text_styles.paragraph_styles.len() as i32)
+}
 
-    let (before, after) = (&previous.paragraph, &next.paragraph);
-    let p = &mut overrides.paragraph;
-    changed(&mut p.justify, &before.justify, &after.justify);
-    changed(
-        &mut p.word_spacing,
-        &before.word_spacing,
-        &after.word_spacing,
-    );
-    changed(
-        &mut p.letter_spacing,
-        &before.letter_spacing,
-        &after.letter_spacing,
-    );
-    changed(
-        &mut p.glyph_spacing,
-        &before.glyph_spacing,
-        &after.glyph_spacing,
-    );
-    changed(
-        &mut p.start_indent,
-        &before.start_indent,
-        &after.start_indent,
-    );
-    changed(&mut p.end_indent, &before.end_indent, &after.end_indent);
-    changed(
-        &mut p.first_line_indent,
-        &before.first_line_indent,
-        &after.first_line_indent,
-    );
-    changed(
-        &mut p.space_before,
-        &before.space_before,
-        &after.space_before,
-    );
-    changed(&mut p.space_after, &before.space_after, &after.space_after);
-    changed(&mut p.hanging, &before.hanging, &after.hanging);
-    changed(&mut p.hyphenate, &before.hyphenate, &after.hyphenate);
-    changed(&mut p.composer, &before.composer, &after.composer);
-    overrides
+fn type_paragraph_style_name(view: &PictureView, index: i32) -> QString {
+    if index < 0 {
+        return QString::default();
+    }
+    view.rust()
+        .doc
+        .as_ref()
+        .and_then(|doc| doc.text_styles.paragraph_styles.get(index as usize))
+        .map_or_else(QString::default, |style| QString::from(style.name.as_str()))
+}
+
+/// A paragraph style's effective attributes, resolved against the sheet so a
+/// sparse style reports the document defaults for the fields it leaves unset.
+fn resolved_paragraph_style(
+    view: &PictureView,
+    name: &QString,
+) -> Option<pictura_core::ResolvedStyle> {
+    let name = name.to_string();
+    let doc = view.rust().doc.as_ref()?;
+    doc.text_styles.paragraph_style(&name).map(|_| {
+        doc.text_styles
+            .resolve(&StyleOverrides::default(), None, Some(&name))
+    })
+}
+
+fn type_paragraph_style_character(view: &PictureView, name: &QString) -> CharacterSetting {
+    resolved_paragraph_style(view, name).map_or_else(type_default_character_setting, |r| {
+        character_setting(&r.character)
+    })
+}
+
+fn type_paragraph_style_paragraph(view: &PictureView, name: &QString) -> ParagraphSetting {
+    resolved_paragraph_style(view, name).map_or_else(type_default_paragraph_setting, |r| {
+        paragraph_setting(&r.paragraph)
+    })
+}
+
+fn type_paragraph_style_font(view: &PictureView, name: &QString) -> QString {
+    resolved_paragraph_style(view, name).map_or_else(QString::default, |r| {
+        QString::from(r.character.font_family.as_str())
+    })
 }
 
 fn replace(
