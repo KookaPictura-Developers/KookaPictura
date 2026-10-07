@@ -96,10 +96,21 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/color_range_dialog.cpp
     crates/pictura-app/cpp/replace_color_dialog.cpp
     crates/pictura-app/cpp/adjustment_dialog.cpp
+    crates/pictura-app/cpp/black_white_dialog.cpp
+    crates/pictura-app/cpp/channel_mixer_dialog.cpp
+    crates/pictura-app/cpp/color_balance_dialog.cpp
+    crates/pictura-app/cpp/curves_dialog.cpp
+    crates/pictura-app/cpp/exposure_dialog.cpp
+    crates/pictura-app/cpp/hue_saturation_dialog.cpp
+    crates/pictura-app/cpp/levels_dialog.cpp
+    crates/pictura-app/cpp/photo_filter_dialog.cpp
+    crates/pictura-app/cpp/slider_dialog.cpp
     crates/pictura-app/cpp/hdr_toning_dialog.cpp
     crates/pictura-app/cpp/print_dialog.cpp
     crates/pictura-app/cpp/export_as_dialog.cpp
     crates/pictura-app/cpp/duplicate_image_dialog.cpp
+    crates/pictura-app/cpp/bitmap_mode_dialog.cpp
+    crates/pictura-app/cpp/indexed_color_dialog.cpp
     crates/pictura-app/cpp/fill_dialog.cpp
     crates/pictura-app/cpp/stroke_dialog.cpp
     crates/pictura-app/cpp/image_view.cpp
@@ -122,6 +133,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/frame_menus_align.cpp
     crates/pictura-app/cpp/frame_menus_adjust.cpp
     crates/pictura-app/cpp/frame_menus_image.cpp
+    crates/pictura-app/cpp/frame_menus_image_mode.cpp
     crates/pictura-app/cpp/frame_recent.cpp
     crates/pictura-app/cpp/frame_test.cpp
     crates/pictura-app/cpp/frame_build.cpp
@@ -240,6 +252,15 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/profile_dialog.h
     crates/pictura-app/cpp/hdr_conversion_dialog.h
     crates/pictura-app/cpp/hdr_toning_dialog.h
+    crates/pictura-app/cpp/black_white_dialog.h
+    crates/pictura-app/cpp/channel_mixer_dialog.h
+    crates/pictura-app/cpp/color_balance_dialog.h
+    crates/pictura-app/cpp/curves_dialog.h
+    crates/pictura-app/cpp/exposure_dialog.h
+    crates/pictura-app/cpp/hue_saturation_dialog.h
+    crates/pictura-app/cpp/levels_dialog.h
+    crates/pictura-app/cpp/photo_filter_dialog.h
+    crates/pictura-app/cpp/slider_dialog.h
     crates/pictura-app/cpp/replace_color_dialog.h
     crates/pictura-app/cpp/pictura_raw_dialog.h
     crates/pictura-app/cpp/warp_preset_dialog.h
@@ -247,6 +268,8 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/color_picker_dialog.h
     crates/pictura-app/cpp/export_as_dialog.h
     crates/pictura-app/cpp/duplicate_image_dialog.h
+    crates/pictura-app/cpp/bitmap_mode_dialog.h
+    crates/pictura-app/cpp/indexed_color_dialog.h
     crates/pictura-app/cpp/fill_dialog.h
     crates/pictura-app/cpp/stroke_dialog.h
     crates/pictura-app/cpp/image_view.h

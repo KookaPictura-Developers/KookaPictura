@@ -7,17 +7,21 @@
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/adjustment_edit.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/clipping.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/image_adjust/image_mode.cxxqt.h"
 
 #include <QtCore/QTimer>
 #include <QtGui/QPainter>
+#include <QtGui/QStandardItemModel>
 #include <QtWidgets/QCheckBox>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QDoubleSpinBox>
 #include <QtWidgets/QFormLayout>
+#include <QtWidgets/QGridLayout>
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QScrollArea>
 #include <QtWidgets/QSlider>
+#include <QtWidgets/QSpinBox>
 #include <QtWidgets/QStackedWidget>
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QVBoxLayout>
@@ -35,6 +39,38 @@ namespace {
 constexpr int kCommitDelayMs = 500;
 
 enum Page { NothingPage, AdjustmentPage, LayerPage };
+
+// CS6's canvas ceiling (Canvas Size / New).
+constexpr int kMaxCanvas = 300000;
+
+struct ModeEntry {
+    const char* key;
+    const char* name;
+};
+
+// Image ▸ Mode's order; the keys are `image_mode`'s names.
+constexpr ModeEntry kModes[] = {
+    {"bitmap", "Bitmap"},       {"grayscale", "Grayscale"}, {"duotone", "Duotone"},
+    {"indexed", "Indexed Color"}, {"rgb", "RGB Color"},     {"cmyk", "CMYK Color"},
+    {"lab", "Lab Color"},       {"multichannel", "Multichannel"},
+};
+
+QSpinBox* canvasSpin(QWidget* parent, const QString& name)
+{
+    auto* spin = new QSpinBox(parent);
+    spin->setObjectName(name);
+    spin->setRange(1, kMaxCanvas);
+    spin->setSuffix(QStringLiteral(" px"));
+    spin->setKeyboardTracking(false);
+    return spin;
+}
+
+void setItemEnabled(QComboBox* combo, int index, bool enabled)
+{
+    if (auto* model = qobject_cast<QStandardItemModel*>(combo->model())) {
+        model->item(index)->setEnabled(enabled);
+    }
+}
 
 QToolButton* footerButton(QWidget* parent, const QString& iconId, const QString& tip,
                           const QString& name)
@@ -66,8 +102,14 @@ PropertiesPanel::PropertiesPanel(QWidget* parent)
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
     scroll->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Ignored);
-    stack_ = new QStackedWidget(scroll);
-    scroll->setWidget(stack_);
+    auto* body = new QWidget(scroll);
+    auto* bodyLayout = new QVBoxLayout(body);
+    bodyLayout->setContentsMargins(0, 0, 0, 0);
+    stack_ = new QStackedWidget(body);
+    bodyLayout->addWidget(stack_);
+    buildCanvas(bodyLayout);
+    bodyLayout->addStretch(1);
+    scroll->setWidget(body);
     layout->addWidget(scroll, 1);
 
     auto* nothing = new QLabel(QStringLiteral("No Properties"), stack_);
@@ -158,6 +200,142 @@ PropertiesPanel::PropertiesPanel(QWidget* parent)
     refresh();
 }
 
+void PropertiesPanel::buildCanvas(QVBoxLayout* layout)
+{
+    canvas_ = new QWidget(this);
+    canvas_->setObjectName(QStringLiteral("propertiesCanvas"));
+    auto* grid = new QGridLayout(canvas_);
+    grid->setContentsMargins(0, 8, 0, 0);
+    auto* title = new QLabel(QStringLiteral("Canvas"), canvas_);
+    QFont bold = title->font();
+    bold.setBold(true);
+    title->setFont(bold);
+    grid->addWidget(title, 0, 0, 1, 3);
+
+    link_ = new QToolButton(canvas_);
+    link_->setObjectName(QStringLiteral("propertiesCanvasLink"));
+    link_->setIcon(icon(QStringLiteral("layers.link")));
+    link_->setToolTip(QStringLiteral("Link width and height"));
+    link_->setCheckable(true);
+    link_->setAutoRaise(true);
+    width_ = canvasSpin(canvas_, QStringLiteral("propertiesCanvasWidth"));
+    height_ = canvasSpin(canvas_, QStringLiteral("propertiesCanvasHeight"));
+    grid->addWidget(link_, 1, 0, 2, 1, Qt::AlignVCenter);
+    grid->addWidget(new QLabel(QStringLiteral("W"), canvas_), 1, 1);
+    grid->addWidget(width_, 1, 2);
+    grid->addWidget(new QLabel(QStringLiteral("H"), canvas_), 2, 1);
+    grid->addWidget(height_, 2, 2);
+
+    resolution_ = new QLabel(canvas_);
+    resolution_->setObjectName(QStringLiteral("propertiesCanvasResolution"));
+    grid->addWidget(resolution_, 3, 0, 1, 3, Qt::AlignHCenter);
+
+    mode_ = new QComboBox(canvas_);
+    mode_->setObjectName(QStringLiteral("propertiesCanvasMode"));
+    for (const ModeEntry& entry : kModes) {
+        mode_->addItem(QLatin1String(entry.name), QLatin1String(entry.key));
+    }
+    depth_ = new QComboBox(canvas_);
+    depth_->setObjectName(QStringLiteral("propertiesCanvasDepth"));
+    for (int bits : {1, 8, 16, 32}) {
+        depth_->addItem(bits == 1 ? QStringLiteral("1 Bit/Channel")
+                                  : QStringLiteral("%1 Bits/Channel").arg(bits),
+                        bits);
+    }
+    grid->addWidget(new QLabel(QStringLiteral("Mode"), canvas_), 4, 0, 1, 2);
+    grid->addWidget(mode_, 4, 2);
+    grid->addWidget(depth_, 5, 2);
+    grid->setColumnStretch(2, 1);
+    layout->addWidget(canvas_);
+
+    // A linked edit keeps the document's aspect; the other field follows as
+    // the user types, and Enter or leaving the field resizes.
+    connect(width_, &QSpinBox::valueChanged, this, [this](int w) {
+        if (link_->isChecked() && view_ && view_->document_width() > 0) {
+            const QSignalBlocker block(height_);
+            height_->setValue(std::max(
+                1, qRound(double(w) * view_->document_height() / view_->document_width())));
+        }
+    });
+    connect(height_, &QSpinBox::valueChanged, this, [this](int h) {
+        if (link_->isChecked() && view_ && view_->document_height() > 0) {
+            const QSignalBlocker block(width_);
+            width_->setValue(std::max(
+                1, qRound(double(h) * view_->document_width() / view_->document_height())));
+        }
+    });
+    connect(width_, &QSpinBox::editingFinished, this, &PropertiesPanel::applyCanvasSize);
+    connect(height_, &QSpinBox::editingFinished, this, &PropertiesPanel::applyCanvasSize);
+    connect(mode_, &QComboBox::activated, this,
+            [this](int index) { emit modeRequested(mode_->itemData(index).toString()); });
+    connect(depth_, &QComboBox::activated, this,
+            [this](int index) { emit depthRequested(depth_->itemData(index).toInt()); });
+}
+
+void PropertiesPanel::applyCanvasSize()
+{
+    if (!view_ || !view_->has_document()) {
+        return;
+    }
+    const int w = width_->value();
+    const int h = height_->value();
+    if (w == view_->document_width() && h == view_->document_height()) {
+        return;
+    }
+    view_->resize_canvas(QStringLiteral("center"), w, h);
+    refresh();
+}
+
+void PropertiesPanel::refreshCanvas()
+{
+    // A field being typed into keeps its text until the edit finishes.
+    if (!width_->hasFocus()) {
+        const QSignalBlocker block(width_);
+        width_->setValue(view_->document_width());
+    }
+    if (!height_->hasFocus()) {
+        const QSignalBlocker block(height_);
+        height_->setValue(view_->document_height());
+    }
+    resolution_->setText(QStringLiteral("Resolution: %1").arg(image_resolution(*view_)));
+
+    const QString mode = image_mode(*view_);
+    for (int i = 0; i < mode_->count(); ++i) {
+        const QString key = mode_->itemData(i).toString();
+        setItemEnabled(mode_, i, key == mode || image_mode_available(*view_, key));
+        if (key == mode) {
+            mode_->setCurrentIndex(i);
+        }
+    }
+    const int bits = image_depth_bits(*view_);
+    for (int i = 0; i < depth_->count(); ++i) {
+        const int value = depth_->itemData(i).toInt();
+        setItemEnabled(depth_, i, value == bits || image_depth_available(*view_, value));
+        if (value == bits) {
+            depth_->setCurrentIndex(i);
+        }
+    }
+    canvas_->show();
+}
+
+void PropertiesPanel::setPage(int index)
+{
+    for (int i = 0; i < stack_->count(); ++i) {
+        stack_->widget(i)->setSizePolicy(QSizePolicy::Preferred, i == index
+                                                                     ? QSizePolicy::Preferred
+                                                                     : QSizePolicy::Ignored);
+    }
+    stack_->setCurrentIndex(index);
+    // The body is stack, Canvas, stretch: the layer summary and Canvas sit on
+    // top; No Properties and an adjustment's controls take the whole panel.
+    if (auto* body = qobject_cast<QBoxLayout*>(stack_->parentWidget()->layout())) {
+        body->setStretch(0, index == LayerPage ? 0 : 1);
+        body->setStretch(2, index == LayerPage ? 1 : 0);
+    }
+}
+
+QString PropertiesPanel::resolutionForTest() const { return resolution_->text(); }
+
 void PropertiesPanel::setView(PictureView* view)
 {
     if (view != view_) {
@@ -208,16 +386,27 @@ void PropertiesPanel::refresh()
 
 void PropertiesPanel::showNothing()
 {
-    header_->setText(QStringLiteral("No Properties"));
-    stack_->setCurrentIndex(NothingPage);
     footer_->hide();
+    if (view_ && view_->has_document()) {
+        header_->setText(QStringLiteral("Document"));
+        setPage(LayerPage);
+        stack_->hide();
+        refreshCanvas();
+        return;
+    }
+    header_->setText(QStringLiteral("No Properties"));
+    stack_->show();
+    setPage(NothingPage);
+    canvas_->hide();
 }
 
 void PropertiesPanel::showLayer(int row)
 {
     header_->setText(QStringLiteral("Layer Properties"));
-    stack_->setCurrentIndex(LayerPage);
+    stack_->show();
+    setPage(LayerPage);
     footer_->hide();
+    refreshCanvas();
     while (info_->rowCount() > 0) {
         info_->removeRow(0);
     }
@@ -277,7 +466,9 @@ void PropertiesPanel::showLayer(int row)
 
 void PropertiesPanel::showAdjustment(const QStringList& page)
 {
-    stack_->setCurrentIndex(AdjustmentPage);
+    stack_->show();
+    setPage(AdjustmentPage);
+    canvas_->hide();
     footer_->show();
     controls_->setPage(page, dirty_);
     title_ = controls_->title();

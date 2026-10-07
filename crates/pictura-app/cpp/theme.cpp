@@ -1,16 +1,66 @@
 #include "theme.h"
 
 #include <QtCore/QString>
+
 #include <QtGui/QColor>
 #include <QtGui/QFont>
+#include <QtGui/QPainter>
+#include <QtGui/QPainterPath>
 #include <QtGui/QPalette>
 #include <QtGui/QPixmapCache>
+#include <QtWidgets/QAbstractSpinBox>
 #include <QtWidgets/QApplication>
+#include <QtWidgets/QProxyStyle>
+#include <QtWidgets/QStyleOption>
 #include <QtWidgets/QStyleFactory>
 
 namespace pictura {
 
 namespace {
+
+// Fusion under the app stylesheet draws a spin box's up/down buttons as dark
+// outlines with no visible arrows. Paint the buttons a lighter cell and the
+// arrows as small triangles in the button-text colour, so they read on the
+// dark ramp.
+class SpinArrowStyle : public QProxyStyle {
+public:
+    using QProxyStyle::QProxyStyle;
+
+    void drawPrimitive(PrimitiveElement element, const QStyleOption* option, QPainter* painter,
+                       const QWidget* widget) const override
+    {
+        const bool spin = qobject_cast<const QAbstractSpinBox*>(widget) != nullptr;
+        if (spin && element == PE_PanelButtonBevel) {
+            const bool sunken = option->state & (State_Sunken | State_On);
+            painter->fillRect(option->rect, option->palette.color(QPalette::Button)
+                                                .lighter(sunken ? 100 : 135));
+            return;
+        }
+        const bool up = element == PE_IndicatorSpinUp || element == PE_IndicatorArrowUp;
+        const bool down = element == PE_IndicatorSpinDown || element == PE_IndicatorArrowDown;
+        if (!spin || (!up && !down)) {
+            QProxyStyle::drawPrimitive(element, option, painter, widget);
+            return;
+        }
+        // The arrow rect is a few pixels; size the glyph from the constant.
+        constexpr qreal half = 3.5;
+        const QPointF c = QRectF(option->rect).center();
+        const qreal tip = up ? -2.0 : 2.0;
+        QPainterPath path;
+        path.moveTo(c.x() - half, c.y() - tip);
+        path.lineTo(c.x() + half, c.y() - tip);
+        path.lineTo(c.x(), c.y() + tip);
+        path.closeSubpath();
+        const bool enabled = option->state & State_Enabled;
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(option->palette.color(enabled ? QPalette::Active : QPalette::Disabled,
+                                                QPalette::ButtonText));
+        painter->drawPath(path);
+        painter->restore();
+    }
+};
 
 quint64 g_paletteGeneration = 0;
 int g_level = Theme::kDefaultLevel;
@@ -302,9 +352,6 @@ QTabWidget::tab-bar { alignment: left; }
 
 QWidget#percentField QSlider::groove:horizontal { height: 4px; background: ${border}; border-radius: 2px; }
 QWidget#percentField QSlider::handle:horizontal { width: 10px; margin: -4px 0; background: ${buttonText}; border-radius: 3px; }
-/* The shared RampSlider keeps its gradient in the widget stylesheet; the frame
-   line lives here so it follows the brightness level. */
-QSlider#rampSlider::groove:horizontal { border: 1px solid ${border}; }
 
 QWidget#layersFilterBar { background: ${panel}; border-bottom: 1px solid ${separator}; }
 QWidget#layersFilterBar QComboBox, QWidget#layersFilterBar QLineEdit { background: ${inputBg}; color: ${text}; border: 1px solid ${inputBorder}; border-radius: 2px; padding: 1px 2px; }
@@ -393,7 +440,7 @@ void Theme::apply(int level)
     g_level = clamped;
     ++g_paletteGeneration;
     QPixmapCache::clear();
-    QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
+    QApplication::setStyle(new SpinArrowStyle(QStyleFactory::create(QStringLiteral("Fusion"))));
     qApp->setPalette(paletteFor(rampFor(clamped)));
     qApp->setStyleSheet(styleSheet(clamped));
 }

@@ -48,6 +48,10 @@ void PicturaMainWindow::buildPanels()
 
     propertiesPanel_ = new PropertiesPanel(this);
     propertiesPanel_->setObjectName(QStringLiteral("propertiesPanel"));
+    connect(propertiesPanel_, &PropertiesPanel::modeRequested, this,
+            &PicturaMainWindow::convertImageMode);
+    connect(propertiesPanel_, &PropertiesPanel::depthRequested, this,
+            &PicturaMainWindow::convertImageDepth);
 
     adjustmentsPanel_ = new PlaceholderPanel(QStringLiteral("Adjustments"), QString(), this);
     adjustmentsPanel_->setObjectName(QStringLiteral("adjustmentsPanel"));

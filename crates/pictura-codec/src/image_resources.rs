@@ -22,6 +22,33 @@ pub const EXIF_DATA_1: u16 = 1058;
 pub const EXIF_DATA_3: u16 = 1059;
 /// The IPTC-NAA resource id.
 pub const IPTC_NAA: u16 = 1028;
+/// The ResolutionInfo resource id.
+pub const RESOLUTION_INFO: u16 = 1005;
+
+/// The document's horizontal resolution from its ResolutionInfo resource.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Resolution {
+    /// Pixels per inch; the file stores ppi whatever the display unit.
+    pub ppi: f64,
+    /// The unit the user picked: true for pixels/cm, false for pixels/inch.
+    pub per_cm: bool,
+}
+
+/// The document's resolution, or `None` when the ResolutionInfo resource is
+/// absent or malformed (callers fall back to CS6's 72 ppi).
+pub fn document_resolution(document: &Document) -> Option<Resolution> {
+    let resource = decode_image_resources(document)
+        .into_iter()
+        .find(|r| r.id == RESOLUTION_INFO)?;
+    let data = resource.data.get(..6)?;
+    // hRes is 16.16 fixed point, then the hResUnit display unit.
+    let fixed = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
+    let ppi = f64::from(fixed) / 65536.0;
+    (ppi > 0.0).then_some(Resolution {
+        ppi,
+        per_cm: u16::from_be_bytes([data[4], data[5]]) == 2,
+    })
+}
 
 /// One image-resource block.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -222,6 +249,24 @@ mod tests {
         section.extend_from_slice(b"nope");
         let decoded = decode_image_resources(&document_with(section));
         assert_eq!(decoded.len(), 1);
+    }
+
+    #[test]
+    fn reads_resolution_info() {
+        let mut data = (300u32 << 16).to_be_bytes().to_vec();
+        data.extend_from_slice(&2u16.to_be_bytes());
+        data.extend_from_slice(&[0; 10]);
+        let section = resource(b"8BIM", RESOLUTION_INFO, "", &data);
+        assert_eq!(
+            document_resolution(&document_with(section)),
+            Some(Resolution {
+                ppi: 300.0,
+                per_cm: true
+            })
+        );
+        assert_eq!(document_resolution(&document_with(Vec::new())), None);
+        let short = resource(b"8BIM", RESOLUTION_INFO, "", &[0, 72]);
+        assert_eq!(document_resolution(&document_with(short)), None);
     }
 
     #[test]

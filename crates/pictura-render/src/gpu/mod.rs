@@ -259,7 +259,8 @@ fn adjustment_params(adjustment: &Adjustment) -> Option<(u32, i32, i32, i32)> {
         Adjustment::BrightnessContrast(p) => {
             Some((4, i32::from(p.brightness), i32::from(p.contrast), 0))
         }
-        Adjustment::HueSaturation(p) => Some((
+        // The shader carries Master only; colour ranges run on the CPU.
+        Adjustment::HueSaturation(p) if p.ranges.is_empty() => Some((
             5,
             i32::from(p.hue),
             i32::from(p.saturation),

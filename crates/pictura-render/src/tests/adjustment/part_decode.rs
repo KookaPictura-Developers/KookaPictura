@@ -39,6 +39,9 @@ fn decode_adjustment_subset_and_unknown() {
             gamma: 1.2,
             output_black: 10,
             output_white: 240,
+            red: None,
+            green: None,
+            blue: None,
         }))
     );
 
@@ -49,6 +52,7 @@ fn decode_adjustment_subset_and_unknown() {
             hue: 10,
             saturation: 20,
             lightness: 30,
+            ranges: Vec::new(),
         }))
     );
 
@@ -178,6 +182,7 @@ fn encode_decode_round_trips() {
             hue: 10,
             saturation: 20,
             lightness: 30,
+            ranges: Vec::new(),
         }))
     );
     assert_eq!(

@@ -10,6 +10,7 @@
 #include <QtWidgets/QFormLayout>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QSlider>
+#include <QtWidgets/QSpinBox>
 #include <QtWidgets/QToolButton>
 
 #include "qt_test_support.h"
@@ -24,6 +25,7 @@ private slots:
     void adjustmentLayerShowsItsName();
     void slidersEditLiveAndCommitOnce();
     void groupsCurvesAndFooter();
+    void canvasSectionReadsAndResizes();
 
 private:
     // A white 16x16 document with one `kind` adjustment layer, selected.
@@ -217,6 +219,52 @@ void PropertiesPanelTest::groupsCurvesAndFooter()
     panel_->commitForTest();
     QCOMPARE(view_->history_label(view_->history_index()),
              QStringLiteral("Modify Threshold Layer"));
+}
+
+// The Canvas section (post-CS6): W/H resize the canvas about its centre (linked
+// keeps the aspect), the resolution reads 72 ppi without a ResolutionInfo
+// resource, and the Mode / depth menus hand the choice to Image ▸ Mode. With no
+// active layer the header reads Document.
+void PropertiesPanelTest::canvasSectionReadsAndResizes()
+{
+    QVERIFY(window_->newDocument(QStringLiteral("Canvas"), 16, 8, QStringLiteral("rgb"), 8,
+                                 QStringLiteral("white")));
+    view_ = window_->activeView();
+    panel_ = window_->findChild<pictura::PropertiesPanel*>(QStringLiteral("propertiesPanel"));
+    QVERIFY(view_ && panel_);
+    view_->set_active_layer(QString());
+    panel_->setView(view_);
+    QCOMPARE(panel_->messageForTest(), QStringLiteral("Document"));
+
+    QSpinBox* width = panel_->canvasWidthForTest();
+    QSpinBox* height = panel_->canvasHeightForTest();
+    QVERIFY(width && height && width->isVisibleTo(panel_));
+    QCOMPARE(width->value(), 16);
+    QCOMPARE(height->value(), 8);
+    QCOMPARE(panel_->resolutionForTest(), QStringLiteral("Resolution: 72 pixels/inch"));
+    QCOMPARE(panel_->modeForTest()->currentText(), QStringLiteral("RGB Color"));
+    QCOMPARE(panel_->depthForTest()->currentText(), QStringLiteral("8 Bits/Channel"));
+
+    panel_->canvasLinkForTest()->setChecked(true);
+    width->setValue(32);
+    QCOMPARE(height->value(), 16);
+    emit width->editingFinished();
+    QCOMPARE(view_->document_width(), 32);
+    QCOMPARE(view_->document_height(), 16);
+    QCOMPARE(view_->history_label(view_->history_index()), QStringLiteral("Canvas Size"));
+
+    QSignalSpy modes(panel_, &pictura::PropertiesPanel::modeRequested);
+    QSignalSpy depths(panel_, &pictura::PropertiesPanel::depthRequested);
+    QComboBox* mode = panel_->modeForTest();
+    emit mode->activated(mode->findData(QStringLiteral("lab")));
+    QComboBox* depth = panel_->depthForTest();
+    emit depth->activated(depth->findData(16));
+    QCOMPARE(modes.size(), 1);
+    QCOMPARE(modes.at(0).at(0).toString(), QStringLiteral("lab"));
+    QCOMPARE(depths.size(), 1);
+    QCOMPARE(depths.at(0).at(0).toInt(), 16);
+    // The window ran the depth conversion off the panel's request.
+    QCOMPARE(view_->document_depth_bits(), 16);
 }
 
 QTEST_MAIN(PropertiesPanelTest)

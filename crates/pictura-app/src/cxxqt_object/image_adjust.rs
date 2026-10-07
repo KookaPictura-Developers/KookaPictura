@@ -9,6 +9,7 @@
 //!
 //! [`PictureView`]: super::qobject::PictureView
 
+mod image_mode;
 mod image_ops;
 
 use super::adjustment_edit::{format_points, page_rows, parse_points};

@@ -162,6 +162,9 @@ pub struct PictureViewRust {
     /// change re-filters the original rather than compounding on the last
     /// preview. `None` when no dialog is open.
     pub(super) filter_preview: Option<FilterPreview>,
+    /// The document before an open Indexed Color dialog's live preview, so each
+    /// option change converts the original. `None` when no preview is shown.
+    pub(super) mode_preview: Option<pictura_core::Document>,
     /// The last committed filter's kind and slot values, for Last Filter and
     /// Last Filter Settings.
     pub(super) last_filter: Option<(String, Vec<f64>)>,
@@ -249,6 +252,7 @@ impl Default for PictureViewRust {
             gpu_stroke: None,
             gpu_placer: None,
             filter_preview: None,
+            mode_preview: None,
             last_filter: None,
             filter_error: None,
         }

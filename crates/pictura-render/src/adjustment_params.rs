@@ -80,6 +80,11 @@ enum Field {
     Rgb16(usize),
     /// A descriptor `long` item, written when absent.
     DescLong(&'static [u8]),
+    /// A descriptor `bool` item, written when absent.
+    DescBool(&'static [u8]),
+    /// A descriptor `RGBC` colour object (`Rd  `/`Grn `/`Bl  ` doubles,
+    /// 0..1 as the Black & White decoder reads them), written when absent.
+    DescColor(&'static [u8]),
     /// A Color Lookup named preset: the index of the block's `Nm  ` name in
     /// [`crate::color_lookup_presets::COLOR_LOOKUP_PRESETS`]. Not written here;
     /// [`set_adjustment_param`] rebuilds the block instead.
@@ -147,16 +152,50 @@ fn layout(data: &AdjustmentData, adjustment: &Adjustment) -> Option<Layout> {
                 slider("contrast", "Contrast", I16(2), (-50.0, 100.0), 0.0),
             ],
         ),
-        Adjustment::Levels(_) => plain(
-            "Levels",
-            vec![
-                slider("inputBlack", "Input Black", U16(2), (0.0, 253.0), 0.0),
-                slider("inputWhite", "Input White", U16(4), (2.0, 255.0), 255.0),
-                slider("gamma", "Gamma", U16Hundredths(10), (0.1, 9.99), 1.0),
-                slider("outputBlack", "Output Black", U16(6), (0.0, 255.0), 0.0),
-                slider("outputWhite", "Output White", U16(8), (0.0, 255.0), 255.0),
-            ],
-        ),
+        Adjustment::Levels(_) => {
+            // `levl` record k (0 composite, 1–3 red/green/blue) starts at
+            // 2 + 10k: input black, input white, output black, output white,
+            // gamma × 100. The composite keys stay unprefixed.
+            let mut specs = Vec::new();
+            for (k, prefix) in ["", "red.", "green.", "blue."].into_iter().enumerate() {
+                let at = 2 + 10 * k;
+                for spec in [
+                    slider("inputBlack", "Input Black", U16(at), (0.0, 253.0), 0.0),
+                    slider(
+                        "inputWhite",
+                        "Input White",
+                        U16(at + 2),
+                        (2.0, 255.0),
+                        255.0,
+                    ),
+                    slider("gamma", "Gamma", U16Hundredths(at + 8), (0.1, 9.99), 1.0),
+                    slider(
+                        "outputBlack",
+                        "Output Black",
+                        U16(at + 4),
+                        (0.0, 255.0),
+                        0.0,
+                    ),
+                    slider(
+                        "outputWhite",
+                        "Output White",
+                        U16(at + 6),
+                        (0.0, 255.0),
+                        255.0,
+                    ),
+                ] {
+                    let key = format!("{prefix}{}", spec.key);
+                    specs.push(grouped(Spec { key, ..spec }, k));
+                }
+            }
+            Some((
+                "Levels",
+                vec!["RGB", "Red", "Green", "Blue"],
+                specs,
+                false,
+                None,
+            ))
+        }
         Adjustment::Exposure(_) => plain(
             "Exposure",
             vec![
@@ -197,17 +236,51 @@ fn layout(data: &AdjustmentData, adjustment: &Adjustment) -> Option<Layout> {
                 ),
             ],
         ),
-        Adjustment::HueSaturation(_) => Some((
-            "Hue/Saturation",
-            Vec::new(),
-            vec![
-                slider("hue", "Hue", I16(10), (-180.0, 180.0), 0.0),
-                slider("saturation", "Saturation", I16(12), (-100.0, 100.0), 0.0),
-                slider("lightness", "Lightness", I16(14), (-100.0, 100.0), 0.0),
-            ],
-            false,
-            Some("Edits the Master range; Colorize and per-colour ranges are kept as they are."),
-        )),
+        Adjustment::HueSaturation(_) => {
+            // Master at 10..16, then range k's Hue/Saturation/Lightness at
+            // 16 + 14k + 8. The Master keys stay unprefixed.
+            let mut specs = Vec::new();
+            for (k, prefix) in [
+                "",
+                "reds.",
+                "yellows.",
+                "greens.",
+                "cyans.",
+                "blues.",
+                "magentas.",
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let at = if k == 0 { 10 } else { 16 + 14 * (k - 1) + 8 };
+                for (i, (key, label, max)) in [
+                    ("hue", "Hue", 180.0),
+                    ("saturation", "Saturation", 100.0),
+                    ("lightness", "Lightness", 100.0),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let spec = slider(key, label, I16(at + 2 * i), (-max, max), 0.0);
+                    specs.push(grouped(
+                        Spec {
+                            key: format!("{prefix}{key}"),
+                            ..spec
+                        },
+                        k,
+                    ));
+                }
+            }
+            Some((
+                "Hue/Saturation",
+                vec![
+                    "Master", "Reds", "Yellows", "Greens", "Cyans", "Blues", "Magentas",
+                ],
+                specs,
+                false,
+                Some("Colorize is kept as it is."),
+            ))
+        }
         Adjustment::ColorBalance(_) => {
             let mut specs = Vec::new();
             for tone in 0..3 {
@@ -255,6 +328,18 @@ fn layout(data: &AdjustmentData, adjustment: &Adjustment) -> Option<Layout> {
             .map(|(key, label, item, default)| {
                 slider(key, label, DescLong(item), (-200.0, 300.0), default)
             })
+            .chain([
+                check("tint", "Tint", DescBool(b"useTint"), false),
+                Spec {
+                    key: "tintColor".into(),
+                    label: "Tint Color".into(),
+                    field: DescColor(b"tintColor"),
+                    kind: ParamKind::Color,
+                    group: None,
+                    // photorust's default tint, hue 42° saturation 20%.
+                    default: f64::from(0xe1_d3_b4u32),
+                },
+            ])
             .collect(),
         ),
         Adjustment::PhotoFilter(_) => {
@@ -432,11 +517,19 @@ fn read(data: &AdjustmentData, field: Field) -> Option<f64> {
             };
             ((c(0)? << 16) | (c(1)? << 8) | c(2)?) as f64
         }
-        Field::DescLong(key) => {
+        Field::DescLong(key) | Field::DescBool(key) | Field::DescColor(key) => {
             let obj = pictura_codec::read_descriptor(d).ok()?;
             // A missing item reads as the spec's default, as the decoder does.
-            match desc_item(&obj, key) {
-                Some(DescValue::Long(n)) => *n as f64,
+            match desc_item(&obj, key)? {
+                DescValue::Long(n) => *n as f64,
+                DescValue::Bool(b) => f64::from(u8::from(*b)),
+                color @ DescValue::Object { .. } => {
+                    let c = |k: &[u8]| match desc_item(color, k) {
+                        Some(DescValue::Double(v)) => (v * 255.0).round().clamp(0.0, 255.0) as u32,
+                        _ => 0,
+                    };
+                    ((c(b"Rd  ") << 16) | (c(b"Grn ") << 8) | c(b"Bl  ")) as f64
+                }
                 _ => return None,
             }
         }
@@ -466,15 +559,32 @@ fn write(data: &mut AdjustmentData, field: Field, value: f64) -> Option<()> {
             }
             Some(())
         }
-        Field::DescLong(key) => {
+        Field::DescLong(key) | Field::DescBool(key) | Field::DescColor(key) => {
             let mut obj = pictura_codec::read_descriptor(d).ok()?;
             let DescValue::Object { items, .. } = &mut obj else {
                 return None;
             };
-            let long = DescValue::Long(value.round() as i32);
+            let item = match field {
+                Field::DescBool(_) => DescValue::Bool(value != 0.0),
+                Field::DescColor(_) => {
+                    let rgb = value as u32;
+                    let c =
+                        |shift: u32| DescValue::Double(f64::from((rgb >> shift) & 0xff) / 255.0);
+                    DescValue::Object {
+                        name: String::new(),
+                        class_id: b"RGBC".to_vec(),
+                        items: vec![
+                            (b"Rd  ".to_vec(), c(16)),
+                            (b"Grn ".to_vec(), c(8)),
+                            (b"Bl  ".to_vec(), c(0)),
+                        ],
+                    }
+                }
+                _ => DescValue::Long(value.round() as i32),
+            };
             match items.iter_mut().find(|(k, _)| k.as_slice() == key) {
-                Some((_, slot)) => *slot = long,
-                None => items.push((key.to_vec(), long)),
+                Some((_, slot)) => *slot = item,
+                None => items.push((key.to_vec(), item)),
             }
             *d = pictura_codec::write_descriptor(&obj);
             Some(())

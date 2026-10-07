@@ -1,4 +1,6 @@
 #include "hdr_toning_dialog.h"
+
+#include "dialogs.h"
 #include "panels/jump_slider.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
@@ -312,7 +314,7 @@ bool HdrToningDialog::get(QWidget* parent, PictureView* view, const QRect& visib
         return false;
     }
     HdrToningDialog dialog(view, visible, parent);
-    return dialog.exec() == QDialog::Accepted;
+    return runDialog(dialog, parent) == QDialog::Accepted;
 }
 
 } // namespace pictura

@@ -93,11 +93,9 @@ void PicturaMainWindow::wireImageAdjustments()
         registry_->setLabelProvider(id, [leaf]() { return leaf + QStringLiteral("…"); });
         registry_->setHandler(id, [this, kind]() {
             PictureView* view = activeView();
-            ImageView* canvas = imageView();
-            const QRect visible = canvas ? canvas->visibleDocumentRect().toAlignedRect() : QRect();
             if (view && filter_target_ready(*view)
                 && runAdjustmentDialog(this, view, kind, tools_->foreground(),
-                                       tools_->background(), visible)) {
+                                       tools_->background(), imageView())) {
                 refresh();
             } else if (view) {
                 reportFilterRefusal(view);
@@ -108,23 +106,22 @@ void PicturaMainWindow::wireImageAdjustments()
     for (const Entry& entry : kDirect) {
         const QString leaf = QString::fromUtf8(entry.leaf);
         const QString kind = QString::fromLatin1(entry.kind);
-        QStringList ids = {
-            commandIdForPath({QStringLiteral("Image"), QStringLiteral("Adjustments"), leaf})};
-        if (kind.startsWith(QLatin1String("auto-"))) {
-            ids << commandIdForPath({QStringLiteral("Image"), leaf});
-        }
-        for (const QString& id : ids) {
-            registry_->setImplemented(id, true);
-            registry_->setHandler(id, [this, kind]() {
-                PictureView* view = activeView();
-                if (view && image_adjust_direct(*view, kind)) {
-                    refresh();
-                } else if (view) {
-                    reportFilterRefusal(view);
-                }
-            });
-            registry_->setEnabledProvider(id, ready);
-        }
+        // The Auto commands live at the top of the Image menu, not under
+        // Adjustments.
+        const QString id = kind.startsWith(QLatin1String("auto-"))
+                               ? commandIdForPath({QStringLiteral("Image"), leaf})
+                               : commandIdForPath({QStringLiteral("Image"),
+                                                   QStringLiteral("Adjustments"), leaf});
+        registry_->setImplemented(id, true);
+        registry_->setHandler(id, [this, kind]() {
+            PictureView* view = activeView();
+            if (view && image_adjust_direct(*view, kind)) {
+                refresh();
+            } else if (view) {
+                reportFilterRefusal(view);
+            }
+        });
+        registry_->setEnabledProvider(id, ready);
     }
 
     // HDR Toning is a neighborhood operator, not a pointwise adjustment, so it

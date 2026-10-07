@@ -59,7 +59,9 @@ mod smart_writer_tests;
 mod tests;
 
 pub use advanced_blending::encode_blend_if;
-pub use color_mode::xyz_d50_to_srgb_u8;
+pub use color_mode::{
+    bitmap_rows_to_rgb, cmyk_to_rgb, indexed_to_rgb, lab_to_rgb, rgb_to_lab, xyz_d50_to_srgb_u8,
+};
 pub use crs_xmp::set_crs_property;
 pub use descriptor::{write_descriptor, DescValue};
 pub use duotone::{parse_duotone, DuotoneInk, DuotoneSpec, InkColor};
@@ -69,8 +71,9 @@ pub use error::PsdError;
 pub use exif::{exif_tag_name, parse_exif, Exif, ExifValue};
 pub use icc::{assign_document_profile, buffer_to_srgb, convert_document, profile_description};
 pub use image_resources::{
-    decode_image_resources, encode_image_resources, frame_image_resource, ImageResource,
-    EXIF_DATA_1, EXIF_DATA_3, ICC_PROFILE, IPTC_NAA, XMP_METADATA,
+    decode_image_resources, document_resolution, encode_image_resources, frame_image_resource,
+    ImageResource, Resolution, EXIF_DATA_1, EXIF_DATA_3, ICC_PROFILE, IPTC_NAA, RESOLUTION_INFO,
+    XMP_METADATA,
 };
 pub use iptc::{encode_iptc, iptc_field_name, parse_iptc, Iptc};
 pub use metadata::{

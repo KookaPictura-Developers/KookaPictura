@@ -3,6 +3,9 @@ use super::*;
 use crate::common::{luma, rgb_to_hsl, srgb_to_linear};
 use pictura_core::PixelBuffer;
 
+mod hue_ranges;
+mod levels;
+
 fn buf3(w: u32, h: u32, px: &[[u8; 3]]) -> PixelBuffer {
     let n = (w * h) as usize;
     assert_eq!(px.len(), n);
@@ -76,6 +79,9 @@ fn levels_identity_and_clamps() {
             gamma: 1.0,
             output_black: 0,
             output_white: 255,
+            red: None,
+            green: None,
+            blue: None,
         }),
         &mut b,
     )
@@ -98,6 +104,9 @@ fn levels_black_white_point_and_output_range() {
             gamma: 1.0,
             output_black: 20,
             output_white: 235,
+            red: None,
+            green: None,
+            blue: None,
         }),
         &mut b,
     )
@@ -121,6 +130,9 @@ fn levels_gamma_lightens_midtones() {
             gamma: 2.0,
             output_black: 0,
             output_white: 255,
+            red: None,
+            green: None,
+            blue: None,
         }),
         &mut b,
     )
@@ -136,6 +148,9 @@ fn levels_rejects_bad_params() {
         gamma: 1.0,
         output_black: 0,
         output_white: 255,
+        red: None,
+        green: None,
+        blue: None,
     };
     let mut b = buf3(1, 1, &[[0, 0, 0]]);
     assert!(apply(&Adjustment::Levels(p), &mut b).is_err());
@@ -145,6 +160,9 @@ fn levels_rejects_bad_params() {
         gamma: 0.0,
         output_black: 0,
         output_white: 255,
+        red: None,
+        green: None,
+        blue: None,
     };
     assert!(apply(&Adjustment::Levels(p), &mut b).is_err());
 }
@@ -505,6 +523,7 @@ fn desaturate_matches_hue_saturation_minus_100() {
             hue: 0,
             saturation: -100,
             lightness: 0,
+            ranges: Vec::new(),
         }),
         &mut c,
     )
@@ -528,6 +547,7 @@ fn hue_saturation_identity_and_desaturate() {
             hue: 0,
             saturation: 0,
             lightness: 0,
+            ranges: Vec::new(),
         }),
         &mut b,
     )
@@ -539,6 +559,7 @@ fn hue_saturation_identity_and_desaturate() {
             hue: 0,
             saturation: -100,
             lightness: 0,
+            ranges: Vec::new(),
         }),
         &mut b,
     )
@@ -554,6 +575,7 @@ fn hue_saturation_lightness_and_validation() {
             hue: 0,
             saturation: 0,
             lightness: 50,
+            ranges: Vec::new(),
         }),
         &mut b,
     )
@@ -565,6 +587,7 @@ fn hue_saturation_lightness_and_validation() {
             hue: 200,
             saturation: 0,
             lightness: 0,
+            ranges: Vec::new(),
         }),
         &mut b
     )
@@ -1118,6 +1141,9 @@ fn alpha_is_never_modified() {
             gamma: 1.2,
             output_black: 0,
             output_white: 255,
+            red: None,
+            green: None,
+            blue: None,
         }),
         Adjustment::Curves(CurvesParams {
             points: vec![(0, 0), (128, 180), (255, 255)],
@@ -1139,6 +1165,7 @@ fn alpha_is_never_modified() {
             hue: 10,
             saturation: 10,
             lightness: 10,
+            ranges: Vec::new(),
         }),
         Adjustment::BlackWhite(BW_DEFAULT),
         Adjustment::PhotoFilter(PhotoFilterParams {
@@ -1338,6 +1365,7 @@ fn deterministic_across_runs() {
         hue: 37,
         saturation: 21,
         lightness: -9,
+        ranges: Vec::new(),
     });
     apply(&adj, &mut a).unwrap();
     apply(&adj, &mut c).unwrap();

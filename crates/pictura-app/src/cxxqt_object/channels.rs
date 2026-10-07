@@ -45,7 +45,7 @@ pub mod ffi {
     }
 }
 
-fn mode_name(mode: ColorMode) -> &'static str {
+pub(super) fn mode_name(mode: ColorMode) -> &'static str {
     match mode {
         ColorMode::Bitmap => "bitmap",
         ColorMode::Grayscale => "grayscale",

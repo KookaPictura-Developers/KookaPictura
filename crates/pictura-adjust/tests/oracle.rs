@@ -461,6 +461,9 @@ fn levels_matches_imagemagick() {
             gamma: 2.0,
             output_black: 0,
             output_white: 255,
+            red: None,
+            green: None,
+            blue: None,
         }),
         &[
             "--op",
@@ -546,6 +549,7 @@ fn hue_saturation_properties() {
             hue: 0,
             saturation: 0,
             lightness: 0,
+            ranges: Vec::new(),
         }),
         original.clone(),
     );
@@ -566,6 +570,7 @@ fn hue_saturation_properties() {
             hue: 0,
             saturation: 50,
             lightness: 0,
+            ranges: Vec::new(),
         }),
         original.clone(),
     );

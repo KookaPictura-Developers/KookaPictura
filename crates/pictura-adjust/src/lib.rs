@@ -33,8 +33,8 @@ pub use replace_color::{replace_color_mask, ReplaceColorParams, ReplaceColorSamp
 pub use types::{
     AdjustError, Adjustment, AutoKind, BlackWhiteParams, BrightnessContrastParams,
     ChannelMixerParams, ColorBalanceParams, ColorLookupKind, ColorLookupParams, CurvesParams,
-    ExposureParams, GradientFillParams, GradientKind, GradientMapParams, GradientStop,
-    HueSaturationParams, LevelsParams, Lut3d, PatternFillParams, PhotoFilterParams,
+    ExposureParams, GradientFillParams, GradientKind, GradientMapParams, GradientStop, HueRange,
+    HueSaturationParams, LevelsChannel, LevelsParams, Lut3d, PatternFillParams, PhotoFilterParams,
     SelectiveColorMethod, SelectiveColorParams, SelectiveRange, ShadowsHighlightsParams,
     VibranceParams,
 };

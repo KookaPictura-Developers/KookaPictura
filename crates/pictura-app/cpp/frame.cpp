@@ -4,7 +4,9 @@
 #include "frame_canvas.h"
 #include "panels/numeric_field.h"
 #include "pictura_debug_timing.h"
+#include "pictura_app/src/cxxqt_object/image_adjust/image_mode.cxxqt.h"
 
+#include <QtCore/QHash>
 #include <QtCore/QTemporaryDir>
 #include <QtWidgets/QTabBar>
 
@@ -18,16 +20,20 @@ namespace {
 // metric.
 constexpr int kWorkspaceMinWidth = 160;
 
-// The tab title's mode label: `document_mode()` reports the working mode key.
+// The tab title's mode label for an `image_mode()` key.
 QString modeLabel(const QString& mode)
 {
-    if (mode == QStringLiteral("grayscale")) {
-        return QStringLiteral("Grayscale");
-    }
-    if (mode == QStringLiteral("rgb")) {
-        return QStringLiteral("RGB");
-    }
-    return mode.toUpper();
+    static const QHash<QString, QString> labels = {
+        {QStringLiteral("bitmap"), QStringLiteral("Bitmap")},
+        {QStringLiteral("grayscale"), QStringLiteral("Grayscale")},
+        {QStringLiteral("duotone"), QStringLiteral("Duotone")},
+        {QStringLiteral("indexed"), QStringLiteral("Index")},
+        {QStringLiteral("rgb"), QStringLiteral("RGB")},
+        {QStringLiteral("cmyk"), QStringLiteral("CMYK")},
+        {QStringLiteral("lab"), QStringLiteral("Lab")},
+        {QStringLiteral("multichannel"), QStringLiteral("Multichannel")},
+    };
+    return labels.value(mode, mode.toUpper());
 }
 
 // Keycap label for a key event, matching the labels in `toolHintEntries`; empty
@@ -921,8 +927,8 @@ void PicturaMainWindow::updateTabTitle(int index)
         title += QStringLiteral(" @ %1%").arg(qRound(canvas->zoom() * 100.0));
     }
     if (PictureView* view = viewAt(index); view && view->has_document()) {
-        const QString mode = modeLabel(view->document_mode());
-        const int bits = view->document_depth_bits();
+        const QString mode = modeLabel(image_mode(*view));
+        const int bits = image_depth_bits(*view);
         if (!mode.isEmpty() && bits > 0) {
             title += QStringLiteral(" (%1/%2)").arg(mode).arg(bits);
         }

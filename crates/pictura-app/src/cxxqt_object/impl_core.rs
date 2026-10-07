@@ -280,10 +280,11 @@ impl qobject::PictureView {
                     }
                     // A `.psb` path forces a version-2 PSB container; every other
                     // native suffix (including an unknown one) writes a PSD.
+                    let doc = pictura_render::save_view(doc);
                     let written = if suffix == "psb" {
-                        pictura_codec::write_psb(doc)
+                        pictura_codec::write_psb(&doc)
                     } else {
-                        pictura_codec::write_psd(doc)
+                        pictura_codec::write_psd(&doc)
                     };
                     let Ok(bytes) = written else {
                         return false;

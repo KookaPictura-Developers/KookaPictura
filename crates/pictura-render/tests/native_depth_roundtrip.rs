@@ -33,6 +33,9 @@ fn native_depth_edit_survives_a_psd_round_trip() {
         gamma: 1.0,
         output_black: 0,
         output_white: 200,
+        red: None,
+        green: None,
+        blue: None,
     });
     apply_native(&adjustment, &mut source.samples, width, height, channels)
         .expect("native apply on retained samples");

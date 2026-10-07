@@ -4,43 +4,12 @@
 
 namespace pictura {
 
-// Image > Mode, Crop, Trim, and Duplicate. Lifted out of registerHandlers() to
-// keep frame_menus.cpp within its size budget; the handler bodies are
-// unchanged.
+// Image > Crop, Trim, and Duplicate (Image > Mode is frame_menus_image_mode.cpp).
+// Lifted out of registerHandlers() to keep frame_menus.cpp within its size
+// budget; the handler bodies are unchanged.
 void PicturaMainWindow::wireImageMenu()
 {
-    registry_->setHandler(command_ids::ImageMode16Bits, [this]() {
-        PictureView* view = activeView();
-        if (!view) {
-            return;
-        }
-        HdrConversionSpec spec;
-        if (!HdrConversionDialog::get(this, &spec)) {
-            return;
-        }
-        if (view->convert_depth(16, spec.exposure_ev, spec.gamma)) {
-            refresh();
-        }
-    });
-    registry_->setHandler(command_ids::ImageMode8Bits, [this]() {
-        PictureView* view = activeView();
-        if (!view) {
-            return;
-        }
-        HdrConversionSpec spec;
-        if (!HdrConversionDialog::get(this, &spec)) {
-            return;
-        }
-        if (view->convert_depth(8, spec.exposure_ev, spec.gamma)) {
-            refresh();
-        }
-    });
-    for (const char* id : {command_ids::ImageMode16Bits, command_ids::ImageMode8Bits}) {
-        registry_->setEnabledProvider(id, [this]() {
-            PictureView* view = activeView();
-            return view && view->has_document() && view->document_depth_bits() == 32;
-        });
-    }
+    wireImageModeMenu();
 
     registry_->setHandler(command_ids::ImageCrop, [this]() {
         if (tools_ && tools_->hasPendingCrop()) {

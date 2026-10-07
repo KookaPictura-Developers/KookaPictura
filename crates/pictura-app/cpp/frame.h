@@ -304,8 +304,13 @@ private:
     // frame_menus_align.cpp: Layer > Align / Align Layers To Selection /
     // Distribute, and the Move tool's buttons, over the selected layers.
     void wireAlignMenu();
-    // frame_menus_image.cpp: Image > Mode, Crop, Trim, and Duplicate.
+    // frame_menus_image.cpp: Image > Crop, Trim, and Duplicate.
     void wireImageMenu();
+    // frame_menus_image_mode.cpp: Image > Mode, the color-mode and bit-depth
+    // conversions with their prompts and dialogs.
+    void wireImageModeMenu();
+    void convertImageMode(const QString& mode);
+    void convertImageDepth(int bits);
     // frame_menus_adjust.cpp: Image > Adjustments and the Image > Auto commands.
     void wireImageAdjustments();
     // frame_menus_adjust.cpp: Layer > New Adjustment Layer, the sixteen

@@ -5,6 +5,7 @@ mod canvas;
 mod crop;
 mod depth;
 mod layer_ops;
+mod mode;
 mod native_store;
 mod orient;
 mod pictura_raw;
@@ -41,6 +42,11 @@ pub use layer_ops::{
     transform_layer_quad, transform_layer_warp, ungroup_layer, ungroup_paths, AlignEdge, Clip,
     LayerTransform, MergeError, MergeOutcome, MergeScope, NewLayerSpec, PasteMode, ShapeStroke,
     WarpMesh, WarpParams, WarpStyle,
+};
+pub use mode::{
+    can_convert_depth, can_convert_mode, convert_bit_depth, convert_mode, convert_to_bitmap,
+    convert_to_indexed, document_bit_depth, document_color_mode, indexed_exact_available,
+    save_view, BitmapMethod,
 };
 pub use orient::{flip_document, rotate_document};
 pub use pictura_raw::apply_pictura_raw;
