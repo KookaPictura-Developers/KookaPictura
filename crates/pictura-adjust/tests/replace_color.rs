@@ -1,7 +1,8 @@
 //! Replace Color (#164) kernel behaviour.
 
 use pictura_adjust::{
-    apply, replace_color_mask, AdjustError, Adjustment, ReplaceColorParams, ReplaceColorSample,
+    apply, replace_color_mask, replace_color_result, replace_color_shift_for, AdjustError,
+    Adjustment, ReplaceColorParams, ReplaceColorSample,
 };
 use pictura_core::PixelBuffer;
 
@@ -192,4 +193,82 @@ fn localized_ignores_a_sample_with_no_canvas_position() {
     let mask = replace_color_mask(&b, &p, 64);
     assert_eq!(mask.data[0], 255);
     assert_eq!(mask.data[63], 255, "the far pixel is not falloff-weighted");
+}
+
+#[test]
+fn saturation_scales_chroma_so_dark_noise_does_not_turn_vivid() {
+    // Near-black JPEG noise in two different hues, and a dark brown. Raising
+    // saturation must keep the noise dark and close to neutral (the old
+    // additive HSL boost made each pixel 81 % saturated in its noise hue).
+    let mut b = buf3(&[[12, 10, 14], [10, 13, 10], [60, 40, 30]]);
+    apply(
+        &Adjustment::ReplaceColor(ReplaceColorParams {
+            samples: vec![sample(-1, [0, 0, 0])],
+            fuzziness: 200.0,
+            localized: false,
+            hue: 0.0,
+            saturation: 81.0,
+            lightness: 0.0,
+        }),
+        &mut b,
+    )
+    .unwrap();
+    for i in 0..2 {
+        let p = px3(&b, i);
+        let spread = p.iter().max().unwrap() - p.iter().min().unwrap();
+        assert!(spread <= 20, "noise pixel {i} stays near neutral: {p:?}");
+    }
+    let brown = px3(&b, 2);
+    assert!(
+        brown[0] > 60 && brown[2] < 30,
+        "the brown deepens: {brown:?}"
+    );
+}
+
+#[test]
+fn lightness_blends_each_channel_toward_white() {
+    let mut b = buf3(&[[0, 0, 0]]);
+    apply(
+        &Adjustment::ReplaceColor(ReplaceColorParams {
+            samples: vec![sample(-1, [0, 0, 0])],
+            fuzziness: 200.0,
+            localized: false,
+            hue: 0.0,
+            saturation: 0.0,
+            lightness: 50.0,
+        }),
+        &mut b,
+    )
+    .unwrap();
+    assert_eq!(px3(&b, 0), [128, 128, 128]);
+}
+
+#[test]
+fn the_shift_for_a_result_reaches_it() {
+    // Each pair is reachable: a chromatic sample to a colour, lighter,
+    // darker, or gray.
+    for (sample, result) in [
+        ([200, 40, 30], [30, 60, 200]),
+        ([120, 90, 60], [220, 200, 180]),
+        ([90, 140, 200], [20, 30, 50]),
+        ([90, 140, 200], [128, 128, 128]),
+    ] {
+        let (hue, sat, light) = replace_color_shift_for(sample, result);
+        let reached = replace_color_result(sample, hue, sat, light);
+        assert!(
+            reached.iter().zip(result).all(|(a, b)| a.abs_diff(b) <= 3),
+            "{sample:?} -> {result:?}: ({hue}, {sat}, {light}) reaches {reached:?}"
+        );
+    }
+}
+
+#[test]
+fn a_gray_sample_takes_lightness_but_no_colour() {
+    // CS6 Help: pure gray, black, and white cannot be replaced with a colour.
+    let (hue, sat, light) = replace_color_shift_for([0, 0, 0], [0, 0, 255]);
+    assert_eq!((hue, sat, light), (0.0, 0.0, 50.0));
+    assert_eq!(
+        replace_color_result([0, 0, 0], 120.0, 100.0, 50.0),
+        [128, 128, 128]
+    );
 }

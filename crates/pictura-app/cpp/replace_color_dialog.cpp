@@ -367,21 +367,9 @@ QColor ReplaceColorDialog::resultForTest() const
     if (samples_.isEmpty()) {
         return {};
     }
-    float h = 0.0f;
-    float s = 0.0f;
-    float l = 0.0f;
-    samples_.back().color.getHslF(&h, &s, &l);
-    if (h < 0.0f) {
-        // Achromatic: Qt reports hue -1, which would wrap to nonsense.
-        h = 0.0f;
-    }
-    const float hue = float(hueSpin_->value()) / 360.0f;
-    const float sat = float(saturationSpin_->value()) / 100.0f;
-    const float light = float(lightnessSpin_->value()) / 100.0f;
-    h = std::fmod(h + hue + 1.0f, 1.0f);
-    s = sat >= 0.0f ? s + (1.0f - s) * sat : s * (1.0f + sat);
-    l = light >= 0.0f ? l + (1.0f - l) * light : l * (1.0f + light);
-    return QColor::fromHslF(h, qBound(0.0f, s, 1.0f), qBound(0.0f, l, 1.0f));
+    return QColor::fromRgb(image_replace_color_result(
+        samples_.back().color.rgb() & 0xffffffu, hueSpin_->value(), saturationSpin_->value(),
+        lightnessSpin_->value()));
 }
 
 void ReplaceColorDialog::refreshSwatches()
@@ -400,30 +388,8 @@ void ReplaceColorDialog::pickResult(const QColor& result)
     if (samples_.isEmpty() || !result.isValid()) {
         return;
     }
-    float h0 = 0.0f;
-    float s0 = 0.0f;
-    float l0 = 0.0f;
-    float h1 = 0.0f;
-    float s1 = 0.0f;
-    float l1 = 0.0f;
-    samples_.back().color.getHslF(&h0, &s0, &l0);
-    result.getHslF(&h1, &s1, &l1);
-    // The inverse of the shift `resultForTest` applies: Saturation and
-    // Lightness move toward 1 when positive and toward 0 when negative.
-    const auto amount = [](float from, float to) {
-        if (to >= from) {
-            return from >= 1.0f ? 0.0f : (to - from) / (1.0f - from);
-        }
-        return from <= 0.0f ? 0.0f : to / from - 1.0f;
-    };
-    int hue = 0;
-    if (h1 >= 0.0f && s1 > 0.0f) {
-        // Qt reports an achromatic sample's hue as -1; the engine (and
-        // `resultForTest`) rotate from 0.
-        hue = qRound((h1 - qMax(h0, 0.0f)) * 360.0f);
-        hue = (hue + 540) % 360 - 180;
-    }
-    const int values[] = {hue, qRound(amount(s0, s1) * 100.0f), qRound(amount(l0, l1) * 100.0f)};
+    const ::rust::Vec<std::int32_t> values =
+        image_replace_color_shift_for(samples_.back().color.rgb() & 0xffffffu, result.rgb() & 0xffffffu);
     QSlider* sliders[] = {hueSlider_, saturationSlider_, lightnessSlider_};
     QSpinBox* spins[] = {hueSpin_, saturationSpin_, lightnessSpin_};
     for (int i = 0; i < 3; ++i) {
