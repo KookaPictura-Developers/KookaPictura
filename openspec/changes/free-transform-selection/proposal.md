@@ -13,12 +13,14 @@ Transform"). Without a selection it still refuses the Background, as CS6 does.
 ## What Changes
 
 - `pictura_render::lift_selection(doc, path, coverage)`: copies the covered
-  pixels into a floating layer directly above the source, trimmed to the
-  selection bounds, and clears them from the source as Edit > Clear does (a
+  pixels into a floating layer directly above the source, built at the
+  selection bounds so memory follows the selection, and clears them from the source as Edit > Clear does (a
   Background clears to white).
-- `pictura_render::merge_lifted(doc, path)`: merges the floating layer back
-  down and keeps the source's identity (name, locks, Background flag, no
-  alpha).
+- `pictura_render::merge_lifted(doc, path)`: composites the floating pixels
+  back over the source's own channels and removes the floating layer, so the
+  source keeps every other attribute (name, locks, Background flag, opacity,
+  blend, mask, effects). A general Merge Down would bake opacity and blend and
+  drop the mask.
 - `pictura_render::can_lift_selection(layer)`: the shared refusal predicate.
 - **Free Transform session:** with a non-empty selection on a liftable layer,
   beginning a session lifts the pixels and transforms the floating layer. A

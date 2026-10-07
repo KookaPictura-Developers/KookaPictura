@@ -25,6 +25,7 @@ private slots:
     void ctrlEqualsZoomsIn();
     void freeTransformLiftsTheSelectedPixels();
     void freeTransformBoxHugsTheLayerContent();
+    void aLiftedSessionSwitchesToTheSiblingAtTheFloatingPath();
     void backgroundCopyIsUnlockedAndTheLockBadgeUnlocks();
 
 private:
@@ -217,6 +218,38 @@ void EditShortcutsTest::freeTransformBoxHugsTheLayerContent()
     QTest::keyClick(frame.imageView(), Qt::Key_Escape);
     QVERIFY(!view->transform_session_active());
     QCOMPARE(view->composite_argb(12, 10), filled);
+    frame.closeDocument(doc, false);
+}
+
+// While a selection on the Background is lifted, the floating layer sits at
+// path 1, the pre-session path of the layer above. Beginning Free Transform on
+// that layer must cancel the lift and switch to it, not treat it as the
+// active session.
+void EditShortcutsTest::aLiftedSessionSwitchesToTheSiblingAtTheFloatingPath()
+{
+    pictura::PicturaMainWindow& frame = *window_;
+    QTemporaryDir dir;
+    QVERIFY(openPhoto(dir));
+    pictura::PictureView* view = frame.activeView();
+    const int doc = frame.activeDocumentIndex();
+    QCOMPARE(view->add_layer(0), 1);
+    frame.selectLayerPath(QStringLiteral("1"));
+    QVERIFY(view->select_rect(20, 4, 8, 8, QStringLiteral("new"), 0.0));
+    QVERIFY(pictura::edit_fill(*view, qRgba(0, 0, 0, 255), -1, QStringLiteral("normal"), 100,
+                               false));
+    const QRgb photo = view->composite_argb(5, 5);
+
+    QVERIFY(view->select_rect(2, 2, 10, 10, QStringLiteral("new"), 0.0));
+    QVERIFY(view->begin_free_transform(QStringLiteral("0")));
+    QCOMPARE(view->layer_count(), 3);
+    QCOMPARE(view->transform_session_path(), QStringLiteral("1"));
+
+    view->deselect();
+    QVERIFY(view->begin_free_transform(QStringLiteral("1")));
+    QCOMPARE(view->layer_count(), 2);
+    QCOMPARE(view->transform_session_path(), QStringLiteral("1"));
+    QCOMPARE(view->composite_argb(5, 5), photo);
+    view->cancel_transform();
     frame.closeDocument(doc, false);
 }
 

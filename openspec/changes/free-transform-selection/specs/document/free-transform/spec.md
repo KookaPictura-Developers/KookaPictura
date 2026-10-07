@@ -2,7 +2,7 @@
 
 ### Requirement: Free Transform of selected pixels
 
-When a non-empty, document-sized selection is active and the target is a pixel layer or the Background that is not pixel-locked, not transparency-locked while it has alpha, and not position-locked unless it is the Background, beginning a Free Transform session (in any mode) SHALL lift the selected pixels: they are copied into a floating layer directly above the target, trimmed to the selection bounds, and cleared from the target as `Edit > Clear` clears them. The session SHALL then transform the floating layer. Committing a non-identity transform SHALL merge the floating layer back into the target, keeping the target's name, locks, and Background status, SHALL record exactly one `"Free Transform"` history state, and SHALL drop the selection. Cancelling, or committing an identity transform, SHALL restore the document exactly as it was before the lift and record nothing. `layer_can_free_transform` SHALL report such a target as transformable, so `Edit > Free Transform` is enabled for it. Without a selection, the existing refusals (including the Background) SHALL apply unchanged.
+When a non-empty, document-sized selection is active and the target is a pixel layer or the Background that is not pixel-locked, not transparency-locked while it has alpha, and not position-locked unless it is the Background, beginning a Free Transform session (in any mode) SHALL lift the selected pixels: they are copied into a floating layer directly above the target, trimmed to the selection bounds, and cleared from the target as `Edit > Clear` clears them. The session SHALL then transform the floating layer. Committing a non-identity transform SHALL composite the floating layer's pixels back over the target's own channels and remove it, leaving every other target attribute (name, locks, Background status, opacity, blend, mask, effects) unchanged; a target with alpha SHALL grow to hold pixels moved past its rect, and the Background SHALL clip them to its rect. The floating layer SHALL be sized to the selection bounds, not the document. A selection whose pixels are already the clear colour (white on a Background) SHALL still lift. A commit SHALL record exactly one `"Free Transform"` history state and SHALL drop the selection. Cancelling, or committing an identity transform, SHALL restore the document exactly as it was before the lift and record nothing. `layer_can_free_transform` SHALL report such a target as transformable, so `Edit > Free Transform` is enabled for it. Without a selection, the existing refusals (including the Background) SHALL apply unchanged.
 
 #### Scenario: A Background with no selection stays refused
 
@@ -13,6 +13,11 @@ When a non-empty, document-sized selection is active and the target is a pixel l
 
 - **WHEN** a rectangle is selected on the Background, Ctrl+T is pressed, the box is dragged 10 px right and 5 px down, and Return commits
 - **THEN** one `"Free Transform"` state is recorded, the document still has a single Background layer, the vacated pixels are white, the moved pixels land at the offset, and the selection is gone
+
+#### Scenario: Lifting and merging back leaves the layer exactly as it was
+
+- **WHEN** a selection on a layer with 50 % opacity, Multiply blend, and a mask is lifted and put back untransformed
+- **THEN** the document equals the one before the lift
 
 #### Scenario: Cancel restores the lifted pixels
 
