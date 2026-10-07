@@ -12,6 +12,7 @@
 #   6. an Adobe-tool creator string inside a tracked binary asset.
 #   7. a tracked reference-fixtures/ file, or tracked code depending on it.
 #   8. a missing required legal artifact (LICENSE, notices, deny.toml, CONTRIBUTING).
+#   9. a release-please version marker dropped from a version file.
 #
 # Runnable locally with no setup:   bash scripts/guard.sh
 #
@@ -124,6 +125,17 @@ fi
 if [ -z "$base" ]; then
     echo "note: GUARD_BASE unset; checked uncommitted docs/ changes only"
 fi
+
+# --- 5. release-please version markers present --------------------------------
+# The Generic updater only rewrites annotated lines, so a dropped marker silently
+# stops that file's version bump (release process in DEVELOPING.md).
+echo "check: release-please version markers present"
+for f in Cargo.toml CMakeLists.txt; do
+    if ! grep -q 'x-release-please-version' "$f"; then
+        echo "FAIL: $f is missing its x-release-please-version marker"
+        fail=1
+    fi
+done
 
 if [ "$fail" -ne 0 ]; then
     echo "guard: FAILED"

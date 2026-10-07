@@ -304,6 +304,49 @@ Serena updates the index itself as files change. C++ cross-file navigation reads
 - **Never weaken a test to make CI pass.** A changed golden baseline needs an
   explicit note in the task result.
 
+## Releases
+
+Releases are automated by
+[release-please](https://github.com/googleapis/release-please). Every push to
+`master` runs `.github/workflows/release-please.yml`, which maintains a single
+Release PR. Merging that PR writes `CHANGELOG.md`, bumps the version, and tags
+the release. The first release is `v0.1.0`; its changelog covers the project
+history, since there is no prior release.
+
+Versioning follows Conventional Commits: `fix` bumps the patch, `feat` the
+minor, and a breaking change (`!` or a `BREAKING CHANGE:` footer) the major. To
+force an exact version, add a `Release-As: X.Y.Z` footer to a commit before the
+Release PR is cut. (The `release-as` config key exists but upstream marks it
+deprecated; prefer the footer.)
+
+Three version files are updated together in the Release PR: `version.txt` (the
+strategy's version file), `Cargo.toml` (`[workspace.package].version`), and
+`CMakeLists.txt` (`project(... VERSION ...)`); `.release-please-manifest.json`
+tracks the last released version. The Cargo and CMake versions are bumped
+through the `x-release-please-version` marker on their version line, so keep
+that comment when editing them.
+
+`Cargo.lock` is not updated by the Release PR: the workspace-crate versions in
+it lag until the next `cargo` command rewrites them, so a release commit is not
+`--locked`-buildable until then (`scripts/third-party-licenses.py` uses
+`cargo metadata --locked` and will fail first). Packaging workflows must not
+assume `--locked` at the tag.
+
+### Release token
+
+`GITHUB_TOKEN` can open the Release PR only if *Settings → Actions → General →
+Workflow permissions → Allow GitHub Actions to create and approve pull requests*
+is enabled for the repository and allowed by the organization; both are set
+here. It still does not start `ci.yml` or `guards.yml` on the Release PR
+(GitHub suppresses runs caused by `GITHUB_TOKEN`), so that PR carries no checks.
+
+That is fine while `master` is unprotected. If required status checks are
+enabled, set a `RELEASE_PLEASE_TOKEN` secret — a fine-grained PAT with
+`contents`, `pull-requests`, and `issues` write — so the PR is authored by a
+real token and CI runs on it. The workflow prefers that secret automatically.
+The tag points at the Release PR's merge commit, so packaging workflows key off
+the release/tag event, not `master`.
+
 ## Where to go next
 
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — provenance, asset, and dependency rules.

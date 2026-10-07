@@ -1,0 +1,27 @@
+name: release-please
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          # Falls back to the default token. Set a RELEASE_PLEASE_TOKEN PAT to
+          # let packaging workflows run off the release event (see DEVELOPING).
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
