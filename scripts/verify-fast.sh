@@ -18,7 +18,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 base=""
-for ref in main kooka/main origin/main; do
+for ref in master main kooka/master kooka/main origin/master origin/main; do
   if git rev-parse --verify -q "$ref" >/dev/null 2>&1; then
     base=$(git merge-base HEAD "$ref" 2>/dev/null || true)
     [ -n "$base" ] && break
