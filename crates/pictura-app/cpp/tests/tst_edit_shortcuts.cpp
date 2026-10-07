@@ -8,6 +8,7 @@
 #include "frame.h"
 #include "image_view.h"
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/paint_tools/fills.cxxqt.h"
 
 #include "qt_test_support.h"
 
@@ -22,6 +23,10 @@ private slots:
     void deleteAndBackspaceClearTheSelection();
     void ctrlEqualsZoomsIn();
     void freeTransformLiftsTheSelectedPixels();
+    void freeTransformBoxHugsTheLayerContent();
+
+private:
+    bool openPhoto(QTemporaryDir& dir);
 
 private:
     pictura::test::ScopedStateHome stateHome_;
@@ -167,6 +172,49 @@ void EditShortcutsTest::freeTransformLiftsTheSelectedPixels()
     QVERIFY(!view->has_selection());
     view->undo();
     QCOMPARE(view->composite_argb(8, 8), blue);
+    frame.closeDocument(doc, false);
+}
+
+bool EditShortcutsTest::openPhoto(QTemporaryDir& dir)
+{
+    const QString png = dir.filePath(QStringLiteral("flower.png"));
+    QImage photo(40, 30, QImage::Format_RGB32);
+    photo.fill(qRgb(40, 140, 60));
+    if (!dir.isValid() || !photo.save(png) || !window_->openDocumentAtPath(png)) {
+        return false;
+    }
+    QCoreApplication::processEvents();
+    return window_->activeView() != nullptr;
+}
+
+// Ctrl+T on a canvas-sized layer holding a small square boxes the square, as
+// Photoshop does, not the canvas.
+void EditShortcutsTest::freeTransformBoxHugsTheLayerContent()
+{
+    pictura::PicturaMainWindow& frame = *window_;
+    QTemporaryDir dir;
+    QVERIFY(openPhoto(dir));
+    pictura::PictureView* view = frame.activeView();
+    const int doc = frame.activeDocumentIndex();
+    const int added = view->add_layer(0);
+    QVERIFY(added > 0);
+    const QString layer = QString::number(added);
+    frame.selectLayerPath(layer);
+    QVERIFY(view->select_rect(10, 8, 12, 9, QStringLiteral("new"), 0.0));
+    QVERIFY(pictura::edit_fill(*view, qRgba(0, 0, 0, 255), -1, QStringLiteral("normal"), 100,
+                               false));
+    view->deselect();
+    const QRgb filled = view->composite_argb(12, 10);
+
+    frame.imageView()->setFocus();
+    QTest::keyClick(frame.imageView(), Qt::Key_T, Qt::ControlModifier);
+    QVERIFY(view->transform_session_active());
+    QCOMPARE(view->transform_session_path(), layer);
+    QCOMPARE(view->transform_quad(),
+             QStringLiteral("10.00,8.00 22.00,8.00 22.00,17.00 10.00,17.00"));
+    QTest::keyClick(frame.imageView(), Qt::Key_Escape);
+    QVERIFY(!view->transform_session_active());
+    QCOMPARE(view->composite_argb(12, 10), filled);
     frame.closeDocument(doc, false);
 }
 

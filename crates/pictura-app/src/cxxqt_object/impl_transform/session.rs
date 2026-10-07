@@ -163,6 +163,13 @@ impl qobject::PictureView {
         }
         self.as_mut().drop_transform_session();
         let mut lifted = None;
+        if !lift {
+            // The box hugs the layer's visible pixels, not its (often
+            // canvas-sized) rect; the composite is unchanged.
+            if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
+                pictura_render::trim_to_content(doc, &path);
+            }
+        }
         if lift {
             let coverage = lift_coverage(self.rust()).unwrap_or_default();
             let mut rust = self.as_mut().rust_mut();

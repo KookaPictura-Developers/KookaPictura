@@ -91,6 +91,49 @@ pub fn merge_lifted(doc: &mut Document, lifted_path: &str) -> bool {
     true
 }
 
+/// Trim the pixel layer at `path` to the bounds of its non-transparent pixels,
+/// so a transform's box hugs the content as Photoshop's does. Only fully
+/// transparent pixels are dropped, so the composite is unchanged. False (and
+/// nothing changes) for a layer without alpha, with a mask, already tight, or
+/// with no visible pixels.
+pub fn trim_to_content(doc: &mut Document, path: &str) -> bool {
+    let Some(layer) = resolve_path(doc, path) else {
+        return false;
+    };
+    if layer.mask.is_some() || layer.is_group {
+        return false;
+    }
+    let Some(alpha) = layer.channels.iter().find(|c| c.id == -1) else {
+        return false;
+    };
+    let rect = layer.rect;
+    let (w, h) = (rect.width().max(0) as usize, rect.height().max(0) as usize);
+    let (mut left, mut top, mut right, mut bottom) = (w, h, 0, 0);
+    for y in 0..h {
+        for x in 0..w {
+            if alpha.data.get(y * w + x).is_some_and(|a| *a > 0) {
+                left = left.min(x);
+                right = right.max(x + 1);
+                top = top.min(y);
+                bottom = bottom.max(y + 1);
+            }
+        }
+    }
+    if right == 0 || (left, top, right, bottom) == (0, 0, w, h) {
+        return false;
+    }
+    let bounds = PsdRect {
+        top: rect.top + top as i32,
+        left: rect.left + left as i32,
+        bottom: rect.top + bottom as i32,
+        right: rect.left + right as i32,
+    };
+    if let Some(layer) = resolve_path_mut(doc, path) {
+        trim_layer(layer, bounds);
+    }
+    true
+}
+
 /// Crop `layer`'s channels from its rect to `bounds` (clamped inside it).
 fn trim_layer(layer: &mut pictura_core::Layer, bounds: PsdRect) {
     let old = layer.rect;
@@ -318,6 +361,31 @@ mod tests {
         doc.layers[0].lock = LockFlags::default().with(LockFlags::POSITION, true);
         assert!(lift_selection(&mut doc, "0", &square_coverage()).is_empty());
         assert_eq!(doc.layers.len(), 1);
+    }
+
+    #[test]
+    fn trim_to_content_hugs_the_opaque_pixels() {
+        let mut layer = pixel_layer("square", 4, 4, 40);
+        let alpha = layer.channels.iter_mut().find(|c| c.id == -1).unwrap();
+        alpha.data = square_coverage().into();
+        let mut doc = doc_with(vec![layer]);
+        assert!(trim_to_content(&mut doc, "0"));
+        assert_eq!(
+            doc.layers[0].rect,
+            PsdRect {
+                top: 1,
+                left: 1,
+                bottom: 3,
+                right: 3
+            }
+        );
+        assert_eq!(channel(&doc.layers[0], 0), &[40; 4]);
+        assert!(!trim_to_content(&mut doc, "0"), "already tight");
+
+        let mut empty = doc_with(vec![pixel_layer("empty", 4, 4, 0)]);
+        empty.layers[0].channels[3].data = vec![0; 16].into();
+        assert!(!trim_to_content(&mut empty, "0"));
+        assert_eq!(empty.layers[0].rect, rect(4, 4));
     }
 
     #[test]

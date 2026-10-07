@@ -144,9 +144,10 @@ pub use document_ops::{
     set_shape_fill, set_shape_stroke, set_slice, set_visible_paths, shape_bounds, shape_coverage,
     shape_fill, shape_fill_color, shape_stroke, smart_object_source_bytes, style_mesh,
     transform_layer, transform_layer_quad, transform_layer_warp, translate_layer,
-    translate_layer_active, translate_layer_index, translate_layer_rect, ungroup_layer,
-    ungroup_paths, AlignEdge, BitmapMethod, Clip, LayerTransform, MergeError, MergeOutcome,
-    MergeScope, NewLayerSpec, PasteMode, ShapeStroke, Slice, WarpMesh, WarpParams, WarpStyle,
+    translate_layer_active, translate_layer_index, translate_layer_rect, trim_to_content,
+    ungroup_layer, ungroup_paths, AlignEdge, BitmapMethod, Clip, LayerTransform, MergeError,
+    MergeOutcome, MergeScope, NewLayerSpec, PasteMode, ShapeStroke, Slice, WarpMesh, WarpParams,
+    WarpStyle,
 };
 
 mod text_render;

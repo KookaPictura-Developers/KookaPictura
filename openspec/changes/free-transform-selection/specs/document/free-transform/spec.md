@@ -19,6 +19,15 @@ When a non-empty, document-sized selection is active and the target is a pixel l
 - **WHEN** a session that lifted a selection is cancelled with Escape
 - **THEN** the floating layer is gone, every pixel is as before, and no history state is recorded
 
+### Requirement: Free Transform's box hugs the layer content
+
+Beginning a Free Transform session on a whole pixel layer (no lifted selection) SHALL first trim the layer's rect to the bounds of its non-transparent pixels when it has alpha and no mask, so the transform box and its handles surround the visible content rather than the canvas-sized rect. Only fully transparent pixels SHALL be dropped, so the composite is unchanged and no history state is recorded for the trim.
+
+#### Scenario: Ctrl+T on a canvas-sized layer boxes its content
+
+- **WHEN** Ctrl+T is pressed on a canvas-sized layer whose only pixels are a 12 × 9 square at (10, 8)
+- **THEN** the transform quad is that square's bounds, and cancelling leaves the composite unchanged
+
 ## MODIFIED Requirements
 
 ### Requirement: Skew, Distort, and Perspective menu commands

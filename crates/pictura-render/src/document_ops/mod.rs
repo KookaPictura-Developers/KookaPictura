@@ -40,9 +40,9 @@ pub use layer_ops::{
     set_lock_paths, set_opacity_paths, set_shape_fill, set_shape_stroke, set_visible_paths,
     shape_bounds, shape_coverage, shape_fill, shape_fill_color, shape_stroke,
     smart_object_source_bytes, style_mesh, transform_layer, transform_layer_quad,
-    transform_layer_warp, ungroup_layer, ungroup_paths, AlignEdge, Clip, LayerTransform,
-    MergeError, MergeOutcome, MergeScope, NewLayerSpec, PasteMode, ShapeStroke, WarpMesh,
-    WarpParams, WarpStyle,
+    transform_layer_warp, trim_to_content, ungroup_layer, ungroup_paths, AlignEdge, Clip,
+    LayerTransform, MergeError, MergeOutcome, MergeScope, NewLayerSpec, PasteMode, ShapeStroke,
+    WarpMesh, WarpParams, WarpStyle,
 };
 pub use mode::{
     can_convert_depth, can_convert_mode, convert_bit_depth, convert_mode, convert_to_bitmap,
