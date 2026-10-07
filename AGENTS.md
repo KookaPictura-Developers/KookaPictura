@@ -147,8 +147,12 @@ non-trivial changes and works from the CLI, with or without an agent** (the
   `feat: port the healing family from photorust`.
 - **PR titles** — conventional prefix + issue number in parentheses, e.g.
   `feat: port the healing family (#10)`.
-- **Enforcement** — review-enforced for now; commitlint + git hooks are
-  tracked in issue #69.
+- **Enforcement** — CI checks PR titles and every PR commit (`pr-conventions`
+  workflow, Conventional Commits with the type list above); the title check
+  fails on a malformed title. Squash-only merging makes the PR title the commit
+  release-please reads. It blocks merge only once `Conventional PR title` is a
+  required status check on `master`. The `(#N)` suffix and `TASK-ALLOWS-DOCS`
+  stay review-enforced; local `commit-msg` hooks are still tracked in issue #69.
 
 ## Rules
 
