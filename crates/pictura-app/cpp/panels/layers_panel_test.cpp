@@ -430,6 +430,19 @@ int LayersPanel::lockBadgeLeftForTest(const QString& path) const
     return delegate_->lockRect(tree_->visualRect(index)).left();
 }
 
+bool LayersPanel::clickLockBadgeForTest(const QString& path)
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || index.data(LockRole).toInt() == 0 || !delegate_ || !tree_) {
+        return false;
+    }
+    const QPoint pos = delegate_->lockRect(tree_->visualRect(index)).center();
+    QMouseEvent press(QEvent::MouseButtonPress, pos, tree_->viewport()->mapToGlobal(pos),
+                      Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(tree_->viewport(), &press);
+    return true;
+}
+
 QImage LayersPanel::rowThumbnailForTest(const QString& path) const
 {
     const QModelIndex index = proxyIndexForPath(path);

@@ -504,6 +504,7 @@ mod tests {
             mode: TransformMode::Free,
             quad: None,
             start_quad: source_corners(rect4()),
+            lifted: None,
         }
     }
 

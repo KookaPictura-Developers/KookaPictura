@@ -68,14 +68,36 @@ fn can_free_transform(doc: &pictura_core::Document, path: &str) -> bool {
     pictura_render::rasterize_smart_object(&mut clone, path)
 }
 
+/// The selection's coverage when it is document-sized and not empty: Free
+/// Transform then lifts the selected pixels instead of moving the whole layer.
+fn lift_coverage(rust: &super::super::state::PictureViewRust) -> Option<Vec<u8>> {
+    let doc = rust.doc.as_ref()?;
+    rust.selection
+        .as_ref()
+        .filter(|s| s.width == doc.width && s.height == doc.height)
+        .filter(|s| pictura_render::coverage_bounds(&s.data, doc.width, doc.height).is_some())
+        .map(|s| s.data.clone())
+}
+
+/// Whether a selection on `path` lifts its pixels for the transform (CS6
+/// transforms the selected pixels, a Background's included).
+fn lifts_selection(rust: &super::super::state::PictureViewRust, path: &str) -> bool {
+    rust.doc.as_ref().is_some_and(|doc| {
+        pictura_render::resolve_path(doc, path).is_some_and(pictura_render::can_lift_selection)
+    }) && lift_coverage(rust).is_some()
+}
+
 impl qobject::PictureView {
-    /// Whether `path` resolves to a transformable layer. Read-only.
+    /// Whether `path` resolves to a transformable layer, or to a layer whose
+    /// selected pixels can be lifted and transformed. Read-only.
     pub fn layer_can_free_transform(&self, path: &QString) -> bool {
         let path = path.to_string();
-        self.rust()
-            .doc
-            .as_ref()
-            .is_some_and(|doc| can_free_transform(doc, &path))
+        let rust = self.rust();
+        lifts_selection(rust, &path)
+            || rust
+                .doc
+                .as_ref()
+                .is_some_and(|doc| can_free_transform(doc, &path))
     }
 
     /// Begin a Free Transform session on the layer at `path`.
@@ -123,21 +145,49 @@ impl qobject::PictureView {
         {
             let rust = self.rust();
             if let Some(session) = rust.transform_session.as_ref() {
-                if session.path == path && session.mode == mode {
+                let source = session.lifted.as_ref().map_or(&session.path, |(s, _)| s);
+                if (session.path == path || *source == path) && session.mode == mode {
                     return true;
                 }
             }
         }
-        let ok = self
-            .rust()
-            .doc
-            .as_ref()
-            .is_some_and(|doc| can_free_transform(doc, &path));
-        if !ok {
+        let lift = lifts_selection(self.rust(), &path);
+        if !lift
+            && !self
+                .rust()
+                .doc
+                .as_ref()
+                .is_some_and(|doc| can_free_transform(doc, &path))
+        {
             return false;
         }
-        self.as_mut().rust_mut().transform_session = None;
+        self.as_mut().drop_transform_session();
+        let mut lifted = None;
+        if !lift {
+            // The box hugs the layer's visible pixels, not its (often
+            // canvas-sized) rect; the composite is unchanged.
+            if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
+                pictura_render::trim_to_content(doc, &path);
+            }
+        }
+        if lift {
+            let coverage = lift_coverage(self.rust()).unwrap_or_default();
+            let mut rust = self.as_mut().rust_mut();
+            let Some(doc) = rust.doc.as_mut() else {
+                return false;
+            };
+            let before = Box::new(doc.clone());
+            let floating = pictura_render::lift_selection(doc, &path, &coverage);
+            if floating.is_empty() {
+                *doc = *before;
+                return false;
+            }
+            lifted = Some((std::mem::replace(&mut path, floating), before));
+        }
         if !self.as_mut().compute_transform_preview(&path) {
+            if let Some((_, before)) = lifted {
+                self.as_mut().rust_mut().doc = Some(*before);
+            }
             return false;
         }
         let rect = {
@@ -167,6 +217,7 @@ impl qobject::PictureView {
             mode,
             quad: mode.is_projective().then_some(corners),
             start_quad: corners,
+            lifted,
         });
         true
     }
@@ -194,9 +245,18 @@ impl qobject::PictureView {
         true
     }
 
-    /// Clear the session without touching the document.
-    pub fn cancel_transform(mut self: Pin<&mut Self>) {
-        self.as_mut().rust_mut().transform_session = None;
+    /// Clear the session; a lifted selection's pixels go back where they were.
+    pub fn cancel_transform(self: Pin<&mut Self>) {
+        self.drop_transform_session();
+    }
+
+    /// Drop any session, restoring the document from before a lift.
+    fn drop_transform_session(mut self: Pin<&mut Self>) {
+        let session = self.as_mut().rust_mut().transform_session.take();
+        if let Some((_, before)) = session.and_then(|session| session.lifted) {
+            self.as_mut().rust_mut().doc = Some(*before);
+            self.as_mut().recomposite();
+        }
     }
 
     /// Commit the session: one `transform_layer` call in `Free` or
@@ -231,7 +291,7 @@ impl qobject::PictureView {
                 && transform.dx == 0.0
                 && transform.dy == 0.0;
             if identity {
-                self.as_mut().rust_mut().transform_session = None;
+                self.as_mut().drop_transform_session();
                 return false;
             }
         } else {
@@ -240,7 +300,7 @@ impl qobject::PictureView {
                 .zip(source.iter())
                 .all(|(q, s)| (q.0 - s.0).abs() <= 1e-9 && (q.1 - s.1).abs() <= 1e-9);
             if identity {
-                self.as_mut().rust_mut().transform_session = None;
+                self.as_mut().drop_transform_session();
                 return false;
             }
         }
@@ -254,7 +314,33 @@ impl qobject::PictureView {
             }
             None => false,
         };
-        self.as_mut().rust_mut().transform_session = None;
+        let lifted = self
+            .as_mut()
+            .rust_mut()
+            .transform_session
+            .take()
+            .and_then(|session| session.lifted);
+        if let Some((_, before)) = lifted {
+            let merged = changed
+                && self
+                    .as_mut()
+                    .rust_mut()
+                    .doc
+                    .as_mut()
+                    .is_some_and(|doc| pictura_render::merge_lifted(doc, &path));
+            if !merged {
+                self.as_mut().rust_mut().doc = Some(*before);
+                self.as_mut().recomposite();
+                return false;
+            }
+            // ponytail: CS6 carries the selection border through the transform;
+            // it is dropped here rather than left outlining the old pixels.
+            self.as_mut().rust_mut().selection = None;
+            self.as_mut().clear_link_sets();
+            self.as_mut().recomposite();
+            self.as_mut().record("Free Transform");
+            return true;
+        }
         if changed {
             self.as_mut().clear_link_sets();
             // The transform only moves the layer, so the union of its source rect

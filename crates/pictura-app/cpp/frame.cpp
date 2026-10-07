@@ -1059,6 +1059,9 @@ void PicturaMainWindow::keyPressEvent(QKeyEvent* event)
         && tools_->removeLassoPoint()) {
         return;
     }
+    if (dispatchCommandKey(event)) {
+        return;
+    }
     if (!event->isAutoRepeat() && event->key() == Qt::Key_Escape && tools_
         && tools_->cancelPolygonLasso()) {
         return;

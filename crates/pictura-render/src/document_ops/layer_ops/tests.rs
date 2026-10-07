@@ -412,6 +412,10 @@ fn layer_from_background_clears_flag_and_unlocks() {
         doc.layers[0].name, "Layer 1",
         "renamed to the next free name"
     );
+    assert!(
+        doc.layers[0].channels.iter().any(|c| c.id == -1),
+        "it can take transparency"
+    );
 
     let before = doc.clone();
     assert!(!layer_from_background(&mut doc, "0"), "not a background");
@@ -505,6 +509,32 @@ fn duplicate_applies_everywhere() {
             "normal"
         ]
     );
+    assert!(doc.layers[0].background);
+    let copy = &doc.layers[1];
+    assert!(!copy.background, "one Background; its copy is ordinary");
+    assert_eq!(copy.lock.bits(), 0, "and unlocked");
+    assert!(copy.channels.iter().any(|c| c.id == -1));
+    assert_eq!(
+        doc.layers[3].lock, doc.layers[2].lock,
+        "other copies keep locks"
+    );
+}
+
+#[test]
+fn duplicating_a_background_makes_an_unlocked_layer_with_alpha() {
+    let mut background = pixel_layer("Background", 4, 4, 9);
+    background.channels.retain(|c| c.id != -1);
+    background.background = true;
+    background.lock = LockFlags::default()
+        .with(LockFlags::TRANSPARENCY, true)
+        .with(LockFlags::POSITION, true);
+    let mut doc = doc_with(vec![background]);
+    assert_eq!(duplicate_layer(&mut doc, 0), 1);
+    let copy = &doc.layers[1];
+    assert!(!copy.background && copy.lock.bits() == 0);
+    let alpha = copy.channels.iter().find(|c| c.id == -1).unwrap();
+    assert_eq!(&alpha.data[..], &[255; 16]);
+    assert!(doc.layers[0].background);
 }
 
 #[test]

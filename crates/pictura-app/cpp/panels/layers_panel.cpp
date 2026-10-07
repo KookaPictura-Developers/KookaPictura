@@ -710,6 +710,19 @@ bool LayersPanel::eventFilter(QObject* watched, QEvent* event)
                     return true;
                 }
             }
+            // The Background's lock badge unlocks it: one click makes it an
+            // ordinary layer, as Photoshop's lock icon does.
+            if (index.isValid() && view_
+                && index.data(KindRole).toString() == QLatin1String("background")
+                && delegate_->lockRect(tree_->visualRect(index)).contains(pos)) {
+                const QString path = pathForProxyIndex(index);
+                if (view_->convert_background(path, view_->next_layer_name(QStringLiteral("Layer")),
+                                              0)) {
+                    refresh();
+                    selectPath(path);
+                }
+                return true;
+            }
             if (index.isValid() && delegate_->eyeColumnContains(tree_->visualRect(index), pos)) {
                 const QString path = pathForProxyIndex(index);
                 const QString kind = index.data(KindRole).toString();

@@ -3,13 +3,161 @@
 //! layer's rectangle.
 
 use pictura_core::{
-    layer_move_locked, layer_pixel_locked, layer_transparency_locked, Document, LayerMask,
+    layer_move_locked, layer_pixel_locked, layer_transparency_locked, Document, LayerMask, PsdRect,
 };
 
+use super::clipboard::{clear_layer, coverage_bounds};
 use super::merge::{merge_scope, MergeScope};
 use super::paths::{resolve_path, resolve_path_mut};
 use super::via::{layer_via_copy, layer_via_cut};
 use crate::document_ops::canvas::offset_rect;
+
+/// Lift the pixels covered by `coverage` (document-sized, `0..=255`) off the
+/// layer at `source_path` for a transform: copy them into a new layer directly
+/// above, trimmed to the coverage bounds, and clear them from the source as
+/// Edit > Clear does (a Background clears to white). Unlike a move, a
+/// Background may be lifted. Returns the new layer's path; empty for a group,
+/// an adjustment, a layer without pixels, a pixel lock, a transparency lock on
+/// a layer with alpha, or empty coverage. Merge it back with
+/// [`MergeScope::Down`].
+pub fn lift_selection(doc: &mut Document, source_path: &str, coverage: &[u8]) -> String {
+    if !resolve_path(doc, source_path).is_some_and(can_lift_selection) {
+        return String::new();
+    }
+    let Some(bounds) = coverage_bounds(coverage, doc.width, doc.height) else {
+        return String::new();
+    };
+    let mask = LayerMask {
+        rect: PsdRect {
+            top: 0,
+            left: 0,
+            bottom: doc.height as i32,
+            right: doc.width as i32,
+        },
+        data: Some(coverage.to_vec().into()),
+        ..Default::default()
+    };
+    let lifted = layer_via_copy(doc, source_path, &mask);
+    if lifted.is_empty() || !clear_layer(doc, source_path, Some(coverage)) {
+        return String::new();
+    }
+    if let Some(layer) = resolve_path_mut(doc, &lifted) {
+        trim_layer(layer, bounds);
+    }
+    lifted
+}
+
+/// Whether [`lift_selection`] can take pixels from `layer`: a pixel layer or
+/// Background without a pixel lock or a transparency lock on its alpha, and
+/// not position-locked unless it is the Background (which always is).
+pub fn can_lift_selection(layer: &pictura_core::Layer) -> bool {
+    let has_alpha = layer.channels.iter().any(|c| c.id == -1);
+    !layer.is_group
+        && layer.adjustment.is_none()
+        && layer.channels.iter().any(|c| c.id == 0)
+        && !layer_pixel_locked(layer)
+        && !(has_alpha && layer_transparency_locked(layer))
+        && (layer.background || !layer_move_locked(layer))
+}
+
+/// Merge a [`lift_selection`] layer at `lifted_path` back down into its source,
+/// keeping the source's identity: a Background stays the locked, alpha-less
+/// Background, and any layer keeps its name and locks. False when the merge is
+/// refused.
+pub fn merge_lifted(doc: &mut Document, lifted_path: &str) -> bool {
+    let Some(mut segments) = super::paths::parse_path(lifted_path) else {
+        return false;
+    };
+    match segments.last_mut() {
+        Some(last) if *last > 0 => *last -= 1,
+        _ => return false,
+    }
+    let Some(source) = resolve_path(doc, &super::paths::format_segments(&segments)) else {
+        return false;
+    };
+    let (name, lock, background) = (source.name.clone(), source.lock, source.background);
+    let had_alpha = source.channels.iter().any(|c| c.id == -1);
+    let Ok(outcome) = merge_scope(doc, MergeScope::Down(lifted_path)) else {
+        return false;
+    };
+    if let Some(merged) = resolve_path_mut(doc, &outcome.path) {
+        merged.name = name;
+        merged.lock = lock;
+        merged.background = background;
+        if !had_alpha {
+            merged.channels.retain(|c| c.id != -1);
+        }
+    }
+    true
+}
+
+/// Trim the pixel layer at `path` to the bounds of its non-transparent pixels,
+/// so a transform's box hugs the content as Photoshop's does. Only fully
+/// transparent pixels are dropped, so the composite is unchanged. False (and
+/// nothing changes) for a layer without alpha, with a mask, already tight, or
+/// with no visible pixels.
+pub fn trim_to_content(doc: &mut Document, path: &str) -> bool {
+    let Some(layer) = resolve_path(doc, path) else {
+        return false;
+    };
+    if layer.mask.is_some() || layer.is_group {
+        return false;
+    }
+    let Some(alpha) = layer.channels.iter().find(|c| c.id == -1) else {
+        return false;
+    };
+    let rect = layer.rect;
+    let (w, h) = (rect.width().max(0) as usize, rect.height().max(0) as usize);
+    let (mut left, mut top, mut right, mut bottom) = (w, h, 0, 0);
+    for y in 0..h {
+        for x in 0..w {
+            if alpha.data.get(y * w + x).is_some_and(|a| *a > 0) {
+                left = left.min(x);
+                right = right.max(x + 1);
+                top = top.min(y);
+                bottom = bottom.max(y + 1);
+            }
+        }
+    }
+    if right == 0 || (left, top, right, bottom) == (0, 0, w, h) {
+        return false;
+    }
+    let bounds = PsdRect {
+        top: rect.top + top as i32,
+        left: rect.left + left as i32,
+        bottom: rect.top + bottom as i32,
+        right: rect.left + right as i32,
+    };
+    if let Some(layer) = resolve_path_mut(doc, path) {
+        trim_layer(layer, bounds);
+    }
+    true
+}
+
+/// Crop `layer`'s channels from its rect to `bounds` (clamped inside it).
+fn trim_layer(layer: &mut pictura_core::Layer, bounds: PsdRect) {
+    let old = layer.rect;
+    let new = PsdRect {
+        top: bounds.top.max(old.top),
+        left: bounds.left.max(old.left),
+        bottom: bounds.bottom.min(old.bottom),
+        right: bounds.right.min(old.right),
+    };
+    if new.width() <= 0 || new.height() <= 0 || new == old {
+        return;
+    }
+    let old_w = old.width() as usize;
+    let (w, x0) = (new.width() as usize, (new.left - old.left) as usize);
+    for channel in &mut layer.channels {
+        let mut data = Vec::with_capacity(w * new.height() as usize);
+        for y in new.top..new.bottom {
+            let row = (y - old.top) as usize * old_w + x0;
+            data.extend_from_slice(&channel.data[row..row + w]);
+        }
+        channel.data = data.into();
+    }
+    layer.rect = new;
+}
 
 /// Move the pixels covered by `mask` from the layer at `source_path` by
 /// `(dx, dy)`. With `duplicate` the source stays intact and a new layer sits
@@ -134,6 +282,110 @@ mod tests {
 
     fn alpha(layer: &Layer) -> &[u8] {
         &layer.channels.iter().find(|c| c.id == -1).unwrap().data
+    }
+
+    fn square_coverage() -> Vec<u8> {
+        let mut coverage = vec![0; 16];
+        for i in [5, 6, 9, 10] {
+            coverage[i] = 255;
+        }
+        coverage
+    }
+
+    fn channel(layer: &Layer, id: i16) -> &[u8] {
+        &layer.channels.iter().find(|c| c.id == id).unwrap().data
+    }
+
+    #[test]
+    fn lift_copies_the_covered_pixels_trimmed_and_clears_them() {
+        let mut doc = doc_with(vec![pixel_layer("base", 4, 4, 40)]);
+        let lifted = lift_selection(&mut doc, "0", &square_coverage());
+        assert_eq!(lifted, "1");
+        let layer = &doc.layers[1];
+        assert_eq!(
+            layer.rect,
+            PsdRect {
+                top: 1,
+                left: 1,
+                bottom: 3,
+                right: 3
+            },
+            "trimmed to the selection"
+        );
+        assert_eq!(channel(layer, 0), &[40; 4]);
+        assert_eq!(alpha(layer), &[255; 4]);
+        let source = alpha(&doc.layers[0]);
+        assert_eq!((source[5], source[10], source[0]), (0, 0, 255));
+
+        assert!(merge_scope(&mut doc, MergeScope::Down(&lifted)).is_ok());
+        assert_eq!(doc.layers.len(), 1);
+        assert_eq!(
+            alpha(&doc.layers[0])[5],
+            255,
+            "an untransformed lift merges back"
+        );
+    }
+
+    #[test]
+    fn a_locked_background_can_be_lifted_and_stays_the_background() {
+        let mut background = pixel_layer("Background", 4, 4, 40);
+        background.channels.retain(|c| c.id != -1);
+        background.background = true;
+        background.lock = LockFlags::default()
+            .with(LockFlags::TRANSPARENCY, true)
+            .with(LockFlags::POSITION, true);
+        let mut doc = doc_with(vec![background]);
+        let lifted = lift_selection(&mut doc, "0", &square_coverage());
+        assert_eq!(lifted, "1");
+        assert_eq!(
+            channel(&doc.layers[0], 0)[5],
+            255,
+            "the hole clears to white"
+        );
+        assert_eq!(channel(&doc.layers[0], 0)[0], 40);
+
+        assert!(merge_lifted(&mut doc, &lifted));
+        assert_eq!(doc.layers.len(), 1);
+        assert!(doc.layers[0].background);
+        assert!(doc.layers[0].lock.contains(LockFlags::POSITION));
+        assert!(!doc.layers[0].channels.iter().any(|c| c.id == -1));
+        assert_eq!(channel(&doc.layers[0], 0)[5], 40);
+    }
+
+    #[test]
+    fn lift_refuses_empty_coverage_and_pixel_and_position_locks() {
+        let mut doc = doc_with(vec![pixel_layer("base", 4, 4, 40)]);
+        assert!(lift_selection(&mut doc, "0", &[0; 16]).is_empty());
+        doc.layers[0].lock = LockFlags::default().with(LockFlags::PIXELS, true);
+        assert!(lift_selection(&mut doc, "0", &square_coverage()).is_empty());
+        doc.layers[0].lock = LockFlags::default().with(LockFlags::POSITION, true);
+        assert!(lift_selection(&mut doc, "0", &square_coverage()).is_empty());
+        assert_eq!(doc.layers.len(), 1);
+    }
+
+    #[test]
+    fn trim_to_content_hugs_the_opaque_pixels() {
+        let mut layer = pixel_layer("square", 4, 4, 40);
+        let alpha = layer.channels.iter_mut().find(|c| c.id == -1).unwrap();
+        alpha.data = square_coverage().into();
+        let mut doc = doc_with(vec![layer]);
+        assert!(trim_to_content(&mut doc, "0"));
+        assert_eq!(
+            doc.layers[0].rect,
+            PsdRect {
+                top: 1,
+                left: 1,
+                bottom: 3,
+                right: 3
+            }
+        );
+        assert_eq!(channel(&doc.layers[0], 0), &[40; 4]);
+        assert!(!trim_to_content(&mut doc, "0"), "already tight");
+
+        let mut empty = doc_with(vec![pixel_layer("empty", 4, 4, 0)]);
+        empty.layers[0].channels[3].data = vec![0; 16].into();
+        assert!(!trim_to_content(&mut empty, "0"));
+        assert_eq!(empty.layers[0].rect, rect(4, 4));
     }
 
     #[test]

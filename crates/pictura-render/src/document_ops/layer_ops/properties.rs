@@ -227,8 +227,8 @@ fn match_key(layer: &Layer) -> (u8, [u8; 4], BlendMode) {
 }
 
 /// Deep-clone every listed node directly above itself, naming each copy
-/// `"<name> copy"`. Eligible everywhere (Background and locked included).
-/// Returns the new paths.
+/// `"<name> copy"`. Eligible everywhere (Background and locked included); a
+/// Background's copy is an ordinary, unlocked layer. Returns the new paths.
 pub fn duplicate_paths(doc: &mut Document, paths: &[&str]) -> Vec<String> {
     let selected = selected_paths(doc, paths, true);
     let mut created = Vec::new();
@@ -238,6 +238,9 @@ pub fn duplicate_paths(doc: &mut Document, paths: &[&str]) -> Vec<String> {
         };
         let mut copy = container[index].clone();
         copy.name = format!("{} copy", copy.name);
+        if copy.background {
+            super::create::release_background(&mut copy);
+        }
         container.insert(index + 1, copy);
         let mut new_segments = segments;
         if let Some(last) = new_segments.last_mut() {
