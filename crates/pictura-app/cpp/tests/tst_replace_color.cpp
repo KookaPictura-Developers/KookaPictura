@@ -152,12 +152,14 @@ void ReplaceColorTest::opensOnTheForegroundAndPicksAResult()
     QCOMPARE(lightness->value(), 100);
     QCOMPARE(dialog->resultForTest().rgb(), qRgb(255, 255, 255));
     QCOMPARE(view_->composite_argb(5, 5), qRgb(255, 255, 255));
-    // Black is achromatic: the shift rotates from hue 0, so blue stays blue
-    // rather than the hue being dropped (a saturated red).
+    // Black is achromatic: as CS6 Help says, it cannot take a colour, so
+    // picking blue moves only Lightness, and the swatch shows what the
+    // canvas gets.
     dialog->pickResultForTest(QColor(0, 0, 255));
-    QCOMPARE(dialog->findChild<QSpinBox*>(QStringLiteral("replaceColorHue"))->value(), -120);
-    QCOMPARE(dialog->resultForTest().rgb(), qRgb(0, 0, 255));
-    QCOMPARE(view_->composite_argb(5, 5), qRgb(0, 0, 255));
+    QCOMPARE(dialog->findChild<QSpinBox*>(QStringLiteral("replaceColorHue"))->value(), 0);
+    QCOMPARE(lightness->value(), 50);
+    QCOMPARE(dialog->resultForTest().rgb(), qRgb(128, 128, 128));
+    QCOMPARE(view_->composite_argb(5, 5), qRgb(128, 128, 128));
     dialog->reject();
 }
 

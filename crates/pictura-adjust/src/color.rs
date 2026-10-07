@@ -61,14 +61,19 @@ pub(crate) fn hue_saturation_rgb(p: &HueSaturationParams, r: f64, g: f64, b: f64
     }
     let h = (h + dh).rem_euclid(360.0);
     let s = (s * (1.0 + ds)).clamp(0.0, 1.0);
-    let l = if dl >= 0.0 {
-        l + dl * (1.0 - l)
-    } else {
-        l + dl * l
-    }
-    .clamp(0.0, 1.0);
     let (nr, ng, nb) = hsl_to_rgb(h, s, l);
-    [nr, ng, nb]
+    // Lightness blends each channel toward white or black after the hue and
+    // saturation move, as Photoshop does: scaling HSL L instead keeps S and
+    // turns near-neutral dark noise into saturated patches.
+    let lighten = |c: f64| {
+        if dl >= 0.0 {
+            c + dl * (1.0 - c)
+        } else {
+            c * (1.0 + dl)
+        }
+        .clamp(0.0, 1.0)
+    };
+    [lighten(nr), lighten(ng), lighten(nb)]
 }
 
 pub(crate) fn hue_saturation(

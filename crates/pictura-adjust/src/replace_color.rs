@@ -106,6 +106,88 @@ fn check_params(p: &ReplaceColorParams) -> Result<(), AdjustError> {
     Ok(())
 }
 
+/// One pixel (`0.0..=1.0` RGB) through the replacement shift, as Photoshop's
+/// Hue/Saturation does it: the hue turns in HSL; saturation scales the
+/// pixel's chroma about its HSL lightness (by `1 / (1 - sat)` raising, by
+/// `1 + sat` lowering), so a near-gray pixel stays near gray instead of its
+/// JPEG noise blowing up into vivid blocks, and a pure gray cannot take a
+/// colour; lightness then blends each channel toward white or black.
+/// ponytail: the reverse-engineered model in common use; Photoshop's own
+/// kernel is closed.
+pub(crate) fn shift(rgb: [f64; 3], hue: f64, sat: f64, light: f64) -> [f64; 3] {
+    let (h, s, l) = rgb_to_hsl(rgb[0], rgb[1], rgb[2]);
+    let (r, g, b) = hsl_to_rgb((h + hue).rem_euclid(360.0), s, l);
+    let gain = if sat >= 0.0 {
+        1.0 / (1.0 - sat).max(1e-3)
+    } else {
+        1.0 + sat
+    };
+    [r, g, b].map(|c| {
+        let c = (l + (c - l) * gain).clamp(0.0, 1.0);
+        if light >= 0.0 {
+            c + (1.0 - c) * light
+        } else {
+            c * (1.0 + light)
+        }
+    })
+}
+
+/// The colour `sample` becomes at `hue` degrees and `saturation` /
+/// `lightness` percent: the dialog's Result swatch.
+pub fn replace_color_result(sample: [u8; 3], hue: f64, saturation: f64, lightness: f64) -> [u8; 3] {
+    shift(
+        sample.map(|v| f64::from(v) / 255.0),
+        hue,
+        saturation / 100.0,
+        lightness / 100.0,
+    )
+    .map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8)
+}
+
+/// The `(hue, saturation, lightness)` shift (degrees, percent, percent) that
+/// takes `sample` closest to `result`: the inverse of
+/// [`replace_color_result`] for the dialog's Result colour picker. A gray
+/// sample cannot take a hue or chroma, so only its lightness moves.
+pub fn replace_color_shift_for(sample: [u8; 3], result: [u8; 3]) -> (f64, f64, f64) {
+    let unit = |c: [u8; 3]| c.map(|v| f64::from(v) / 255.0);
+    let chroma = |c: [f64; 3]| c[0].max(c[1]).max(c[2]) - c[0].min(c[1]).min(c[2]);
+    let (from, to) = (unit(sample), unit(result));
+    let (h0, _, l0) = rgb_to_hsl(from[0], from[1], from[2]);
+    let (h1, _, l1) = rgb_to_hsl(to[0], to[1], to[2]);
+    // Lightness moves every channel (and so L) linearly toward white or black.
+    let light = if l1 >= l0 {
+        if l0 >= 1.0 {
+            0.0
+        } else {
+            (l1 - l0) / (1.0 - l0)
+        }
+    } else if l0 <= 0.0 {
+        0.0
+    } else {
+        l1 / l0 - 1.0
+    };
+    let (c0, c1) = (chroma(from), chroma(to));
+    // The chroma gain before the lightness blend, which scales chroma by
+    // `1 - |light|`.
+    let room = 1.0 - light.abs();
+    let (hue, sat) = if c0 <= 0.0 || c1 <= 0.0 || room <= 0.0 {
+        (0.0, if c1 <= 0.0 && c0 > 0.0 { -1.0 } else { 0.0 })
+    } else {
+        let gain = c1 / (c0 * room);
+        let sat = if gain >= 1.0 {
+            1.0 - 1.0 / gain
+        } else {
+            gain - 1.0
+        };
+        ((h1 - h0 + 540.0).rem_euclid(360.0) - 180.0, sat)
+    };
+    (
+        hue,
+        (sat * 100.0).clamp(-100.0, 100.0),
+        (light * 100.0).clamp(-100.0, 100.0),
+    )
+}
+
 /// Apply Replace Color in place to a planar buffer (alpha untouched). `n` is
 /// the pixel count from [`crate::common::validate`]. Empty samples is a no-op.
 pub(crate) fn replace_color(
@@ -118,8 +200,6 @@ pub(crate) fn replace_color(
         return Ok(());
     }
     let sigma = sigma_sq(buf.width, buf.height);
-    let sat = p.saturation / 100.0;
-    let light = p.lightness / 100.0;
     let width = buf.width as usize;
     for i in 0..n {
         let x = (i % width) as i32;
@@ -129,19 +209,12 @@ pub(crate) fn replace_color(
         if weight <= 0.0 {
             continue;
         }
-        let (hh, ss, ll) = rgb_to_hsl(r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0);
-        let nh = (hh + p.hue).rem_euclid(360.0);
-        let ns = if sat >= 0.0 {
-            ss + (1.0 - ss) * sat
-        } else {
-            ss * (1.0 + sat)
-        };
-        let nl = if light >= 0.0 {
-            ll + (1.0 - ll) * light
-        } else {
-            ll * (1.0 + light)
-        };
-        let (nr, ng, nb) = hsl_to_rgb(nh, ns.clamp(0.0, 1.0), nl.clamp(0.0, 1.0));
+        let [nr, ng, nb] = shift(
+            [r, g, b].map(|v| v as f64 / 255.0),
+            p.hue,
+            p.saturation / 100.0,
+            p.lightness / 100.0,
+        );
         let blend = |orig: u8, new: f64| -> u8 {
             let o = orig as f64 / 255.0;
             ((o + (new - o) * weight).clamp(0.0, 1.0) * 255.0 + 0.5) as u8

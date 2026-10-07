@@ -71,7 +71,38 @@ pub mod ffi {
             saturation: f64,
             lightness: f64,
         ) -> bool;
+
+        /// The Result swatch: `sample` (`0xRRGGBB`) shifted by `hue` degrees
+        /// and `saturation` / `lightness` percent, as `0xRRGGBB`.
+        fn image_replace_color_result(
+            sample: u32,
+            hue: f64,
+            saturation: f64,
+            lightness: f64,
+        ) -> u32;
+
+        /// The rounded `[hue, saturation, lightness]` that take `sample`
+        /// closest to `result` (both `0xRRGGBB`).
+        fn image_replace_color_shift_for(sample: u32, result: u32) -> Vec<i32>;
     }
+}
+
+fn rgb_of(c: u32) -> [u8; 3] {
+    [(c >> 16) as u8, (c >> 8) as u8, c as u8]
+}
+
+fn image_replace_color_result(sample: u32, hue: f64, saturation: f64, lightness: f64) -> u32 {
+    let [r, g, b] =
+        pictura_render::replace_color_result(rgb_of(sample), hue, saturation, lightness);
+    u32::from_be_bytes([0, r, g, b])
+}
+
+fn image_replace_color_shift_for(sample: u32, result: u32) -> Vec<i32> {
+    let (hue, saturation, lightness) =
+        pictura_render::replace_color_shift_for(rgb_of(sample), rgb_of(result));
+    [hue, saturation, lightness]
+        .map(|v| v.round() as i32)
+        .to_vec()
 }
 
 /// Parse `"x,y,r,g,b;…"`; malformed entries are skipped rather than failing the
