@@ -13,7 +13,8 @@ namespace pictura {
 // down the right. The canvas previews each Gradient Editor edit as it is made;
 // cancelling the editor puts the previous gradient back. Ported from
 // photorust's GradientMapDialog.
-// ponytail: Dither is stored in the block but the map is not dithered.
+// ponytail: Dither is read and written back but disabled, as the map is not
+// dithered.
 class GradientMapDialog : public AdjustmentDialog {
     Q_OBJECT
 

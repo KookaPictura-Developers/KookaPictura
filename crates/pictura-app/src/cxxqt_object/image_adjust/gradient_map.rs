@@ -23,9 +23,16 @@ pub mod ffi {
 
     #[namespace = "pictura"]
     extern "Rust" {
-        /// A Gradient Map `block`'s colour stops, or empty for another block.
-        /// Opacity stops are not read back.
+        /// A Gradient Map `block`'s stops, or empty for another block. Each
+        /// carries the opacity at its location; an opacity stop between colour
+        /// stops gets a colour stop of its own.
         fn gradient_map_stops(block: &[u8]) -> QString;
+
+        /// A Gradient Map `block`'s Reverse flag (false for another block).
+        fn gradient_map_reverse(block: &[u8]) -> bool;
+
+        /// A Gradient Map `block`'s Dither flag (false for another block).
+        fn gradient_map_dither(block: &[u8]) -> bool;
 
         /// The Gradient Map block of `stops` (nudged apart so their locations
         /// strictly increase) at `smoothness` 0–100 %, or empty for fewer than
@@ -179,27 +186,88 @@ fn smoothed_from_text(text: &str, smoothness: i32) -> Option<Vec<Stop>> {
     spread(&mut stops).then(|| smoothed(&stops, smoothness))
 }
 
-fn gradient_map_stops(block: &[u8]) -> QString {
-    let stops = from_block(block)
-        .and_then(|d| pictura_render::decode_adjustment(&d))
-        .and_then(|a| match a {
-            Adjustment::GradientMap(p) => Some(
-                p.stops
-                    .iter()
-                    .map(|s| {
-                        let [r, g, b] = s.color;
-                        Stop {
-                            location: s.location,
-                            rgba: [r, g, b, 255],
-                        }
-                    })
-                    .collect::<Vec<_>>(),
-            ),
-            _ => None,
+fn decode_map(block: &[u8]) -> Option<GradientMapParams> {
+    match pictura_render::decode_adjustment(&from_block(block)?)? {
+        Adjustment::GradientMap(p) => Some(p),
+        _ => None,
+    }
+}
+
+/// `points` (location, value), sorted, linearly interpolated at `x` and held
+/// flat past either end.
+fn interpolate(points: &[(f64, f64)], x: f64) -> f64 {
+    let (Some(first), Some(last)) = (points.first(), points.last()) else {
+        return 0.0;
+    };
+    if x <= first.0 {
+        return first.1;
+    }
+    if x >= last.0 {
+        return last.1;
+    }
+    let i = points.windows(2).position(|w| x <= w[1].0).unwrap_or(0);
+    let ((x0, y0), (x1, y1)) = (points[i], points[i + 1]);
+    y0 + (y1 - y0) * (x - x0) / (x1 - x0).max(1.0)
+}
+
+/// The colour and opacity stops merged into RGBA stops at every location
+/// either list names; colour stops only when the map is opaque.
+fn readback_stops(p: &GradientMapParams) -> Vec<Stop> {
+    let mut locations: Vec<u16> = p
+        .stops
+        .iter()
+        .map(|s| s.location)
+        .chain(p.transparency.iter().map(|s| s.location))
+        .collect();
+    locations.sort_unstable();
+    locations.dedup();
+    let channel = |c: usize| -> Vec<(f64, f64)> {
+        p.stops
+            .iter()
+            .map(|s| (f64::from(s.location), f64::from(s.color[c])))
+            .collect()
+    };
+    let colour = [channel(0), channel(1), channel(2)];
+    let opacity: Vec<(f64, f64)> = p
+        .transparency
+        .iter()
+        .map(|s| (f64::from(s.location), f64::from(s.opacity)))
+        .collect();
+    locations
+        .into_iter()
+        .map(|location| {
+            let x = f64::from(location);
+            let [r, g, b] = [0, 1, 2].map(|c| interpolate(&colour[c], x).round() as u8);
+            let percent = if opacity.is_empty() {
+                100.0
+            } else {
+                interpolate(&opacity, x)
+            };
+            let a = (percent * 255.0 / 100.0).round().clamp(0.0, 255.0) as u8;
+            Stop {
+                location,
+                rgba: [r, g, b, a],
+            }
         })
-        .map(|stops| format_stops(&stops))
+        .collect()
+}
+
+fn gradient_map_stops(block: &[u8]) -> QString {
+    let text = decode_map(block)
+        .map(|p| format_stops(&readback_stops(&p)))
         .unwrap_or_default();
-    QString::from(stops.as_str())
+    QString::from(text.as_str())
+}
+
+fn gradient_map_reverse(block: &[u8]) -> bool {
+    decode_map(block).is_some_and(|p| p.reverse)
+}
+
+fn gradient_map_dither(block: &[u8]) -> bool {
+    decode_map(block).is_some()
+        && from_block(block)
+            .and_then(|d| pictura_render::gradient_map_dither(&d.data))
+            .unwrap_or(false)
 }
 
 fn gradient_map_block(stops: &QString, smoothness: i32, reverse: bool, dither: bool) -> Vec<u8> {

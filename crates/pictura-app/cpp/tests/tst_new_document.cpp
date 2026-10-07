@@ -36,6 +36,7 @@ private slots:
     void initTestCase();
     void presetsUnitsAndDepths();
     void createsEachModeWithOneState();
+    void filledContentsMakeTheLockedBackground();
 
 private:
     pictura::test::ScopedStateHome stateHome_;
@@ -139,6 +140,36 @@ void NewDocumentTest::createsEachModeWithOneState()
     QVERIFY(!pictura::create_document(refused, 16, 16, QStringLiteral("rgb"), 1, 0, false, 72.0,
                                       false));
     QVERIFY(!refused.has_document());
+}
+
+void NewDocumentTest::filledContentsMakeTheLockedBackground()
+{
+    {
+        pictura::PictureView view;
+        QVERIFY(pictura::create_document(view, 20, 10, QStringLiteral("rgb"), 8, 0x336699u, false,
+                                         72.0, false));
+        QCOMPARE(view.layer_count(), 1);
+        QCOMPARE(view.layer_name(0), QStringLiteral("Background"));
+        QCOMPARE(view.layer_kind(0), QStringLiteral("background"));
+        QCOMPARE(view.layer_lock(0), 0x01 | 0x04);
+        // Canvas Size can only extend a Background, so this is the end-to-end proof.
+        QVERIFY(pictura::canvas_size_apply(view, QStringLiteral("top-left"), 30, 10, 0xff0000u));
+        QCOMPARE(view.composite_argb(25, 5), qRgb(0xff, 0x00, 0x00));
+        QCOMPARE(view.composite_argb(5, 5), qRgb(0x33, 0x66, 0x99));
+    }
+    {
+        pictura::PictureView view;
+        QVERIFY(pictura::create_document(view, 20, 10, QStringLiteral("grayscale"), 16,
+                                         0xffffffu, false, 72.0, false));
+        QCOMPARE(view.layer_kind(0), QStringLiteral("background"));
+    }
+    {
+        pictura::PictureView view;
+        QVERIFY(pictura::create_document(view, 20, 10, QStringLiteral("rgb"), 8, 0u, true, 72.0,
+                                         false));
+        QCOMPARE(view.layer_kind(0), QStringLiteral("pixel"));
+        QCOMPARE(view.layer_lock(0), 0);
+    }
 }
 
 QTEST_MAIN(NewDocumentTest)

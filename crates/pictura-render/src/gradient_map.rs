@@ -65,6 +65,12 @@ pub(crate) fn decode_gradient_map(d: &[u8]) -> Option<Adjustment> {
     }))
 }
 
+/// The Dither flag of `grdm` data, or `None` when it is too short. Kept apart
+/// from [`decode_gradient_map`] because the adjustment model does not carry it.
+pub fn gradient_map_dither(d: &[u8]) -> Option<bool> {
+    d.get(3).map(|flag| *flag != 0)
+}
+
 fn decode_opacity_stops(d: &[u8], at: usize) -> Option<Vec<OpacityStop>> {
     let count = be_u16(d, at)? as usize;
     let mut stops = Vec::with_capacity(count);

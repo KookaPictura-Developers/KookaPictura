@@ -152,6 +152,12 @@ void ReplaceColorTest::opensOnTheForegroundAndPicksAResult()
     QCOMPARE(lightness->value(), 100);
     QCOMPARE(dialog->resultForTest().rgb(), qRgb(255, 255, 255));
     QCOMPARE(view_->composite_argb(5, 5), qRgb(255, 255, 255));
+    // Black is achromatic: the shift rotates from hue 0, so blue stays blue
+    // rather than the hue being dropped (a saturated red).
+    dialog->pickResultForTest(QColor(0, 0, 255));
+    QCOMPARE(dialog->findChild<QSpinBox*>(QStringLiteral("replaceColorHue"))->value(), -120);
+    QCOMPARE(dialog->resultForTest().rgb(), qRgb(0, 0, 255));
+    QCOMPARE(view_->composite_argb(5, 5), qRgb(0, 0, 255));
     dialog->reject();
 }
 

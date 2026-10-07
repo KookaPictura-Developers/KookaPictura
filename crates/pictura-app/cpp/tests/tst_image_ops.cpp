@@ -10,6 +10,7 @@
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/image_adjust/image_ops.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/image_adjust/image_size.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/image_adjust/new_document.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/paint_tools/fills.cxxqt.h"
 
 #include "qt_test_support.h"
@@ -18,6 +19,7 @@
 #include <QtWidgets/QCheckBox>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QDoubleSpinBox>
+#include <QtWidgets/QToolButton>
 
 class ImageOpsTest : public QObject {
     Q_OBJECT
@@ -27,6 +29,8 @@ private slots:
     void duplicateDocument();
     void trimDocument();
     void imageSizeResamplesAndSetsResolution();
+    void imageSizePhysicalUnitsUseInches();
+    void imageSizeEstimatesTheStoredMode();
     void canvasSizeGrowsAroundTheAnchor();
 
 private:
@@ -152,6 +156,72 @@ void ImageOpsTest::imageSizeResamplesAndSetsResolution()
     view->undo();
     QCOMPARE(pictura::document_ppi(*view), 72.0);
     frame.closeDocument(doc, false);
+}
+
+// Image Size: a printed width in cm/mm/points sets pixels per inch, and a
+// resolution edit resamples whichever axis is physical, both when chained.
+void ImageOpsTest::imageSizePhysicalUnitsUseInches()
+{
+    pictura::PicturaMainWindow& frame = *window_;
+    QVERIFY(frame.newDocument(QStringLiteral("Units"), 3000, 1500, QStringLiteral("rgb"), 8,
+                              QStringLiteral("white")));
+    pictura::PictureView* view = frame.activeView();
+    QVERIFY(view);
+    const int doc = frame.activeDocumentIndex();
+    const auto find = [](pictura::ImageSizeDialog& dialog, const char* name) {
+        return dialog.controlForTest(QLatin1String(name));
+    };
+    {
+        pictura::ImageSizeDialog dialog(view);
+        auto* resample = qobject_cast<QCheckBox*>(find(dialog, "imageSizeResample"));
+        auto* width = qobject_cast<QDoubleSpinBox*>(find(dialog, "imageSizeWidth"));
+        auto* unit = qobject_cast<QComboBox*>(find(dialog, "imageSizeWidthUnit"));
+        QVERIFY(resample && width && unit);
+        resample->setChecked(false);
+        unit->setCurrentIndex(unit->findText(QStringLiteral("Centimeters")));
+        width->setValue(10.0);
+        QCOMPARE(qRound(dialog.resultPpi()), 762);
+        unit->setCurrentIndex(unit->findText(QStringLiteral("Millimeters")));
+        width->setValue(254.0);
+        QCOMPARE(qRound(dialog.resultPpi()), 300);
+        unit->setCurrentIndex(unit->findText(QStringLiteral("Points")));
+        width->setValue(360.0);
+        QCOMPARE(qRound(dialog.resultPpi()), 600);
+    }
+    {
+        // Width in pixels, Height in inches: the Height drives the resample.
+        pictura::ImageSizeDialog dialog(view);
+        auto* height = qobject_cast<QComboBox*>(find(dialog, "imageSizeHeightUnit"));
+        auto* chain = qobject_cast<QToolButton*>(find(dialog, "imageSizeConstrain"));
+        auto* resolution = qobject_cast<QDoubleSpinBox*>(find(dialog, "imageSizeResolution"));
+        QVERIFY(height && chain && resolution);
+        height->setCurrentIndex(height->findText(QStringLiteral("Inches")));
+        resolution->setValue(144.0);
+        QCOMPARE(dialog.resultWidth(), 6000);
+        QCOMPARE(dialog.resultHeight(), 3000);
+        chain->setChecked(false);
+        resolution->setValue(72.0);
+        QCOMPARE(dialog.resultWidth(), 6000);
+        QCOMPARE(dialog.resultHeight(), 1500);
+    }
+    frame.closeDocument(doc, false);
+}
+
+// Image Size's estimate counts the stored mode's planes and bits.
+void ImageOpsTest::imageSizeEstimatesTheStoredMode()
+{
+    const auto bytes = [](const QString& mode, int bits) {
+        pictura::PictureView view;
+        if (!pictura::create_document(view, 8, 8, mode, bits, 0xffffffu, false, 72.0, false)) {
+            return -1.0;
+        }
+        return pictura::bytesPerPixel(&view);
+    };
+    QCOMPARE(bytes(QStringLiteral("rgb"), 8), 3.0);
+    QCOMPARE(bytes(QStringLiteral("cmyk"), 8), 4.0);
+    QCOMPARE(bytes(QStringLiteral("cmyk"), 16), 8.0);
+    QCOMPARE(bytes(QStringLiteral("grayscale"), 8), 1.0);
+    QCOMPARE(bytes(QStringLiteral("bitmap"), 1), 0.125);
 }
 
 // Canvas Size: Relative grows the canvas around the anchor and the

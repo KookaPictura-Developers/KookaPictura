@@ -417,8 +417,10 @@ void ReplaceColorDialog::pickResult(const QColor& result)
         return from <= 0.0f ? 0.0f : to / from - 1.0f;
     };
     int hue = 0;
-    if (h0 >= 0.0f && h1 >= 0.0f && s1 > 0.0f) {
-        hue = qRound((h1 - h0) * 360.0f);
+    if (h1 >= 0.0f && s1 > 0.0f) {
+        // Qt reports an achromatic sample's hue as -1; the engine (and
+        // `resultForTest`) rotate from 0.
+        hue = qRound((h1 - qMax(h0, 0.0f)) * 360.0f);
         hue = (hue + 540) % 360 - 180;
     }
     const int values[] = {hue, qRound(amount(s0, s1) * 100.0f), qRound(amount(l0, l1) * 100.0f)};

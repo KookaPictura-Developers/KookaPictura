@@ -84,6 +84,12 @@ GradientMapDialog::GradientMapDialog(PictureView* view, const QByteArray& block,
     dither_->setObjectName(QStringLiteral("dither"));
     reverse_ = new QCheckBox(QStringLiteral("Reverse"), options);
     reverse_->setObjectName(QStringLiteral("reverse"));
+    reverse_->setChecked(gradient_map_reverse(slice(block)));
+    // ponytail: the map is not dithered, so Dither stays off-limits; the
+    // block's flag is carried through unchanged.
+    dither_->setChecked(gradient_map_dither(slice(block)));
+    dither_->setEnabled(false);
+    dither_->setToolTip(QStringLiteral("Dithering is not supported yet"));
     optionsColumn->addWidget(dither_);
     optionsColumn->addWidget(reverse_);
     left->addWidget(options);
@@ -98,7 +104,6 @@ GradientMapDialog::GradientMapDialog(PictureView* view, const QByteArray& block,
 
     paintSample();
     connect(sample_, &QToolButton::clicked, this, [this]() { openEditor(); });
-    connect(dither_, &QCheckBox::toggled, this, &GradientMapDialog::rebuild);
     connect(reverse_, &QCheckBox::toggled, this, &GradientMapDialog::rebuild);
 }
 

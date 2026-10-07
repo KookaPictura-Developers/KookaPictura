@@ -19,6 +19,7 @@
 #include "hdr_toning_dialog.h"
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/image_adjust.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/image_adjust/gradient_map.cxxqt.h"
 
 #include <QtCore/QTemporaryDir>
 #include <QtCore/QTimer>
@@ -65,6 +66,7 @@ private slots:
     void canvasPansWhileADialogIsOpen();
     void blackWhiteMixesTintsAndPresets();
     void gradientMapEditsItsGradient();
+    void gradientMapReopensWithItsState();
     void photoFilterUsesAFilterOrAColor();
     void curvesEditsEachChannelAndTheSelectedPoint();
     void hdrToningPresetsPopulateControls();
@@ -530,6 +532,32 @@ void ImageAdjustmentsTest::gradientMapEditsItsGradient()
     QCOMPARE(view_->history_count(), history + 1);
     QCOMPARE(view_->history_label(view_->history_index()), QStringLiteral("Gradient Map"));
     QCOMPARE(view_->composite_argb(5, 5), first.rgb());
+}
+
+// Gradient Map: reopening a block keeps its opacity, Reverse, and Dither, so
+// a rebuild (toggling Reverse) does not drop them; Dither is disabled.
+void ImageAdjustmentsTest::gradientMapReopensWithItsState()
+{
+    QVERIFY(openImage(QColor(0, 0, 0)));
+    const ::rust::Vec<std::uint8_t> made = pictura::gradient_map_block(
+        QStringLiteral("0:ff000080 4096:0000ff"), 0, true, true);
+    const QByteArray saved(reinterpret_cast<const char*>(made.data()), qsizetype(made.size()));
+    auto dialog = pictura::makeAdjustmentDialog(QStringLiteral("gradient-map"), view_, saved,
+                                                QRect());
+    auto* map = qobject_cast<pictura::GradientMapDialog*>(dialog.get());
+    QVERIFY(map);
+    auto* reverse = qobject_cast<QCheckBox*>(map->controlForTest(QStringLiteral("reverse")));
+    auto* dither = qobject_cast<QCheckBox*>(map->controlForTest(QStringLiteral("dither")));
+    QVERIFY(reverse && dither);
+    QVERIFY(reverse->isChecked());
+    QVERIFY(dither->isChecked());
+    QVERIFY(!dither->isEnabled());
+    QCOMPARE(map->spec().stops.first().color.alpha(), 128);
+
+    reverse->setChecked(false);
+    reverse->setChecked(true);
+    QCOMPARE(map->block(), saved);
+    map->reject();
 }
 
 // Photo Filter: the default is the Warming Filter (85) at 25%; a cooling

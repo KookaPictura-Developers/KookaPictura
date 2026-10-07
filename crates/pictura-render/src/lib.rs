@@ -54,7 +54,7 @@ pub use pictura_adjust::{
 mod color_balance;
 mod gradient_map;
 pub use color_balance::encode_color_balance;
-pub use gradient_map::encode_gradient_map;
+pub use gradient_map::{encode_gradient_map, gradient_map_dither};
 
 mod channel_mixer;
 pub use channel_mixer::encode_channel_mixer;

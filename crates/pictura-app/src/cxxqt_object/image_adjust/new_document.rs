@@ -1,13 +1,14 @@
 //! File ▸ New: a document in any of the dialog's modes, depths, Background
 //! Contents, and resolutions, opened with one "New" history state. The base
 //! is [`PictureView::new_document`]'s 8-bit RGB / Grayscale white or
-//! transparent layer; the rest is the Image ▸ Mode conversions and the
+//! transparent layer, made the locked Background unless transparent; the rest is the Image ▸ Mode conversions and the
 //! ResolutionInfo writer applied before the history starts. A free function
 //! (its own bridge, so the `PictureView` declaration list does not grow).
 //! Ported from photorust's NewDocumentDialog.
 //!
 //! [`PictureView::new_document`]: super::super::qobject::PictureView
 
+use super::super::impl_core::make_background;
 use super::super::qobject::PictureView;
 use crate::history::{History, Snapshot};
 use core::pin::Pin;
@@ -129,8 +130,15 @@ fn create_document(
         let Some(doc) = rust.doc.as_mut() else {
             return false;
         };
-        if !transparent && rgb != [255; 3] {
-            fill_layer(doc, rgb);
+        if !transparent {
+            if rgb != [255; 3] {
+                fill_layer(doc, rgb);
+            }
+            // White and Background Color seed the locked Background
+            // (open-and-new.md, New-document construction step 2).
+            if let Some(layer) = doc.layers.first_mut() {
+                make_background(layer);
+            }
         }
         let converted = match target {
             Some(ColorMode::Bitmap) => {

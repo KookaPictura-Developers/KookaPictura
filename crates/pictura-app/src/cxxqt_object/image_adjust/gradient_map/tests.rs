@@ -115,3 +115,53 @@ fn noise_is_reproducible_and_stays_inside_its_ranges() {
     let block = gradient_map_block(&QString::from(format_stops(&lab).as_str()), 0, false, false);
     assert!(!block.is_empty());
 }
+
+#[test]
+fn a_block_reads_back_its_opacity_reverse_and_dither() {
+    let text = QString::from("0:ff000080 2048:00ff00 4096:0000ff00");
+    let block = gradient_map_block(&text, 0, true, true);
+    assert_eq!(
+        gradient_map_stops(&block).to_string(),
+        "0:ff000080 2048:00ff00 4096:0000ff00"
+    );
+    assert!(gradient_map_reverse(&block));
+    assert!(gradient_map_dither(&block));
+    let plain = gradient_map_block(&QString::from("0:000000 4096:ffffff"), 0, false, false);
+    assert!(!gradient_map_reverse(&plain) && !gradient_map_dither(&plain));
+    assert!(!gradient_map_dither(b"levl\0\0\0\0"));
+}
+
+#[test]
+fn an_opacity_stop_between_colour_stops_gets_its_own_stop() {
+    let p = GradientMapParams {
+        stops: vec![
+            GradientStop {
+                location: 0,
+                color: [0, 0, 0],
+            },
+            GradientStop {
+                location: 4096,
+                color: [200, 100, 0],
+            },
+        ],
+        reverse: false,
+        transparency: vec![
+            OpacityStop {
+                location: 0,
+                opacity: 100,
+            },
+            OpacityStop {
+                location: 2048,
+                opacity: 0,
+            },
+            OpacityStop {
+                location: 4096,
+                opacity: 100,
+            },
+        ],
+    };
+    assert_eq!(
+        format_stops(&readback_stops(&p)),
+        "0:000000 2048:64320000 4096:c86400"
+    );
+}

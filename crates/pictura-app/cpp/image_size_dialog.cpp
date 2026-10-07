@@ -1,6 +1,7 @@
 #include "image_size_dialog.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/image_adjust/image_mode.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/image_adjust/image_size.cxxqt.h"
 
 #include <QtCore/QSignalBlocker>
@@ -143,6 +144,25 @@ void addUnits(QComboBox* box, bool percent)
     }
 }
 
+bool isPhysical(int unit)
+{
+    return unit == UnitInches || unit == UnitCm || unit == UnitMm || unit == UnitPoints;
+}
+
+double inchesPerUnit(int unit)
+{
+    switch (unit) {
+    case UnitCm:
+        return 1.0 / 2.54;
+    case UnitMm:
+        return 1.0 / 25.4;
+    case UnitPoints:
+        return 1.0 / 72.0;
+    default:
+        return 1.0;
+    }
+}
+
 } // namespace
 
 QString imageSizeSummary(double bytes)
@@ -158,8 +178,17 @@ double bytesPerPixel(PictureView* view)
     if (!view) {
         return 3.0;
     }
-    const int channels = view->document_mode() == QLatin1String("grayscale") ? 1 : 3;
-    return channels * qMax(8, int(view->document_depth_bits())) / 8.0;
+    // The stored mode, not the RGB/Gray working one: CMYK keeps four planes and
+    // Bitmap one bit.
+    const QString mode(image_mode(*view));
+    int channels = 3;
+    if (mode == QLatin1String("cmyk")) {
+        channels = 4;
+    } else if (mode == QLatin1String("grayscale") || mode == QLatin1String("bitmap")
+               || mode == QLatin1String("duotone") || mode == QLatin1String("indexed")) {
+        channels = 1;
+    }
+    return channels * qMax(1, int(image_depth_bits(*view))) / 8.0;
 }
 
 ImageSizeDialog::ImageSizeDialog(PictureView* view, QWidget* parent)
@@ -202,18 +231,7 @@ QString ImageSizeDialog::resampleKind() const
 
 double ImageSizeDialog::unitScale(int unit) const
 {
-    switch (unit) {
-    case UnitInches:
-        return resolution_;
-    case UnitCm:
-        return resolution_ / 2.54;
-    case UnitMm:
-        return resolution_ / 25.4;
-    case UnitPoints:
-        return resolution_ / 72.0;
-    default:
-        return 1.0;
-    }
+    return isPhysical(unit) ? resolution_ * inchesPerUnit(unit) : 1.0;
 }
 
 void ImageSizeDialog::buildUi()
@@ -379,8 +397,8 @@ void ImageSizeDialog::widthEdited()
     const int unit = widthUnit_->currentIndex();
     if (!resample_->isChecked()) {
         // The pixels are fixed, so a new printed width is a new resolution.
-        if (unit != UnitPixels && unit != UnitPercent && width_->value() > 0.0) {
-            resolution_ = pixelWidth_ / width_->value();
+        if (isPhysical(unit) && width_->value() > 0.0) {
+            resolution_ = pixelWidth_ / (width_->value() * inchesPerUnit(unit));
         }
         syncFields();
         return;
@@ -401,8 +419,8 @@ void ImageSizeDialog::heightEdited()
     markCustom();
     const int unit = heightUnit_->currentIndex();
     if (!resample_->isChecked()) {
-        if (unit != UnitPixels && unit != UnitPercent && height_->value() > 0.0) {
-            resolution_ = pixelHeight_ / height_->value();
+        if (isPhysical(unit) && height_->value() > 0.0) {
+            resolution_ = pixelHeight_ / (height_->value() * inchesPerUnit(unit));
         }
         syncFields();
         return;
@@ -425,11 +443,17 @@ void ImageSizeDialog::resolutionEdited()
     const double entered = resolutionField_->value();
     const double ppi = resultPerCm() ? entered * 2.54 : entered;
     // With Resample on, a physical Width/Height keeps its printed size, so
-    // the pixel count follows the resolution; in pixels it stays put.
+    // its pixel count follows the resolution; in pixels it stays put. Chained,
+    // either physical axis carries the other with it.
     if (resample_->isChecked()) {
         const double scale = ppi / resolution_;
-        if (widthUnit_->currentIndex() != UnitPixels && widthUnit_->currentIndex() != UnitPercent) {
+        const bool chained = chain_->isChecked();
+        const bool physicalWidth = isPhysical(widthUnit_->currentIndex());
+        const bool physicalHeight = isPhysical(heightUnit_->currentIndex());
+        if (physicalWidth || (chained && physicalHeight)) {
             pixelWidth_ = qMax(1, qRound(pixelWidth_ * scale));
+        }
+        if (physicalHeight || (chained && physicalWidth)) {
             pixelHeight_ = qMax(1, qRound(pixelHeight_ * scale));
         }
     }
