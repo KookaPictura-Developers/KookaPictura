@@ -216,3 +216,5 @@ jobs:
 
       - name: Test
         run: cargo test --workspace --exclude pictura_app
+
+# ci-path-probe
