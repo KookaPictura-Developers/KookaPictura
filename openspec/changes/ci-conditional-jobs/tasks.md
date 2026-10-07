@@ -12,12 +12,12 @@
 
 ## 3. Acceptance scenarios
 
-- [ ] 3.1 Open a PR touching only `crates/pictura-app/cpp/` (spec scenario "C++-only change"); verify `qt-headless` and `guards` run while `lint`, `test`, `oracles` report skipped-success
-- [ ] 3.2 Open a PR touching a `.rs` file (scenarios "Rust change runs everything" / "Mixed change runs everything"); verify all four build jobs run
-- [ ] 3.3 Open a PR touching `.github/workflows/ci.yml` or a root-level config path (scenarios "Workflow edit re-runs the suite" / "Unrecognized path runs everything"); verify all four build jobs run despite no Rust/C++ diff
-- [ ] 3.4 Push a docs-only change to a branch with an open PR (existing scenario "Docs-only change"); verify the CI workflow does not start and the guards workflow still runs
+- [x] 3.1 Open a PR touching only `crates/pictura-app/cpp/` (spec scenario "C++-only change"); verify `qt-headless` and `guards` run while `lint`, `test`, `oracles` report skipped-success
+- [x] 3.2 Open a PR touching a `.rs` file (scenarios "Rust change runs everything" / "Mixed change runs everything"); verify all four build jobs run
+- [x] 3.3 Open a PR touching `.github/workflows/ci.yml` or a root-level config path (scenarios "Workflow edit re-runs the suite" / "Unrecognized path runs everything"); verify all four build jobs run despite no Rust/C++ diff
+- [x] 3.4 Push a docs-only change to a branch with an open PR (existing scenario "Docs-only change"); verify the CI workflow does not start and the guards workflow still runs
 
 ## 4. Spec and repo gates
 
-- [ ] 4.1 Run `openspec validate --all --strict`; verify it exits 0 with the `ci-conditional-jobs` delta present
-- [ ] 4.2 Run `bash scripts/guard.sh`; verify it passes, and commit the change referencing #199
+- [x] 4.1 Run `openspec validate --all --strict`; verify it exits 0 with the `ci-conditional-jobs` delta present
+- [x] 4.2 Run `bash scripts/guard.sh`; verify it passes, and commit the change referencing #199

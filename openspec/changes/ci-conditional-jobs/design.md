@@ -47,9 +47,11 @@ rule 4): correct PR/push base resolution without reimplementation; SHA-pinned
 like the other actions in the workflow.
 
 **Gate on "skip proven", not "run proven".** Conditions read
-`needs.changes.outputs.cpp_only != 'true'`, so every failure mode — unrecognized
-path, empty output, a crashed filter job — evaluates to "run". Run-on-doubt is
-the default state, not a list of exceptions.
+`needs.changes.outputs.cpp_only != 'true'`, so unrecognized paths and empty
+outputs evaluate to "run": run-on-doubt is the default state, not a list of
+exceptions. (A *crashed* filter job is different: the implicit `success()` on a
+job-level `if` skips the gated jobs — and the failed filter job marks the run
+red, so nothing goes green with missing checks.)
 
 **Filter contents.** The file list bucket treats `.github/workflows/**` and any
 path outside `crates/pictura-app/cpp/` as disqualifying for `cpp_only`, so a
@@ -69,9 +71,11 @@ gating conditions stay on one line without `${{ }}`.
 - [New third-party action supply chain] → SHA-pinned commit, minimal
   `permissions` (`contents: read`, `pull-requests: read`), justification in the
   commit message.
-- [Filter job fails → wrong gating] → Output empty ⇒ condition
-  `!= 'true'` ⇒ jobs run (fail open), then the failed filter job itself marks
-  the run red.
+- [Filter job fails → wrong gating] → A failed `changes` job skips the gated
+  jobs (implicit `success()` on their `if:`) and marks the run red itself; an
+  empty output from a *successful* filter evaluates `!= 'true'` and runs
+  everything (fail open). Either way the run cannot go green with silently
+  missing checks.
 - [Push-event base edge (new branch, force push)] → The action's push handling
   covers `before = 000…0`; worst case the file list is empty ⇒ not
   `cpp_only` ⇒ everything runs.
