@@ -94,12 +94,12 @@ int pictura::runShellRound3Checks(pictura::PicturaMainWindow& frame)
         }
     }
 
-    // lss_tab_weight (350): the scoped document-tab rule carries regular weight
+    // lss_tab_weight (350): the scoped document-tab rule carries bold weight
     // and extra right padding without touching the unscoped panel rules.
     {
         const QString sheet = qApp->styleSheet();
         const bool scoped = sheet.contains(QStringLiteral("QTabBar#documentTabBar::tab {"));
-        const bool weight = sheet.contains(QStringLiteral("font-weight: 400"));
+        const bool weight = sheet.contains(QStringLiteral("font-weight: 700"));
         const bool padding = sheet.contains(QStringLiteral("padding-right: 4px"));
 
         ST_BEGIN("lss_tab_weight");

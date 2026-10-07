@@ -172,49 +172,24 @@ fn mask_weights_exact_samples_full_and_others_zero() {
 }
 
 #[test]
-fn saturation_scales_chroma_so_dark_noise_does_not_turn_vivid() {
-    // Near-black JPEG noise in two different hues, and a dark brown. Raising
-    // saturation must keep the noise dark and close to neutral (the old
-    // additive HSL boost made each pixel 81 % saturated in its noise hue).
-    let mut b = buf3(&[[12, 10, 14], [10, 13, 10], [60, 40, 30]]);
-    apply(
-        &Adjustment::ReplaceColor(ReplaceColorParams {
-            samples: vec![sample(-1, [0, 0, 0])],
-            fuzziness: 200.0,
-            localized: false,
-            hue: 0.0,
-            saturation: 81.0,
-            lightness: 0.0,
-        }),
-        &mut b,
-    )
-    .unwrap();
-    for i in 0..2 {
-        let p = px3(&b, i);
-        let spread = p.iter().max().unwrap() - p.iter().min().unwrap();
-        assert!(spread <= 20, "noise pixel {i} stays near neutral: {p:?}");
-    }
-    let brown = px3(&b, 2);
-    assert!(
-        brown[0] > 60 && brown[2] < 30,
-        "the brown deepens: {brown:?}"
-    );
-}
-
-#[test]
-fn lightness_blends_each_channel_toward_white() {
-    let mut b = buf3(&[[0, 0, 0]]);
-    apply(
-        &Adjustment::ReplaceColor(ReplaceColorParams {
-            samples: vec![sample(-1, [0, 0, 0])],
-            fuzziness: 200.0,
-            localized: false,
-            hue: 0.0,
-            saturation: 0.0,
-            lightness: 50.0,
-        }),
-        &mut b,
-    )
-    .unwrap();
-    assert_eq!(px3(&b, 0), [128, 128, 128]);
+fn localized_ignores_a_sample_with_no_canvas_position() {
+    // The foreground colour the dialog opens on has x = y = -1; Localized
+    // must not pull its weight toward the canvas origin.
+    let p = ReplaceColorParams {
+        samples: vec![sample(-1, [200, 0, 0])],
+        fuzziness: 40.0,
+        localized: true,
+        hue: 0.0,
+        saturation: 0.0,
+        lightness: 0.0,
+    };
+    let b = PixelBuffer {
+        width: 64,
+        height: 1,
+        channels: 3,
+        data: buf3(&[[200, 0, 0]; 64]).data,
+    };
+    let mask = replace_color_mask(&b, &p, 64);
+    assert_eq!(mask.data[0], 255);
+    assert_eq!(mask.data[63], 255, "the far pixel is not falloff-weighted");
 }

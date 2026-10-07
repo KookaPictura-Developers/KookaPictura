@@ -18,7 +18,6 @@ mod lut;
 mod native;
 mod pictura_raw;
 mod replace_color;
-mod shadows_highlights;
 mod tonal;
 mod types;
 

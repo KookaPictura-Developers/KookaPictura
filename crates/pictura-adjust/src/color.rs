@@ -61,19 +61,14 @@ pub(crate) fn hue_saturation_rgb(p: &HueSaturationParams, r: f64, g: f64, b: f64
     }
     let h = (h + dh).rem_euclid(360.0);
     let s = (s * (1.0 + ds)).clamp(0.0, 1.0);
+    let l = if dl >= 0.0 {
+        l + dl * (1.0 - l)
+    } else {
+        l + dl * l
+    }
+    .clamp(0.0, 1.0);
     let (nr, ng, nb) = hsl_to_rgb(h, s, l);
-    // Lightness blends each channel toward white or black after the hue and
-    // saturation move, as Photoshop does: scaling HSL L instead keeps S and
-    // turns near-neutral dark noise into saturated patches.
-    let lighten = |c: f64| {
-        if dl >= 0.0 {
-            c + dl * (1.0 - c)
-        } else {
-            c * (1.0 + dl)
-        }
-        .clamp(0.0, 1.0)
-    };
-    [lighten(nr), lighten(ng), lighten(nb)]
+    [nr, ng, nb]
 }
 
 pub(crate) fn hue_saturation(
@@ -362,8 +357,11 @@ pub(crate) fn channel_mixer(
 // Selective Color (libpsd's integer RGB -> CMYK -> RGB pipeline)
 // ---------------------------------------------------------------------------
 
-/// Reject a correction outside `-100..=100`.
-pub(crate) fn validate_selective_color(p: &SelectiveColorParams) -> Result<(), AdjustError> {
+pub(crate) fn selective_color(
+    p: &SelectiveColorParams,
+    buf: &mut PixelBuffer,
+    n: usize,
+) -> Result<(), AdjustError> {
     if p.ranges
         .iter()
         .flat_map(|r| [r.c, r.m, r.y, r.k])
@@ -373,78 +371,126 @@ pub(crate) fn validate_selective_color(p: &SelectiveColorParams) -> Result<(), A
             "selective color corrections must be -100..=100".into(),
         ));
     }
-    Ok(())
-}
-
-pub(crate) fn selective_color_is_identity(p: &SelectiveColorParams) -> bool {
-    p.ranges.iter().all(|r| *r == SelectiveRange::default())
-}
-
-pub(crate) fn selective_color(
-    p: &SelectiveColorParams,
-    buf: &mut PixelBuffer,
-    n: usize,
-) -> Result<(), AdjustError> {
-    validate_selective_color(p)?;
-    if selective_color_is_identity(p) {
+    // ponytail: libpsd always runs the lossy profile-free RGB -> CMYK -> RGB
+    // round-trip even with zero corrections (only 256 of 2^24 triples survive).
+    // The reference's zero-slider adjustment is a no-op, so return early; drop this
+    // if byte parity with libpsd's round-trip is ever wanted.
+    if p.ranges.iter().all(|r| *r == SelectiveRange::default()) {
         return Ok(());
     }
     let (r, g, b) = planes_mut(buf, n);
     for ((rv, gv), bv) in r.iter_mut().zip(g.iter_mut()).zip(b.iter_mut()) {
-        let out = selective_color_rgb(
-            p,
-            [*rv as f64 / 255.0, *gv as f64 / 255.0, *bv as f64 / 255.0],
-        );
-        [*rv, *gv, *bv] = out.map(|v| (v * 255.0).round().clamp(0.0, 255.0) as u8);
+        let (nr, ng, nb) = selective_color_pixel(p, *rv as i32, *gv as i32, *bv as i32);
+        *rv = nr;
+        *gv = ng;
+        *bv = nb;
     }
     Ok(())
 }
 
-/// One pixel (`0.0..=1.0` RGB) through Selective Color. Each range weighs the
-/// pixel by how much of that colour it holds: a primary (Reds, Greens, Blues)
-/// by max − mid when its channel is the largest, a secondary (Yellows, Cyans,
-/// Magentas) by mid − min when its complement is the smallest; Whites, Neutrals,
-/// and Blacks by the lightness bands of min and max. So a near-gray pixel
-/// takes almost nothing from a colour range. Each weighted range then moves the
-/// cyan / magenta / yellow ink of red / green / blue by `(-1 - a)·k - a` (`a`
-/// the ink correction, `k` the black one), scaled by the existing ink when
-/// Relative and clamped to what the channel can take.
-/// ponytail: the reverse-engineered model in common use for Photoshop's
-/// closed Selective Color; no baseline proves parity.
-pub(crate) fn selective_color_rgb(p: &SelectiveColorParams, rgb: [f64; 3]) -> [f64; 3] {
-    let [r, g, b] = rgb;
-    let max = r.max(g).max(b);
-    let min = r.min(g).min(b);
-    let mid = r + g + b - max - min;
-    let primary = |channel: f64| if channel == max { max - mid } else { 0.0 };
-    let secondary = |channel: f64| if channel == min { mid - min } else { 0.0 };
-    let weights = [
-        primary(r),
-        secondary(b),
-        primary(g),
-        secondary(r),
-        primary(b),
-        secondary(g),
-        if min > 0.5 { (min - 0.5) * 2.0 } else { 0.0 },
-        1.0 - ((max - 0.5).abs() + (min - 0.5).abs()),
-        if max < 0.5 { (0.5 - max) * 2.0 } else { 0.0 },
-    ];
-    let relative = p.method == SelectiveColorMethod::Relative;
-    let mut out = rgb;
-    for (range, weight) in p.ranges.iter().zip(weights) {
-        if weight <= 0.0 || *range == SelectiveRange::default() {
-            continue;
-        }
-        let k = range.k as f64 / 100.0;
-        for (i, ink) in [range.c, range.m, range.y].into_iter().enumerate() {
-            let a = ink as f64 / 100.0;
-            let v = rgb[i];
-            let mut delta = (-1.0 - a) * k - a;
-            if relative {
-                delta *= 1.0 - v;
-            }
-            out[i] += delta.clamp(-v, 1.0 - v) * weight;
+fn selective_color_pixel(p: &SelectiveColorParams, r: i32, g: i32, b: i32) -> (u8, u8, u8) {
+    let (sc, sm, sy, sk) = rgb_to_intcmyk(r, g, b);
+    let src = [sc, sm, sy, sk];
+    let mut dst = [sc, sm, sy, sk];
+    let hue = rgb_to_int_hue(r, g, b);
+
+    for (index, range) in p.ranges.iter().take(6).enumerate() {
+        let i = index as i32 + 1;
+        let r0 = -105 + i * 60;
+        let (r1, r2, r3) = (r0 + 30, r0 + 60, r0 + 90);
+        if hue >= r0 && hue < r3 {
+            let opacity = if hue < r1 {
+                (hue - r0) * 255 / 30
+            } else if hue < r2 {
+                255
+            } else {
+                (r3 - hue) * 255 / 30
+            };
+            add_correction(&p.method, range, opacity, src, &mut dst, 25500);
         }
     }
-    out.map(|v| v.clamp(0.0, 1.0))
+
+    for (index, range) in p.ranges.iter().enumerate().skip(6) {
+        let selected = match index {
+            6 => sk == 0,
+            7 => sk > 0 && sk < 255,
+            _ => sk == 255,
+        };
+        if selected {
+            add_correction(&p.method, range, 1, src, &mut dst, 100);
+        }
+    }
+
+    for ink in &mut dst {
+        *ink = (*ink).clamp(0, 255);
+    }
+    intcmyk_to_rgb(dst[0], dst[1], dst[2], dst[3])
+}
+
+/// Add one family's corrections. `weight` is the hue opacity (`opacity` over
+/// `25500`) or `1` over `100` for the tonal whites/neutrals/blacks.
+fn add_correction(
+    method: &SelectiveColorMethod,
+    range: &SelectiveRange,
+    weight: i32,
+    src: [i32; 4],
+    dst: &mut [i32; 4],
+    divisor: i32,
+) {
+    for (i, (ink, correction)) in dst
+        .iter_mut()
+        .zip([range.c, range.m, range.y, range.k])
+        .enumerate()
+    {
+        let correction = correction as i32;
+        if correction == 0 {
+            continue;
+        }
+        let amount = match method {
+            SelectiveColorMethod::Relative => src[i],
+            SelectiveColorMethod::Absolute => 255,
+        };
+        *ink += amount * correction * weight / divisor;
+    }
+}
+
+/// `psd_rgb_to_intcmyk`: all divisions truncate toward zero.
+fn rgb_to_intcmyk(r: i32, g: i32, b: i32) -> (i32, i32, i32, i32) {
+    let (dc, dm, dy) = (255 - r, 255 - g, 255 - b);
+    let k = dc.min(dm).min(dy);
+    if k < 255 {
+        let d = 255 - k;
+        (
+            (dc - k) * 255 / d,
+            (dm - k) * 255 / d,
+            (dy - k) * 255 / d,
+            k,
+        )
+    } else {
+        (0, 0, 0, k)
+    }
+}
+
+/// `psd_rgb_to_inthsb`'s hue, in `0..=359`.
+fn rgb_to_int_hue(r: i32, g: i32, b: i32) -> i32 {
+    let cmax = r.max(g).max(b);
+    let cmin = r.min(g).min(b);
+    if cmax == cmin {
+        return 0;
+    }
+    let d = cmax - cmin;
+    let h = if r == cmax {
+        (g - b) * 60 / d
+    } else if g == cmax {
+        120 + (b - r) * 60 / d
+    } else {
+        240 + (r - g) * 60 / d
+    };
+    (h + 360) % 360
+}
+
+/// `psd_intcmyk_to_rgb`; the shifted value is always non-negative.
+fn intcmyk_to_rgb(c: i32, m: i32, y: i32, k: i32) -> (u8, u8, u8) {
+    let channel = |ink: i32| ((65535 - (ink * (255 - k) + (k << 8))) >> 8) as u8;
+    (channel(c), channel(m), channel(y))
 }

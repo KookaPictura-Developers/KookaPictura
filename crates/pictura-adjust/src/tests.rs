@@ -6,7 +6,6 @@ use pictura_core::PixelBuffer;
 mod gradient_map;
 mod hue_ranges;
 mod levels;
-mod selective_color;
 
 fn buf3(w: u32, h: u32, px: &[[u8; 3]]) -> PixelBuffer {
     let n = (w * h) as usize;
@@ -878,7 +877,7 @@ fn selective_color_relative_reds_magenta() {
         &mut b,
     )
     .unwrap();
-    assert_eq!(px3(&b, 0), [200, 70, 50]);
+    assert_eq!(px3(&b, 0), [200, 61, 51]);
 }
 
 #[test]
@@ -889,7 +888,7 @@ fn selective_color_absolute_reds_yellow() {
         &mut b,
     )
     .unwrap();
-    assert_eq!(px3(&b, 0), [200, 100, 30]);
+    assert_eq!(px3(&b, 0), [200, 101, 1]);
 }
 
 #[test]
@@ -911,7 +910,7 @@ fn selective_color_absolute_whites_cyan() {
         &mut b,
     )
     .unwrap();
-    assert_eq!(px3(&b, 0), [0, 255, 255]);
+    assert_eq!(px3(&b, 0), [1, 255, 255]);
 }
 
 #[test]

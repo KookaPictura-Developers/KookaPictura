@@ -279,21 +279,19 @@ fn adj_hs(rgb: vec3<f32>, hue: i32, saturation: i32, lightness: i32) -> vec3<f32
     }
     h = rem_euclid(h + f32(hue), 360.0);
     s = clamp(s * (1.0 + ds), 0.0, 1.0);
-    let l = l0;
-    var out = vec3<f32>(l);
-    if (s > 0.0) {
-        var q = l * (1.0 + s);
-        if (l >= 0.5) { q = l + s - l * s; }
-        let p = 2.0 * l - q;
-        let hk = h / 360.0;
-        out = vec3<f32>(
-            hue2rgb(p, q, hk + 1.0 / 3.0),
-            hue2rgb(p, q, hk),
-            hue2rgb(p, q, hk - 1.0 / 3.0),
-        );
-    }
-    if (dl >= 0.0) { out = out + dl * (vec3<f32>(1.0) - out); } else { out = out * (1.0 + dl); }
-    return clamp(out, vec3<f32>(0.0), vec3<f32>(1.0));
+    var l = l0;
+    if (dl >= 0.0) { l = l + dl * (1.0 - l); } else { l = l + dl * l; }
+    l = clamp(l, 0.0, 1.0);
+    if (s <= 0.0) { return vec3<f32>(l); }
+    var q = l * (1.0 + s);
+    if (l >= 0.5) { q = l + s - l * s; }
+    let p = 2.0 * l - q;
+    let hk = h / 360.0;
+    return vec3<f32>(
+        hue2rgb(p, q, hk + 1.0 / 3.0),
+        hue2rgb(p, q, hk),
+        hue2rgb(p, q, hk - 1.0 / 3.0),
+    );
 }
 
 fn adjust(kind: u32, rgb: vec3<f32>, p0: i32, p1: i32, p2: i32) -> vec3<f32> {

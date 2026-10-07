@@ -10,20 +10,19 @@
 use pictura_core::{PixelBuffer, Sample, Samples};
 
 use crate::color::{
-    hue_saturation_is_identity, hue_saturation_rgb, selective_color_is_identity,
-    selective_color_rgb, skin_bump, validate_hue_saturation, validate_selective_color,
+    hue_saturation_is_identity, hue_saturation_rgb, skin_bump, validate_hue_saturation,
 };
 use crate::common::{
     hermite_eval, hsl_to_rgb, linear_to_srgb, luma, monotone_tangents, rgb_to_hsl, srgb_to_linear,
 };
 use crate::lut::sample;
-use crate::shadows_highlights;
 use crate::tonal::gradient_lut;
 use crate::types::{
     AdjustError, Adjustment, AutoKind, BlackWhiteParams, BrightnessContrastParams,
     ChannelMixerParams, ColorBalanceParams, ColorLookupParams, CurvesParams, ExposureParams,
     GradientMapParams, HueSaturationParams, LevelsChannel, Lut3d, PhotoFilterParams,
-    SelectiveColorParams, ShadowsHighlightsParams, VibranceParams,
+    SelectiveColorMethod, SelectiveColorParams, SelectiveRange, ShadowsHighlightsParams,
+    VibranceParams,
 };
 
 type Rgb = [f64; 3];
@@ -209,22 +208,41 @@ fn shadows_highlights_native(
     height: usize,
     channels: u8,
 ) -> Result<(), AdjustError> {
-    if !shadows_highlights::validate(p)? {
+    let sa = p.shadows_amount;
+    let ha = p.highlights_amount;
+    if !sa.is_finite()
+        || !ha.is_finite()
+        || !(0.0..=100.0).contains(&sa)
+        || !(0.0..=100.0).contains(&ha)
+    {
+        return Err(AdjustError::InvalidParams(
+            "shadows/highlights amounts must be within 0..=100".into(),
+        ));
+    }
+    if sa == 0.0 && ha == 0.0 {
         return Ok(());
     }
-    // The 8-bit kernel's operator on unit samples: one pass reads the
-    // luminance (writing every pixel back unchanged), the second maps.
-    let mut luminance = Vec::with_capacity(width * height);
-    map(samples, width, height, channels, |rgb| {
-        luminance.push(shadows_highlights::luminance(rgb));
-        rgb
-    });
-    let base = shadows_highlights::base(&luminance, width, height);
-    let mut i = 0;
-    map(samples, width, height, channels, |rgb| {
-        let out = shadows_highlights::pixel(p, rgb, base[i]);
-        i += 1;
-        out
+    // The same delta curve as the 8-bit kernel, scaled to the unit domain so the
+    // u8 store round-trips byte-for-byte through `to_unit`/`from_unit`.
+    let mut lut = [0.0f64; 256];
+    for (i, slot) in lut.iter_mut().enumerate() {
+        let l = i as f64 / 255.0;
+        let st = (1.0 - 2.0 * l).clamp(0.0, 1.0);
+        let sw = st * st * (3.0 - 2.0 * st);
+        let shadow_delta = sw * (sa / 100.0) * 0.35;
+        let ht = ((l - 0.5) * 2.0).clamp(0.0, 1.0);
+        let hw = ht * ht * (3.0 - 2.0 * ht);
+        let highlight_delta = hw * (ha / 100.0) * 0.30;
+        *slot = shadow_delta - highlight_delta;
+    }
+    map(samples, width, height, channels, move |[r, g, b]| {
+        let y = luma(r * 255.0, g * 255.0, b * 255.0);
+        let delta = lut[y.round().clamp(0.0, 255.0) as usize];
+        [
+            (r + delta).clamp(0.0, 1.0),
+            (g + delta).clamp(0.0, 1.0),
+            (b + delta).clamp(0.0, 1.0),
+        ]
     });
     Ok(())
 }
@@ -605,14 +623,133 @@ fn selective_color_native(
     height: usize,
     channels: u8,
 ) -> Result<(), AdjustError> {
-    validate_selective_color(p)?;
-    if selective_color_is_identity(p) {
+    if p.ranges
+        .iter()
+        .flat_map(|r| [r.c, r.m, r.y, r.k])
+        .any(|v| !(-100..=100).contains(&v))
+    {
+        return Err(AdjustError::InvalidParams(
+            "selective color corrections must be -100..=100".into(),
+        ));
+    }
+    if p.ranges.iter().all(|r| *r == SelectiveRange::default()) {
         return Ok(());
     }
-    map(samples, width, height, channels, |rgb| {
-        selective_color_rgb(p, rgb)
+    // ponytail: libpsd's Selective Color is an integer 0–255 -> CMYK -> RGB
+    // pipeline, so this kernel rounds unit to 8-bit and gains nothing at native
+    // depth; a float CMYK port would be the upgrade.
+    map(samples, width, height, channels, |[r, g, b]| {
+        let (nr, ng, nb) = selective_color_pixel(
+            p,
+            (r * 255.0).round() as i32,
+            (g * 255.0).round() as i32,
+            (b * 255.0).round() as i32,
+        );
+        [nr as f64 / 255.0, ng as f64 / 255.0, nb as f64 / 255.0]
     });
     Ok(())
+}
+
+fn selective_color_pixel(p: &SelectiveColorParams, r: i32, g: i32, b: i32) -> (u8, u8, u8) {
+    let (sc, sm, sy, sk) = rgb_to_intcmyk(r, g, b);
+    let src = [sc, sm, sy, sk];
+    let mut dst = [sc, sm, sy, sk];
+    let hue = rgb_to_int_hue(r, g, b);
+
+    for (index, range) in p.ranges.iter().take(6).enumerate() {
+        let i = index as i32 + 1;
+        let r0 = -105 + i * 60;
+        let (r1, r2, r3) = (r0 + 30, r0 + 60, r0 + 90);
+        if hue >= r0 && hue < r3 {
+            let opacity = if hue < r1 {
+                (hue - r0) * 255 / 30
+            } else if hue < r2 {
+                255
+            } else {
+                (r3 - hue) * 255 / 30
+            };
+            add_correction(&p.method, range, opacity, src, &mut dst, 25500);
+        }
+    }
+
+    for (index, range) in p.ranges.iter().enumerate().skip(6) {
+        let selected = match index {
+            6 => sk == 0,
+            7 => sk > 0 && sk < 255,
+            _ => sk == 255,
+        };
+        if selected {
+            add_correction(&p.method, range, 1, src, &mut dst, 100);
+        }
+    }
+
+    for ink in &mut dst {
+        *ink = (*ink).clamp(0, 255);
+    }
+    intcmyk_to_rgb(dst[0], dst[1], dst[2], dst[3])
+}
+
+fn add_correction(
+    method: &SelectiveColorMethod,
+    range: &SelectiveRange,
+    weight: i32,
+    src: [i32; 4],
+    dst: &mut [i32; 4],
+    divisor: i32,
+) {
+    for (i, (ink, correction)) in dst
+        .iter_mut()
+        .zip([range.c, range.m, range.y, range.k])
+        .enumerate()
+    {
+        let correction = correction as i32;
+        if correction == 0 {
+            continue;
+        }
+        let amount = match method {
+            SelectiveColorMethod::Relative => src[i],
+            SelectiveColorMethod::Absolute => 255,
+        };
+        *ink += amount * correction * weight / divisor;
+    }
+}
+
+fn rgb_to_intcmyk(r: i32, g: i32, b: i32) -> (i32, i32, i32, i32) {
+    let (dc, dm, dy) = (255 - r, 255 - g, 255 - b);
+    let k = dc.min(dm).min(dy);
+    if k < 255 {
+        let d = 255 - k;
+        (
+            (dc - k) * 255 / d,
+            (dm - k) * 255 / d,
+            (dy - k) * 255 / d,
+            k,
+        )
+    } else {
+        (0, 0, 0, k)
+    }
+}
+
+fn rgb_to_int_hue(r: i32, g: i32, b: i32) -> i32 {
+    let cmax = r.max(g).max(b);
+    let cmin = r.min(g).min(b);
+    if cmax == cmin {
+        return 0;
+    }
+    let d = cmax - cmin;
+    let h = if r == cmax {
+        (g - b) * 60 / d
+    } else if g == cmax {
+        120 + (b - r) * 60 / d
+    } else {
+        240 + (r - g) * 60 / d
+    };
+    (h + 360) % 360
+}
+
+fn intcmyk_to_rgb(c: i32, m: i32, y: i32, k: i32) -> (u8, u8, u8) {
+    let channel = |ink: i32| ((65535 - (ink * (255 - k) + (k << 8))) >> 8) as u8;
+    (channel(c), channel(m), channel(y))
 }
 
 // ---------------------------------------------------------------------------

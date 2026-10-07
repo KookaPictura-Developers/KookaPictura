@@ -61,7 +61,7 @@ void applyTabBarFont(QTabBar* bar)
     }
     QFont tabFont = bar->font();
     tabFont.setPixelSize(qMax(1, baseFontPx - 2));
-    tabFont.setWeight(QFont::Normal);
+    tabFont.setWeight(QFont::Bold);
     bar->setFont(tabFont);
 }
 

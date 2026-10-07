@@ -256,7 +256,7 @@ QTabBar::tab:disabled { color: ${disabledText}; }
    than the tabs. The document tab bar keeps the unscoped `QTabBar::tab` rules
    above. */
 QTabBar#panelTabBar { background: ${panelHeader}; }
-QTabBar#panelTabBar::tab { background: ${panelHeader}; color: ${windowText}; border: ${borderWidth}px solid ${border}; border-bottom: 0; padding: 4px 8px; margin-right: 1px; font-size: ${tabFontSize}px; font-weight: 400; }
+QTabBar#panelTabBar::tab { background: ${panelHeader}; color: ${windowText}; border: ${borderWidth}px solid ${border}; border-bottom: 0; padding: 4px 8px; margin-right: 1px; font-size: ${tabFontSize}px; font-weight: 700; }
 QTabBar#panelTabBar::tab:hover { background: ${hover}; }
 QTabBar#panelTabBar::tab:selected { background: ${panel}; color: ${windowText}; }
 
@@ -285,7 +285,7 @@ QTabWidget#documentTabs::pane { border: 0; }
 QTabWidget#documentTabs QStackedWidget { background: ${workspace}; }
 QTabBar#documentTabBar { border: 0; }
 QTabBar#documentTabBar { background: ${panelHeader}; }
-QTabBar#documentTabBar::tab { font-size: ${tabFontSize}px; font-weight: 400; padding-right: 4px; border: 0; }
+QTabBar#documentTabBar::tab { font-size: ${tabFontSize}px; font-weight: 700; padding-right: 4px; border: 0; }
 QTabBar#documentTabBar::close-button { image: url(:/icons/panel.close.light.png); background: transparent; border: 0; margin-left: 2px; margin-right: 8px; }
 QTabBar#documentTabBar::close-button:hover { background: ${hover}; }
 QTabBar#documentTabBar::close-button:pressed { background: ${hover}; }

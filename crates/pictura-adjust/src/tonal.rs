@@ -1,7 +1,5 @@
 use pictura_core::PixelBuffer;
 
-use crate::shadows_highlights;
-
 use crate::common::{
     hermite_eval, linear_to_srgb, luma, map_lut, monotone_tangents, planes_mut, srgb_to_linear,
 };
@@ -164,19 +162,38 @@ pub(crate) fn shadows_highlights(
     buf: &mut PixelBuffer,
     n: usize,
 ) -> Result<(), AdjustError> {
-    if !shadows_highlights::validate(p)? {
+    let sa = p.shadows_amount;
+    let ha = p.highlights_amount;
+    if !sa.is_finite()
+        || !ha.is_finite()
+        || !(0.0..=100.0).contains(&sa)
+        || !(0.0..=100.0).contains(&ha)
+    {
+        return Err(AdjustError::InvalidParams(
+            "shadows/highlights amounts must be within 0..=100".into(),
+        ));
+    }
+    if sa == 0.0 && ha == 0.0 {
         return Ok(());
     }
-    let (width, height) = (buf.width as usize, buf.height as usize);
+    let mut lut = [0.0f64; 256];
+    for (i, slot) in lut.iter_mut().enumerate() {
+        let l = i as f64 / 255.0;
+        let st = (1.0 - 2.0 * l).clamp(0.0, 1.0);
+        let sw = st * st * (3.0 - 2.0 * st);
+        let shadow_delta = sw * (sa / 100.0) * 0.35 * 255.0;
+        let ht = ((l - 0.5) * 2.0).clamp(0.0, 1.0);
+        let hw = ht * ht * (3.0 - 2.0 * ht);
+        let highlight_delta = hw * (ha / 100.0) * 0.30 * 255.0;
+        *slot = shadow_delta - highlight_delta;
+    }
     let (r, g, b) = planes_mut(buf, n);
-    let unit = |v: u8| v as f64 / 255.0;
-    let luminance: Vec<f64> = (0..n)
-        .map(|i| shadows_highlights::luminance([unit(r[i]), unit(g[i]), unit(b[i])]))
-        .collect();
-    let base = shadows_highlights::base(&luminance, width, height);
-    for i in 0..n {
-        let out = shadows_highlights::pixel(p, [unit(r[i]), unit(g[i]), unit(b[i])], base[i]);
-        [r[i], g[i], b[i]] = out.map(|v| (v * 255.0).round().clamp(0.0, 255.0) as u8);
+    for ((rv, gv), bv) in r.iter_mut().zip(g.iter_mut()).zip(b.iter_mut()) {
+        let y = luma(*rv as f64, *gv as f64, *bv as f64);
+        let delta = lut[y.round().clamp(0.0, 255.0) as usize];
+        *rv = (*rv as f64 + delta).round().clamp(0.0, 255.0) as u8;
+        *gv = (*gv as f64 + delta).round().clamp(0.0, 255.0) as u8;
+        *bv = (*bv as f64 + delta).round().clamp(0.0, 255.0) as u8;
     }
     Ok(())
 }
