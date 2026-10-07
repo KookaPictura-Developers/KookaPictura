@@ -1,5 +1,6 @@
 #pragma once
 
+
 #include <QtCore/QString>
 #include <QtGui/QColor>
 
