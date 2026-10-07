@@ -257,4 +257,29 @@ void PicturaMainWindow::registerEditHandlers()
     });
 }
 
+bool PicturaMainWindow::dispatchCommandKey(QKeyEvent* event)
+{
+    // Typing `+` takes Shift on most layouts, so Zoom In's Ctrl++ arrives as
+    // Ctrl+=, Ctrl+Shift+=, or keypad Ctrl++ and misses the menu shortcut;
+    // only keys no shortcut or widget took reach the frame.
+    const Qt::KeyboardModifiers mods = event->modifiers();
+    if ((mods & Qt::ControlModifier) && !(mods & Qt::AltModifier)
+        && (event->key() == Qt::Key_Equal || event->key() == Qt::Key_Plus)) {
+        registry_->dispatch(QLatin1String(command_ids::ViewZoomIn));
+        event->accept();
+        return true;
+    }
+    // CS6: with a selection, Delete / Backspace clear it (Edit > Clear) once
+    // no tool has claimed the key.
+    PictureView* view = activeView();
+    if (!event->isAutoRepeat() && mods == Qt::NoModifier
+        && (event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace) && view
+        && view->has_selection()) {
+        registry_->dispatch(QLatin1String(command_ids::EditClear));
+        event->accept();
+        return true;
+    }
+    return false;
+}
+
 } // namespace pictura

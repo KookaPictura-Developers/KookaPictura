@@ -261,6 +261,9 @@ protected:
     void showEvent(QShowEvent* event) override;
 
 private:
+    // Keys the menu shortcuts miss: Ctrl+= / Ctrl+Shift+= / keypad Ctrl++
+    // zoom in, and Delete / Backspace clear a selection. True when handled.
+    bool dispatchCommandKey(QKeyEvent* event);
     struct DocEntry {
         PictureView* view = nullptr;
         ImageView* canvas = nullptr;
