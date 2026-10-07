@@ -3,48 +3,125 @@
 //! layer's rectangle.
 
 use pictura_core::{
-    layer_move_locked, layer_pixel_locked, layer_transparency_locked, Document, LayerMask, PsdRect,
+    layer_move_locked, layer_pixel_locked, layer_transparency_locked, BlendMode, Channel,
+    ColorLabel, Document, Layer, LayerMask, LockFlags, PsdRect,
 };
 
 use super::clipboard::{clear_layer, coverage_bounds};
 use super::merge::{merge_scope, MergeScope};
-use super::paths::{resolve_path, resolve_path_mut};
+use super::paths::{container_mut, format_segments, parse_path, resolve_path, resolve_path_mut};
 use super::via::{layer_via_copy, layer_via_cut};
 use crate::document_ops::canvas::offset_rect;
 
 /// Lift the pixels covered by `coverage` (document-sized, `0..=255`) off the
 /// layer at `source_path` for a transform: copy them into a new layer directly
-/// above, trimmed to the coverage bounds, and clear them from the source as
-/// Edit > Clear does (a Background clears to white). Unlike a move, a
-/// Background may be lifted. Returns the new layer's path; empty for a group,
-/// an adjustment, a layer without pixels, a pixel lock, a transparency lock on
-/// a layer with alpha, or empty coverage. Merge it back with
-/// [`MergeScope::Down`].
+/// above, sized to the coverage bounds (so memory follows the selection, not
+/// the document), and clear them from the source as Edit > Clear does (a
+/// Background clears to white). Unlike a move, a Background may be lifted.
+/// Returns the new layer's path; empty when [`can_lift_selection`] refuses the
+/// source, or the selection covers no visible pixel. Put it back with
+/// [`merge_lifted`].
 pub fn lift_selection(doc: &mut Document, source_path: &str, coverage: &[u8]) -> String {
-    if !resolve_path(doc, source_path).is_some_and(can_lift_selection) {
-        return String::new();
-    }
-    let Some(bounds) = coverage_bounds(coverage, doc.width, doc.height) else {
+    let Some(segments) = parse_path(source_path) else {
         return String::new();
     };
-    let mask = LayerMask {
-        rect: PsdRect {
-            top: 0,
-            left: 0,
-            bottom: doc.height as i32,
-            right: doc.width as i32,
-        },
-        data: Some(coverage.to_vec().into()),
+    let Some(source) = resolve_path(doc, source_path).filter(|layer| can_lift_selection(layer))
+    else {
+        return String::new();
+    };
+    let Some(floating) = lifted_copy(source, coverage, doc.width, doc.height) else {
+        return String::new();
+    };
+    // `can_lift_selection` already refused the locks `clear_layer` checks, so
+    // its result only says whether a sample changed (white on white does not).
+    clear_layer(doc, source_path, Some(coverage));
+    let Some((container, index)) = container_mut(doc, &segments) else {
+        return String::new();
+    };
+    container.insert(index + 1, floating);
+    let mut path = segments;
+    if let Some(last) = path.last_mut() {
+        *last = index + 1;
+    }
+    format_segments(&path)
+}
+
+/// `source`'s pixels under `coverage`, as a layer at the coverage bounds
+/// (clipped to the source) whose alpha is the source alpha scaled by the
+/// coverage; `None` when no covered pixel is visible.
+fn lifted_copy(source: &Layer, coverage: &[u8], doc_w: u32, doc_h: u32) -> Option<Layer> {
+    let bounds = coverage_bounds(coverage, doc_w, doc_h)?;
+    let rect = intersect(bounds, source.rect)?;
+    let (w, h) = (rect.width() as usize, rect.height() as usize);
+    let src = source.rect;
+    let src_w = src.width() as usize;
+    let src_alpha = source.channels.iter().find(|c| c.id == -1);
+    let colour: Vec<&Channel> = source.channels.iter().filter(|c| c.id >= 0).collect();
+    let mut planes = vec![vec![0u8; w * h]; colour.len()];
+    let mut alpha = vec![0u8; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let (dx, dy) = (rect.left as usize + x, rect.top as usize + y);
+            let covered = coverage[dy * doc_w as usize + dx];
+            if covered == 0 {
+                continue;
+            }
+            let si = (dy - src.top as usize) * src_w + (dx - src.left as usize);
+            let a = src_alpha.map_or(255, |c| c.data[si]);
+            let out = ((a as u32 * covered as u32 + 127) / 255) as u8;
+            if out == 0 {
+                continue;
+            }
+            let di = y * w + x;
+            alpha[di] = out;
+            for (plane, channel) in planes.iter_mut().zip(&colour) {
+                plane[di] = channel.data[si];
+            }
+        }
+    }
+    if alpha.iter().all(|a| *a == 0) {
+        return None;
+    }
+    let mut channels: Vec<Channel> = colour
+        .iter()
+        .zip(planes)
+        .map(|(channel, data)| Channel {
+            id: channel.id,
+            data: data.into(),
+        })
+        .collect();
+    channels.push(Channel {
+        id: -1,
+        data: alpha.into(),
+    });
+    Some(Layer {
+        name: format!("{} copy", source.name),
+        rect,
+        blend: BlendMode::Normal,
+        opacity: 255,
+        fill: 255,
+        lock: LockFlags::default(),
+        color: ColorLabel::None,
+        clipping: false,
+        visible: true,
+        mask: None,
+        adjustment: None,
+        channels,
+        children: Vec::new(),
+        is_group: false,
+        background: false,
         ..Default::default()
+    })
+}
+
+fn intersect(a: PsdRect, b: PsdRect) -> Option<PsdRect> {
+    let rect = PsdRect {
+        top: a.top.max(b.top),
+        left: a.left.max(b.left),
+        bottom: a.bottom.min(b.bottom),
+        right: a.right.min(b.right),
     };
-    let lifted = layer_via_copy(doc, source_path, &mask);
-    if lifted.is_empty() || !clear_layer(doc, source_path, Some(coverage)) {
-        return String::new();
-    }
-    if let Some(layer) = resolve_path_mut(doc, &lifted) {
-        trim_layer(layer, bounds);
-    }
-    lifted
+    (rect.width() > 0 && rect.height() > 0).then_some(rect)
 }
 
 /// Whether [`lift_selection`] can take pixels from `layer`: a pixel layer or
@@ -60,35 +137,106 @@ pub fn can_lift_selection(layer: &pictura_core::Layer) -> bool {
         && (layer.background || !layer_move_locked(layer))
 }
 
-/// Merge a [`lift_selection`] layer at `lifted_path` back down into its source,
-/// keeping the source's identity: a Background stays the locked, alpha-less
-/// Background, and any layer keeps its name and locks. False when the merge is
-/// refused.
+/// Put a [`lift_selection`] layer at `lifted_path` back into its source (the
+/// layer directly below) and remove it. The floating pixels are composited
+/// over the source's own channels (Normal, full opacity), so the source keeps
+/// everything else as it was: name, locks, Background status, opacity, blend,
+/// mask, effects. A layer with alpha grows to hold pixels moved past its rect;
+/// the alpha-less Background keeps its rect and clips them. False when the
+/// path has no layer below it.
 pub fn merge_lifted(doc: &mut Document, lifted_path: &str) -> bool {
-    let Some(mut segments) = super::paths::parse_path(lifted_path) else {
+    let Some(segments) = parse_path(lifted_path) else {
         return false;
     };
-    match segments.last_mut() {
-        Some(last) if *last > 0 => *last -= 1,
-        _ => return false,
+    let Some((container, index)) = container_mut(doc, &segments) else {
+        return false;
+    };
+    if index == 0 || index >= container.len() {
+        return false;
     }
-    let Some(source) = resolve_path(doc, &super::paths::format_segments(&segments)) else {
-        return false;
+    let floating = container.remove(index);
+    composite_over(&mut container[index - 1], &floating);
+    true
+}
+
+/// `top`'s raster channels over `base`'s, in place, by straight-alpha "over".
+fn composite_over(base: &mut Layer, top: &Layer) {
+    let has_alpha = base.channels.iter().any(|c| c.id == -1);
+    if has_alpha {
+        grow_to(base, union(base.rect, top.rect));
+    }
+    let (rect, top_rect) = (base.rect, top.rect);
+    let Some(area) = intersect(rect, top_rect) else {
+        return;
     };
-    let (name, lock, background) = (source.name.clone(), source.lock, source.background);
-    let had_alpha = source.channels.iter().any(|c| c.id == -1);
-    let Ok(outcome) = merge_scope(doc, MergeScope::Down(lifted_path)) else {
-        return false;
-    };
-    if let Some(merged) = resolve_path_mut(doc, &outcome.path) {
-        merged.name = name;
-        merged.lock = lock;
-        merged.background = background;
-        if !had_alpha {
-            merged.channels.retain(|c| c.id != -1);
+    let (base_w, top_w) = (rect.width() as usize, top_rect.width() as usize);
+    let top_alpha = top.channels.iter().find(|c| c.id == -1);
+    for y in area.top..area.bottom {
+        for x in area.left..area.right {
+            let ti = (y - top_rect.top) as usize * top_w + (x - top_rect.left) as usize;
+            let fa = top_alpha.map_or(255, |c| c.data[ti]) as u32;
+            if fa == 0 {
+                continue;
+            }
+            let bi = (y - rect.top) as usize * base_w + (x - rect.left) as usize;
+            let ba = base
+                .channels
+                .iter()
+                .find(|c| c.id == -1)
+                .map_or(255, |c| c.data[bi]) as u32;
+            // Straight-alpha over, in 0..=255 fixed point.
+            let rest = ba * (255 - fa) / 255;
+            let out_a = fa + rest;
+            for channel in base.channels.iter_mut() {
+                if channel.id == -1 {
+                    channel.data[bi] = out_a as u8;
+                    continue;
+                }
+                let Some(fc) = top
+                    .channels
+                    .iter()
+                    .find(|c| c.id == channel.id)
+                    .map(|c| c.data[ti] as u32)
+                else {
+                    continue;
+                };
+                let bc = channel.data[bi] as u32;
+                channel.data[bi] = ((fc * fa + bc * rest + out_a / 2) / out_a) as u8;
+            }
         }
     }
-    true
+}
+
+fn union(a: PsdRect, b: PsdRect) -> PsdRect {
+    PsdRect {
+        top: a.top.min(b.top),
+        left: a.left.min(b.left),
+        bottom: a.bottom.max(b.bottom),
+        right: a.right.max(b.right),
+    }
+}
+
+/// Extend `layer`'s channels to `rect` (a superset of its rect); the new area
+/// is transparent.
+fn grow_to(layer: &mut Layer, rect: PsdRect) {
+    let old = layer.rect;
+    if rect == old || old.width() <= 0 || old.height() <= 0 {
+        return;
+    }
+    let (w, old_w) = (rect.width() as usize, old.width() as usize);
+    let (x0, y0) = (
+        (old.left - rect.left) as usize,
+        (old.top - rect.top) as usize,
+    );
+    for channel in &mut layer.channels {
+        let mut data = vec![0u8; w * rect.height() as usize];
+        for y in 0..old.height() as usize {
+            let at = (y0 + y) * w + x0;
+            data[at..at + old_w].copy_from_slice(&channel.data[y * old_w..(y + 1) * old_w]);
+        }
+        channel.data = data.into();
+    }
+    layer.rect = rect;
 }
 
 /// Trim the pixel layer at `path` to the bounds of its non-transparent pixels,
@@ -350,6 +498,53 @@ mod tests {
         assert!(doc.layers[0].lock.contains(LockFlags::POSITION));
         assert!(!doc.layers[0].channels.iter().any(|c| c.id == -1));
         assert_eq!(channel(&doc.layers[0], 0)[5], 40);
+    }
+
+    #[test]
+    fn a_white_selection_on_a_white_background_lifts() {
+        let mut background = pixel_layer("Background", 4, 4, 255);
+        background.channels.retain(|c| c.id != -1);
+        background.background = true;
+        let mut doc = doc_with(vec![background]);
+        assert_eq!(lift_selection(&mut doc, "0", &square_coverage()), "1");
+        assert_eq!(doc.layers.len(), 2);
+    }
+
+    #[test]
+    fn lift_then_merge_back_restores_the_layer_exactly() {
+        let mut layer = pixel_layer("half", 4, 4, 0);
+        for channel in layer.channels.iter_mut() {
+            let id = channel.id as i32;
+            channel.data = (0..16)
+                .map(|i| (i * 13 + id * 7) as u8)
+                .collect::<Vec<_>>()
+                .into();
+        }
+        layer.opacity = 128;
+        layer.blend = BlendMode::Multiply;
+        layer.mask = Some(selection_mask(vec![200; 16]));
+        let mut doc = doc_with(vec![layer]);
+        let before = doc.clone();
+        let lifted = lift_selection(&mut doc, "0", &square_coverage());
+        assert_eq!(doc.layers[1].rect.width(), 2, "sized to the selection");
+        assert!(merge_lifted(&mut doc, &lifted));
+        assert_eq!(doc, before, "opacity, blend, mask, and pixels survive");
+    }
+
+    #[test]
+    fn moved_pixels_grow_a_layer_with_alpha() {
+        let mut doc = doc_with(vec![pixel_layer("base", 4, 4, 40)]);
+        let lifted = lift_selection(&mut doc, "0", &square_coverage());
+        if let Some(layer) = resolve_path_mut(&mut doc, &lifted) {
+            layer.rect = offset_rect(layer.rect, 3, 0);
+        }
+        assert!(merge_lifted(&mut doc, &lifted));
+        let layer = &doc.layers[0];
+        assert_eq!(layer.rect.right, 6, "grown to hold the moved pixels");
+        let w = layer.rect.width() as usize;
+        assert_eq!(alpha(layer)[w + 4], 255, "moved pixel");
+        assert_eq!(alpha(layer)[w + 1], 0, "vacated pixel");
+        assert_eq!(channel(layer, 0)[w + 4], 40);
     }
 
     #[test]

@@ -145,8 +145,10 @@ impl qobject::PictureView {
         {
             let rust = self.rust();
             if let Some(session) = rust.transform_session.as_ref() {
-                let source = session.lifted.as_ref().map_or(&session.path, |(s, _)| s);
-                if (session.path == path || *source == path) && session.mode == mode {
+                // A lifted session's target is its source; the floating layer's
+                // path is an implementation detail that may name a sibling.
+                let target = session.lifted.as_ref().map_or(&session.path, |(s, _)| s);
+                if *target == path && session.mode == mode {
                     return true;
                 }
             }
