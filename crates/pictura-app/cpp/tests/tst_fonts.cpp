@@ -31,7 +31,7 @@ private slots:
     void boldResolves();
     void italicsResolve();
     void applicationFontIsBundled();
-    void tabBarsAreBold();
+    void tabBarsAreRegular();
 };
 
 void FontsTest::initTestCase()
@@ -128,11 +128,11 @@ void FontsTest::applicationFontIsBundled()
     QCOMPARE(app.pixelSize(), pictura::kBundledUiFontPx);
 }
 
-void FontsTest::tabBarsAreBold()
+void FontsTest::tabBarsAreRegular()
 {
-    // Both chrome tab bars must carry the bold chrome font on the bar itself —
-    // the panel bar used to be the only one set programmatically, so the file
-    // bar stayed regular. Guard that both are the bundled family at app px − 2.
+    // Both chrome tab bars must carry the regular-weight chrome font on the
+    // bar itself, as CS6 draws its tabs. Guard that both are the bundled
+    // family at app px − 2.
     pictura::test::ScopedStateHome stateHome;
     QVERIFY(stateHome.isValid());
     const auto window = pictura::test::makeMainWindow();
@@ -147,7 +147,7 @@ void FontsTest::tabBarsAreBold()
     for (QTabBar* bar : {document, panel}) {
         const QFontInfo info(bar->font());
         QCOMPARE(info.family(), bundledFamily());
-        QCOMPARE(info.weight(), QFont::Bold);
+        QCOMPARE(info.weight(), QFont::Normal);
         QCOMPARE(bar->font().pixelSize(), expectedPx);
     }
 }

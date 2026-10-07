@@ -23,7 +23,10 @@ class ToolController;
 
 // Image > Adjustments > Replace Color (#164): pick one or more sample colours
 // from the canvas, preview an HSL shift feathered by how close each pixel is
-// to a sample, and commit it as one "Replace Color" state. Non-modal, so its
+// to a sample, and commit it as one "Replace Color" state. It opens on the
+// foreground colour as its sample, as CS6 does, so the selection thumbnail and
+// the sliders work before the first click; the Result swatch opens the colour
+// picker and sets the shift that reaches the picked colour. Non-modal, so its
 // eyedropper can reach the canvas. Ported from photorust's ReplaceColorDialog.
 class ReplaceColorDialog : public QDialog {
     Q_OBJECT
@@ -40,6 +43,10 @@ public:
     int sampleCount() const { return int(samples_.size()); }
     // The selection thumbnail as shown (for the Qt Test).
     QImage maskForTest() const { return mask_; }
+    // The Result swatch's colour, and the shift that reaches `result` (as
+    // picking it in the swatch's colour picker does).
+    QColor resultForTest() const;
+    void pickResultForTest(const QColor& result) { pickResult(result); }
 
     void accept() override;
     void reject() override;
@@ -61,6 +68,8 @@ private:
     void applyPreview();
     void cancelPreview();
     void refreshSampler();
+    // Set Hue / Saturation / Lightness so the sampled colour becomes `result`.
+    void pickResult(const QColor& result);
 
     PictureView* view_ = nullptr;
     ToolController* tools_ = nullptr;
@@ -77,7 +86,7 @@ private:
     QSlider* fuzzinessSlider_ = nullptr;
     QCheckBox* localized_ = nullptr;
     QLabel* colorSwatch_ = nullptr;
-    QLabel* resultSwatch_ = nullptr;
+    QToolButton* resultSwatch_ = nullptr;
     QLabel* maskLabel_ = nullptr;
     QRadioButton* selectionButton_ = nullptr;
     QRadioButton* imageButton_ = nullptr;

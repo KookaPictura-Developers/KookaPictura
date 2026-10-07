@@ -48,34 +48,69 @@ fn params(shadows_amount: f64, highlights_amount: f64) -> Adjustment {
     })
 }
 
+fn plane(width: u32, height: u32, at: impl Fn(u32, u32) -> u8) -> PixelBuffer {
+    let n = (width * height) as usize;
+    let mut data = vec![0u8; n * 3];
+    for y in 0..height {
+        for x in 0..width {
+            let i = (y * width + x) as usize;
+            let v = at(x, y);
+            data[i] = v;
+            data[n + i] = v;
+            data[2 * n + i] = v;
+        }
+    }
+    PixelBuffer {
+        width,
+        height,
+        channels: 3,
+        data: data.into(),
+    }
+}
+
 #[test]
 fn lifts_shadows_and_pulls_highlights() {
     let dark = [20u8, 30, 10];
     let mut b = buf3(&[dark]);
     apply(&params(100.0, 0.0), &mut b).unwrap();
-    assert!(px3(&b, 0)[0] > dark[0], "a dark pixel should lighten");
-    assert!(px3(&b, 0)[1] > dark[1]);
+    let lifted = px3(&b, 0);
+    assert!(lifted[1] > 80, "a dark area opens up strongly: {lifted:?}");
+    assert!(
+        lifted[1] > lifted[0] && lifted[0] > lifted[2],
+        "the hue is kept: {lifted:?}"
+    );
 
     let bright = [230u8, 240, 245];
     let mut b = buf3(&[bright]);
     apply(&params(0.0, 100.0), &mut b).unwrap();
-    assert!(px3(&b, 0)[0] < bright[0], "a bright pixel should darken");
+    assert!(px3(&b, 0)[0] < 200, "a bright area comes down");
+    // Pure black and white have nowhere to go.
+    let mut b = buf3(&[[0, 0, 0], [255, 255, 255]]);
+    apply(&params(100.0, 100.0), &mut b).unwrap();
+    assert_eq!((px3(&b, 0), px3(&b, 1)), ([0; 3], [255; 3]));
 }
 
 #[test]
-fn amount_100_lifts_black_by_the_full_gain() {
-    let mut b = buf3(&[[0, 0, 0]]);
-    apply(&params(100.0, 0.0), &mut b).unwrap();
-    assert_eq!(
-        px3(&b, 0),
-        [89, 89, 89],
-        "0.35 * 255 rounds to 89, not the old ~35"
+fn the_correction_follows_the_neighbourhood() {
+    // The same dark pixel lifts far more inside a dark area than as a speck
+    // in a bright one, so local contrast survives.
+    let (w, h) = (61, 61);
+    let mut dark_area = plane(w, h, |_, _| 30);
+    let mut bright_area = plane(w, h, |x, y| if (x, y) == (30, 30) { 30 } else { 220 });
+    apply(&params(100.0, 0.0), &mut dark_area).unwrap();
+    apply(&params(100.0, 0.0), &mut bright_area).unwrap();
+    let centre = (30 * w + 30) as usize;
+    assert!(dark_area.data[centre] > 90, "{}", dark_area.data[centre]);
+    assert!(
+        bright_area.data[centre] < 40,
+        "{}",
+        bright_area.data[centre]
     );
 }
 
 #[test]
 fn zero_is_a_noop_and_alpha_is_kept() {
-    let mut b = buf4(&[[20, 30, 10, 77], [230, 240, 245, 128]]);
+    let mut b = buf4(&[[20, 30, 10, 77], [60, 70, 50, 128]]);
     let orig = b.clone();
     apply(&params(0.0, 0.0), &mut b).unwrap();
     assert_eq!(b, orig, "0/0 is byte-identical");

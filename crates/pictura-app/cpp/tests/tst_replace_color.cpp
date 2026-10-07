@@ -25,6 +25,7 @@ private slots:
     void initTestCase();
     void cleanup();
     void samplesAndApplies();
+    void opensOnTheForegroundAndPicksAResult();
     void rejectsWhenDocumentChangesOrCloses();
 
 private:
@@ -125,6 +126,33 @@ void ReplaceColorTest::samplesAndApplies()
     QCoreApplication::processEvents();
     QCOMPARE(view_->composite_argb(5, 5), changed);
     QCOMPARE(view_->history_count(), history + 1);
+}
+
+// The dialog opens on the foreground colour (black here) as its sample, so
+// the thumbnail and Lightness work before any click; picking a Result colour
+// sets the shift that reaches it.
+void ReplaceColorTest::opensOnTheForegroundAndPicksAResult()
+{
+    QVERIFY(openImage(QColor(0, 0, 0)));
+    window_->registry()->refresh();
+    leaf()->trigger();
+    QCoreApplication::processEvents();
+    auto* dialog = window_->findChild<pictura::ReplaceColorDialog*>();
+    QVERIFY(dialog);
+    QCOMPARE(dialog->sampleCount(), 1);
+    const QImage mask = dialog->maskForTest();
+    QVERIFY(!mask.isNull());
+    QCOMPARE(qGray(mask.pixel(mask.width() / 2, mask.height() / 2)), 255);
+
+    auto* lightness = dialog->findChild<QSpinBox*>(QStringLiteral("replaceColorLightness"));
+    QVERIFY(lightness);
+    lightness->setValue(50);
+    QCOMPARE(qRed(view_->composite_argb(5, 5)), 128);
+    dialog->pickResultForTest(Qt::white);
+    QCOMPARE(lightness->value(), 100);
+    QCOMPARE(dialog->resultForTest().rgb(), qRgb(255, 255, 255));
+    QCOMPARE(view_->composite_argb(5, 5), qRgb(255, 255, 255));
+    dialog->reject();
 }
 
 void ReplaceColorTest::rejectsWhenDocumentChangesOrCloses()

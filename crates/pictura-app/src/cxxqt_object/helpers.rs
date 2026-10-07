@@ -15,7 +15,7 @@ pub(super) fn adjustment_layer(kind: &str, mask: Option<LayerMask>) -> Option<La
         encode_brightness_contrast, encode_channel_mixer, encode_color_balance,
         encode_color_lookup, encode_gradient_map, encode_hue_saturation, encode_invert,
         encode_photo_filter, encode_posterize, encode_selective_color, encode_threshold,
-        identity_cube, GradientStop, SelectiveColorMethod, SelectiveRange,
+        identity_cube, GradientMapParams, GradientStop, SelectiveColorMethod, SelectiveRange,
     };
 
     let (name, data): (&str, AdjustmentData) = match kind {
@@ -31,16 +31,20 @@ pub(super) fn adjustment_layer(kind: &str, mask: Option<LayerMask>) -> Option<La
         "gradient-map" => (
             "Gradient Map",
             encode_gradient_map(
-                &[
-                    GradientStop {
-                        location: 0,
-                        color: [0, 0, 0],
-                    },
-                    GradientStop {
-                        location: 4096,
-                        color: [255, 255, 255],
-                    },
-                ],
+                &GradientMapParams {
+                    stops: vec![
+                        GradientStop {
+                            location: 0,
+                            color: [0, 0, 0],
+                        },
+                        GradientStop {
+                            location: 4096,
+                            color: [255, 255, 255],
+                        },
+                    ],
+                    reverse: false,
+                    transparency: Vec::new(),
+                },
                 false,
             ),
         ),

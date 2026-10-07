@@ -702,6 +702,7 @@ fn gradient_map_identity_reverse_and_clamp() {
                 },
             ],
             reverse,
+            transparency: Vec::new(),
         })
     };
     let ramp = gray_ramp(256);
@@ -728,6 +729,7 @@ fn gradient_map_identity_reverse_and_clamp() {
                 },
             ],
             reverse: false,
+            transparency: Vec::new(),
         }),
         buffer_of(&[[0, 0, 0], [255, 255, 255]]),
     );

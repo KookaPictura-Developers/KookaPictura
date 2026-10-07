@@ -4,6 +4,7 @@ set(PICTURA_QT_TESTS
     tst_fonts
     tst_edit_clipboard
     tst_image_ops
+    tst_new_document
     tst_image_mode
     tst_layers_panel
     tst_align_distribute

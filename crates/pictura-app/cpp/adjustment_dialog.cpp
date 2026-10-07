@@ -17,6 +17,7 @@
 #include "black_white_dialog.h"
 #include "channel_mixer_dialog.h"
 #include "color_balance_dialog.h"
+#include "gradient_map_dialog.h"
 #include "photo_filter_dialog.h"
 #include "panels/ramp_slider.h"
 
@@ -187,6 +188,15 @@ QString AdjustmentDialog::curve(int channel) const
 bool AdjustmentDialog::setCurve(int channel, const QString& points)
 {
     const QByteArray next = bytes(image_adjustment_set_curve(slice(block_), channel, points));
+    if (next.isEmpty()) {
+        return false;
+    }
+    edited(next);
+    return true;
+}
+
+bool AdjustmentDialog::setBlock(const QByteArray& next)
+{
     if (next.isEmpty()) {
         return false;
     }
@@ -431,6 +441,8 @@ std::unique_ptr<AdjustmentDialog> makeAdjustmentDialog(const QString& kind, Pict
         dialog = std::make_unique<ColorBalanceDialog>(view, block, visible, parent);
     } else if (kind == QLatin1String("black-white")) {
         dialog = std::make_unique<BlackWhiteDialog>(view, block, visible, parent);
+    } else if (kind == QLatin1String("gradient-map")) {
+        dialog = std::make_unique<GradientMapDialog>(view, block, visible, parent);
     } else if (kind == QLatin1String("photo-filter")) {
         dialog = std::make_unique<PhotoFilterDialog>(view, block, visible, parent);
     } else if (kind == QLatin1String("channel-mixer")) {

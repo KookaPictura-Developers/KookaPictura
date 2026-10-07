@@ -7,6 +7,7 @@ class QCheckBox;
 class QComboBox;
 class QDoubleSpinBox;
 class QSpinBox;
+class QTimer;
 
 namespace pictura {
 
@@ -44,6 +45,8 @@ private:
     QRect visible_;
     bool previewing_ = false;
     bool loading_ = false;
+    // A slider drag edits many times a frame; the preview runs once it pauses.
+    QTimer* settle_ = nullptr;
 
     QComboBox* preset_ = nullptr;
     QSpinBox* radius_ = nullptr;

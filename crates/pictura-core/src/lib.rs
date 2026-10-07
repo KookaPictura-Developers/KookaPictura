@@ -6,6 +6,7 @@
 
 mod advanced_blending;
 mod annotations;
+pub mod blur;
 mod crs;
 pub mod nonseparable;
 pub mod path;

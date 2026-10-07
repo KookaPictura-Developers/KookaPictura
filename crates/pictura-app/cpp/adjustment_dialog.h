@@ -78,6 +78,9 @@ protected:
     // Curves `channel`'s points as `"x,y x,y …"`, and their replacement.
     QString curve(int channel) const;
     bool setCurve(int channel, const QString& points);
+    // Replace the whole block (a Gradient Map's rebuilt `grdm`) and preview;
+    // false, the block unchanged, when `next` is empty.
+    bool setBlock(const QByteArray& next);
     // A 256-bin histogram of the canvas as the dialog opened: 0 luminosity,
     // 1 red, 2 green, 3 blue.
     const std::array<int, 256>& histogram(int channel) const;

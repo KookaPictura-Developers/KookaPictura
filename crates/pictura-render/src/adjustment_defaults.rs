@@ -2,7 +2,7 @@
 //! defaults, in the same encoding an adjustment layer stores, so the dialog and
 //! the Properties panel share [`crate::adjustment_editor`]'s controls.
 
-use pictura_adjust::{GradientStop, SelectiveColorMethod, SelectiveRange};
+use pictura_adjust::{GradientMapParams, GradientStop, SelectiveColorMethod, SelectiveRange};
 use pictura_codec::DescValue;
 use pictura_core::AdjustmentData;
 
@@ -139,16 +139,20 @@ pub fn default_adjustment_block(
         "posterize" => encode_posterize(4),
         "threshold" => encode_threshold(128),
         "gradient-map" => encode_gradient_map(
-            &[
-                GradientStop {
-                    location: 0,
-                    color: foreground,
-                },
-                GradientStop {
-                    location: 4096,
-                    color: background,
-                },
-            ],
+            &GradientMapParams {
+                stops: vec![
+                    GradientStop {
+                        location: 0,
+                        color: foreground,
+                    },
+                    GradientStop {
+                        location: 4096,
+                        color: background,
+                    },
+                ],
+                reverse: false,
+                transparency: Vec::new(),
+            },
             false,
         ),
         "selective-color" => encode_selective_color(

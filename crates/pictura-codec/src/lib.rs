@@ -72,8 +72,8 @@ pub use exif::{exif_tag_name, parse_exif, Exif, ExifValue};
 pub use icc::{assign_document_profile, buffer_to_srgb, convert_document, profile_description};
 pub use image_resources::{
     decode_image_resources, document_resolution, encode_image_resources, frame_image_resource,
-    ImageResource, Resolution, EXIF_DATA_1, EXIF_DATA_3, ICC_PROFILE, IPTC_NAA, RESOLUTION_INFO,
-    XMP_METADATA,
+    set_document_resolution, ImageResource, Resolution, EXIF_DATA_1, EXIF_DATA_3, ICC_PROFILE,
+    IPTC_NAA, RESOLUTION_INFO, XMP_METADATA,
 };
 pub use iptc::{encode_iptc, iptc_field_name, parse_iptc, Iptc};
 pub use metadata::{

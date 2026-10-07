@@ -2,13 +2,16 @@
 
 #include "adjustment_dialog.h"
 
+class QComboBox;
+
 namespace pictura {
 
 // Image > Adjustments > Black & White in the newer single-column layout: the
-// six colour rows (percent fields over black-to-colour ramp sliders), Tint
-// with its colour swatch, Default (the six back to CS6's defaults), Preview,
-// and Cancel / OK. Ported from photorust's BlackWhiteDialog.
-// ponytail: no Preset menu, Auto, or on-canvas scrubby targeting.
+// Preset menu, the six colour rows (percent fields over black-to-colour ramp
+// sliders), Tint with its colour swatch and the Hue / Saturation rows that
+// edit it (enabled with Tint), Preview, and Cancel / OK. Ported from
+// photorust's BlackWhiteDialog.
+// ponytail: no Auto, preset Load / Save, or on-canvas scrubby targeting.
 class BlackWhiteDialog : public AdjustmentDialog {
     Q_OBJECT
 
@@ -17,6 +20,21 @@ public:
                      QWidget* parent = nullptr);
 
     QWidget* controlForTest(const QString& key) const override;
+
+private:
+    void applyPreset(int index);
+    void markCustom();
+    void tintEdited();
+    void setTint(const QColor& color);
+    void paintTint(const QColor& color);
+    // Point the Hue / Saturation rows at `color` without editing the block.
+    void showTint(const QColor& color);
+
+    QComboBox* preset_ = nullptr;
+    QToolButton* color_ = nullptr;
+    QSpinBox* hue_ = nullptr;
+    QSpinBox* saturation_ = nullptr;
+    bool showingTint_ = false;
 };
 
 } // namespace pictura

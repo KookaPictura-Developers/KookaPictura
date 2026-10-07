@@ -44,6 +44,28 @@ constexpr Preset kPresets[] = {
 };
 const QString kCustom = QStringLiteral("Custom");
 
+// CS6's Gamma Correction slider runs from 9.99 at the left to 0.01 at the
+// right with 1.00 centred, so each half is logarithmic in gamma.
+// ponytail: the half-by-half log curve is inferred from the end points and
+// the centred default, not measured.
+constexpr int kGammaSteps = 1000;
+constexpr double kGammaMax = 9.99;
+constexpr double kGammaMin = 0.01;
+
+int gammaToSlider(double gamma)
+{
+    const double t = gamma >= 1.0 ? -std::log(gamma) / std::log(kGammaMax)
+                                  : std::log(gamma) / std::log(kGammaMin);
+    return qRound((t + 1.0) * kGammaSteps / 2.0);
+}
+
+double sliderToGamma(int position)
+{
+    const double t = 2.0 * position / kGammaSteps - 1.0;
+    const double gamma = t <= 0.0 ? std::pow(kGammaMax, -t) : std::pow(kGammaMin, t);
+    return std::round(gamma * 100.0) / 100.0;
+}
+
 } // namespace
 
 ExposureDialog::ExposureDialog(PictureView* view, const QByteArray& block, const QRect& visible,
@@ -78,9 +100,17 @@ ExposureDialog::ExposureDialog(PictureView* view, const QByteArray& block, const
         const double scale = std::pow(10.0, field.decimals);
         auto* label = new QLabel(QLatin1String(field.label), this);
         label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        const bool gamma = key == QLatin1String("gamma");
+        const auto toSlider = [gamma, scale](double v) {
+            return gamma ? gammaToSlider(v) : qRound(v * scale);
+        };
         auto* slider = new QSlider(Qt::Horizontal, this);
         slider->setObjectName(key + QStringLiteral("Slider"));
-        slider->setRange(qRound(field.min * scale), qRound(field.max * scale));
+        if (gamma) {
+            slider->setRange(0, kGammaSteps);
+        } else {
+            slider->setRange(qRound(field.min * scale), qRound(field.max * scale));
+        }
         auto* spin = new QDoubleSpinBox(this);
         spin->setObjectName(key);
         spin->setRange(field.min, field.max);
@@ -88,8 +118,8 @@ ExposureDialog::ExposureDialog(PictureView* view, const QByteArray& block, const
         spin->setSingleStep(1.0 / scale);
         spin->setFixedWidth(kFieldWidth);
         spin->setKeyboardTracking(false);
-        spin->setValue(param(key, key == QLatin1String("gamma") ? 1.0 : 0.0));
-        slider->setValue(qRound(spin->value() * scale));
+        spin->setValue(param(key, gamma ? 1.0 : 0.0));
+        slider->setValue(toSlider(spin->value()));
         auto* eyedropper = new QToolButton(this);
         eyedropper->setIcon(icon(QStringLiteral("tool.eyedropper")));
         eyedropper->setToolTip(QLatin1String(field.eyedropper));
@@ -100,11 +130,12 @@ ExposureDialog::ExposureDialog(PictureView* view, const QByteArray& block, const
         grid->addWidget(spin, row, 2);
         grid->addWidget(eyedropper, row, 3);
 
-        connect(slider, &QSlider::valueChanged, spin,
-                [spin, scale](int v) { spin->setValue(v / scale); });
-        connect(spin, &QDoubleSpinBox::valueChanged, this, [this, slider, key, scale](double v) {
+        connect(slider, &QSlider::valueChanged, spin, [spin, gamma, scale](int v) {
+            spin->setValue(gamma ? sliderToGamma(v) : v / scale);
+        });
+        connect(spin, &QDoubleSpinBox::valueChanged, this, [this, slider, key, toSlider](double v) {
             const QSignalBlocker block(slider);
-            slider->setValue(qRound(v * scale));
+            slider->setValue(toSlider(v));
             setParam(key, v);
             markCustom();
         });

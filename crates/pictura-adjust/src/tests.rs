@@ -3,8 +3,10 @@ use super::*;
 use crate::common::{luma, rgb_to_hsl, srgb_to_linear};
 use pictura_core::PixelBuffer;
 
+mod gradient_map;
 mod hue_ranges;
 mod levels;
+mod selective_color;
 
 fn buf3(w: u32, h: u32, px: &[[u8; 3]]) -> PixelBuffer {
     let n = (w * h) as usize;
@@ -876,7 +878,7 @@ fn selective_color_relative_reds_magenta() {
         &mut b,
     )
     .unwrap();
-    assert_eq!(px3(&b, 0), [200, 61, 51]);
+    assert_eq!(px3(&b, 0), [200, 70, 50]);
 }
 
 #[test]
@@ -887,7 +889,7 @@ fn selective_color_absolute_reds_yellow() {
         &mut b,
     )
     .unwrap();
-    assert_eq!(px3(&b, 0), [200, 101, 1]);
+    assert_eq!(px3(&b, 0), [200, 100, 30]);
 }
 
 #[test]
@@ -909,7 +911,7 @@ fn selective_color_absolute_whites_cyan() {
         &mut b,
     )
     .unwrap();
-    assert_eq!(px3(&b, 0), [1, 255, 255]);
+    assert_eq!(px3(&b, 0), [0, 255, 255]);
 }
 
 #[test]
@@ -944,6 +946,7 @@ fn gradient_map_black_white_identity_on_greys() {
         &Adjustment::GradientMap(GradientMapParams {
             stops: bw_stops(),
             reverse: false,
+            transparency: Vec::new(),
         }),
         &mut b,
     )
@@ -963,6 +966,7 @@ fn gradient_map_reverse_flips() {
         &Adjustment::GradientMap(GradientMapParams {
             stops: bw_stops(),
             reverse: true,
+            transparency: Vec::new(),
         }),
         &mut b,
     )
@@ -994,6 +998,7 @@ fn gradient_map_interior_stop_is_honored() {
         &Adjustment::GradientMap(GradientMapParams {
             stops,
             reverse: false,
+            transparency: Vec::new(),
         }),
         &mut b,
     )
@@ -1023,6 +1028,7 @@ fn gradient_map_clamps_outside_stops() {
         &Adjustment::GradientMap(GradientMapParams {
             stops,
             reverse: false,
+            transparency: Vec::new(),
         }),
         &mut b,
     )
@@ -1041,6 +1047,7 @@ fn gradient_map_rejects_invalid_stops() {
             color: [0, 0, 0],
         }],
         reverse: false,
+        transparency: Vec::new(),
     };
     assert!(apply(&Adjustment::GradientMap(one), &mut b).is_err());
 
@@ -1056,6 +1063,7 @@ fn gradient_map_rejects_invalid_stops() {
             },
         ],
         reverse: false,
+        transparency: Vec::new(),
     };
     assert!(apply(&Adjustment::GradientMap(decreasing), &mut b).is_err());
 
@@ -1071,6 +1079,7 @@ fn gradient_map_rejects_invalid_stops() {
             },
         ],
         reverse: false,
+        transparency: Vec::new(),
     };
     assert!(apply(&Adjustment::GradientMap(out_of_range), &mut b).is_err());
 }
@@ -1208,6 +1217,7 @@ fn alpha_is_never_modified() {
                 },
             ],
             reverse: false,
+            transparency: Vec::new(),
         }),
         Adjustment::GradientFill(GradientFillParams {
             stops: vec![

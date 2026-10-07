@@ -291,13 +291,21 @@ fn encode_decode_round_trips() {
             color: [255, 255, 255],
         },
     ];
-    let gm = encode_gradient_map(&gm_stops, true);
+    let gm = encode_gradient_map(
+        &GradientMapParams {
+            stops: gm_stops.to_vec(),
+            reverse: true,
+            transparency: Vec::new(),
+        },
+        false,
+    );
     assert_eq!(gm.key, *b"grdm");
     assert_eq!(
         decode_adjustment(&gm),
         Some(Adjustment::GradientMap(GradientMapParams {
             stops: gm_stops.to_vec(),
             reverse: true,
+            transparency: Vec::new(),
         }))
     );
     assert_eq!(gm.data.len() % 4, 0, "block is padded to 4 bytes");
@@ -567,6 +575,7 @@ fn grdm_decodes_versions_and_rejects_malformed() {
             },
         ],
         reverse: false,
+        transparency: Vec::new(),
     });
 
     let payload = grdm_payload(1, 0, 0, "Black to White", &stops);
@@ -591,6 +600,7 @@ fn grdm_decodes_versions_and_rejects_malformed() {
                 },
             ],
             reverse: true,
+            transparency: Vec::new(),
         }))
     );
     // Version 3 carries a 4-byte method after the flags; the stops are the same.
@@ -884,6 +894,55 @@ fn fixture_channel_mixer_decodes() {
             green: [0.0, 100.0, 0.0],
             blue: [0.0, 0.0, 100.0],
             constant: [-15.0, 0.0, 0.0],
+        }))
+    );
+}
+
+#[test]
+fn gradient_map_opacity_stops_round_trip() {
+    let params = GradientMapParams {
+        stops: vec![
+            GradientStop {
+                location: 0,
+                color: [0, 0, 0],
+            },
+            GradientStop {
+                location: 4096,
+                color: [255, 255, 255],
+            },
+        ],
+        reverse: false,
+        transparency: vec![
+            pictura_adjust::OpacityStop {
+                location: 0,
+                opacity: 100,
+            },
+            pictura_adjust::OpacityStop {
+                location: 4096,
+                opacity: 25,
+            },
+        ],
+    };
+    let block = encode_gradient_map(&params, true);
+    assert_eq!(block.data[3], 1, "the dither flag");
+    assert_eq!(
+        decode_adjustment(&block),
+        Some(Adjustment::GradientMap(params.clone()))
+    );
+    // All-opaque stops decode as an opaque map.
+    let opaque = GradientMapParams {
+        transparency: vec![pictura_adjust::OpacityStop {
+            location: 0,
+            opacity: 100,
+        }],
+        ..params.clone()
+    };
+    let decoded = decode_adjustment(&encode_gradient_map(&opaque, false));
+    assert_eq!(
+        decoded,
+        Some(Adjustment::GradientMap(GradientMapParams {
+            transparency: Vec::new(),
+            ..params
         }))
     );
 }

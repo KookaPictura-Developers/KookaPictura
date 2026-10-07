@@ -1,11 +1,13 @@
 use pictura_core::PixelBuffer;
 
+use crate::shadows_highlights;
+
 use crate::common::{
     hermite_eval, linear_to_srgb, luma, map_lut, monotone_tangents, planes_mut, srgb_to_linear,
 };
 use crate::types::{
     AdjustError, BrightnessContrastParams, CurvesParams, ExposureParams, GradientMapParams,
-    GradientStop, LevelsChannel, LevelsParams, ShadowsHighlightsParams,
+    GradientStop, LevelsChannel, LevelsParams, OpacityStop, ShadowsHighlightsParams,
 };
 
 // ---------------------------------------------------------------------------
@@ -162,38 +164,19 @@ pub(crate) fn shadows_highlights(
     buf: &mut PixelBuffer,
     n: usize,
 ) -> Result<(), AdjustError> {
-    let sa = p.shadows_amount;
-    let ha = p.highlights_amount;
-    if !sa.is_finite()
-        || !ha.is_finite()
-        || !(0.0..=100.0).contains(&sa)
-        || !(0.0..=100.0).contains(&ha)
-    {
-        return Err(AdjustError::InvalidParams(
-            "shadows/highlights amounts must be within 0..=100".into(),
-        ));
-    }
-    if sa == 0.0 && ha == 0.0 {
+    if !shadows_highlights::validate(p)? {
         return Ok(());
     }
-    let mut lut = [0.0f64; 256];
-    for (i, slot) in lut.iter_mut().enumerate() {
-        let l = i as f64 / 255.0;
-        let st = (1.0 - 2.0 * l).clamp(0.0, 1.0);
-        let sw = st * st * (3.0 - 2.0 * st);
-        let shadow_delta = sw * (sa / 100.0) * 0.35 * 255.0;
-        let ht = ((l - 0.5) * 2.0).clamp(0.0, 1.0);
-        let hw = ht * ht * (3.0 - 2.0 * ht);
-        let highlight_delta = hw * (ha / 100.0) * 0.30 * 255.0;
-        *slot = shadow_delta - highlight_delta;
-    }
+    let (width, height) = (buf.width as usize, buf.height as usize);
     let (r, g, b) = planes_mut(buf, n);
-    for ((rv, gv), bv) in r.iter_mut().zip(g.iter_mut()).zip(b.iter_mut()) {
-        let y = luma(*rv as f64, *gv as f64, *bv as f64);
-        let delta = lut[y.round().clamp(0.0, 255.0) as usize];
-        *rv = (*rv as f64 + delta).round().clamp(0.0, 255.0) as u8;
-        *gv = (*gv as f64 + delta).round().clamp(0.0, 255.0) as u8;
-        *bv = (*bv as f64 + delta).round().clamp(0.0, 255.0) as u8;
+    let unit = |v: u8| v as f64 / 255.0;
+    let luminance: Vec<f64> = (0..n)
+        .map(|i| shadows_highlights::luminance([unit(r[i]), unit(g[i]), unit(b[i])]))
+        .collect();
+    let base = shadows_highlights::base(&luminance, width, height);
+    for i in 0..n {
+        let out = shadows_highlights::pixel(p, [unit(r[i]), unit(g[i]), unit(b[i])], base[i]);
+        [r[i], g[i], b[i]] = out.map(|v| (v * 255.0).round().clamp(0.0, 255.0) as u8);
     }
     Ok(())
 }
@@ -272,42 +255,88 @@ pub(crate) fn threshold(level: u8, buf: &mut PixelBuffer, n: usize) -> Result<()
     Ok(())
 }
 
-pub(crate) fn gradient_map(
-    p: &GradientMapParams,
-    buf: &mut PixelBuffer,
-    n: usize,
-) -> Result<(), AdjustError> {
+/// The gradient map's 256-entry LUT over luma: the mapped colour and its
+/// opacity (`0.0..=1.0`). Refuses fewer than two colour stops, a location past
+/// 4096, colour stops out of order, or an opacity past 100%.
+/// ponytail: plain linear interpolation between adjacent stops; the reference's
+/// midpoint bias, dither, and interpolation modes are not modelled
+/// (gradient-map.md marks them closed/inferred).
+pub(crate) fn gradient_lut(p: &GradientMapParams) -> Result<[([u8; 3], f64); 256], AdjustError> {
     if p.stops.len() < 2 {
         return Err(AdjustError::InvalidParams(
             "gradient map needs at least 2 stops".into(),
         ));
     }
-    if p.stops.iter().any(|s| s.location > 4096) {
+    if p.stops.iter().any(|s| s.location > 4096) || p.transparency.iter().any(|s| s.location > 4096)
+    {
         return Err(AdjustError::InvalidParams(
             "gradient stop location must be <= 4096".into(),
         ));
     }
-    if p.stops.windows(2).any(|w| w[0].location >= w[1].location) {
+    if p.stops.windows(2).any(|w| w[0].location >= w[1].location)
+        || p.transparency
+            .windows(2)
+            .any(|w| w[0].location > w[1].location)
+    {
         return Err(AdjustError::InvalidParams(
-            "gradient stop locations must be strictly increasing".into(),
+            "gradient stop locations must be increasing".into(),
         ));
     }
-    // ponytail: plain linear interpolation between adjacent stops; the reference's
-    // midpoint bias, dither, opacity stops, and interpolation modes are not
-    // modelled (gradient-map.md marks them closed/inferred).
-    let mut lut = [[0u8; 3]; 256];
+    if p.transparency.iter().any(|s| s.opacity > 100) {
+        return Err(AdjustError::InvalidParams(
+            "gradient opacity must be <= 100".into(),
+        ));
+    }
+    let mut lut = [([0u8; 3], 1.0); 256];
     for (i, slot) in lut.iter_mut().enumerate() {
         let l = i as f64 / 255.0;
-        let l = if p.reverse { 1.0 - l } else { l };
-        *slot = sample_gradient(&p.stops, (l * 4096.0).round());
+        let pos = (if p.reverse { 1.0 - l } else { l } * 4096.0).round();
+        *slot = (
+            sample_gradient(&p.stops, pos),
+            sample_opacity(&p.transparency, pos),
+        );
     }
+    Ok(lut)
+}
+
+/// The opacity (`0.0..=1.0`) at `pos`, lerped between the bracketing stops;
+/// opaque with no stops.
+fn sample_opacity(stops: &[OpacityStop], pos: f64) -> f64 {
+    let (Some(first), Some(last)) = (stops.first(), stops.last()) else {
+        return 1.0;
+    };
+    let value = if pos <= first.location as f64 {
+        first.opacity as f64
+    } else if pos >= last.location as f64 {
+        last.opacity as f64
+    } else {
+        let i = stops
+            .windows(2)
+            .position(|w| pos <= w[1].location as f64)
+            .unwrap_or(0);
+        let (a, b) = (stops[i], stops[i + 1]);
+        let span = (b.location - a.location).max(1) as f64;
+        let t = ((pos - a.location as f64) / span).clamp(0.0, 1.0);
+        a.opacity as f64 + (b.opacity as f64 - a.opacity as f64) * t
+    };
+    value / 100.0
+}
+
+pub(crate) fn gradient_map(
+    p: &GradientMapParams,
+    buf: &mut PixelBuffer,
+    n: usize,
+) -> Result<(), AdjustError> {
+    let lut = gradient_lut(p)?;
     let (r, g, b) = planes_mut(buf, n);
     for ((rv, gv), bv) in r.iter_mut().zip(g.iter_mut()).zip(b.iter_mut()) {
         let y = luma(*rv as f64, *gv as f64, *bv as f64);
-        let c = lut[y.round().clamp(0.0, 255.0) as usize];
-        *rv = c[0];
-        *gv = c[1];
-        *bv = c[2];
+        let (c, a) = lut[y.round().clamp(0.0, 255.0) as usize];
+        let blend =
+            |orig: u8, mapped: u8| (orig as f64 + (mapped as f64 - orig as f64) * a).round() as u8;
+        *rv = blend(*rv, c[0]);
+        *gv = blend(*gv, c[1]);
+        *bv = blend(*bv, c[2]);
     }
     Ok(())
 }

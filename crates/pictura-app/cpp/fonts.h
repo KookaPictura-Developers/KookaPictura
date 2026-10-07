@@ -27,7 +27,7 @@ QFont bundledUiFont();
 void applyBundledUiFont();
 
 // Apply the shared tab-label chrome font to `bar`: the bundled family at the
-// app size minus two pixels, marked Bold. QTabBar computes elision from its own
+// app size minus two pixels, at regular weight as CS6 draws it. QTabBar computes elision from its own
 // font, so the bar font must match the painted label; doing it here keeps the
 // document and panel tab bars identical and does not depend on the QSS
 // subcontrol rule.
