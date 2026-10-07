@@ -57,12 +57,18 @@ void SharedWidgetsTest::rampSliderRampAndTracking()
     slider.setValue(40);
     QCOMPARE(slider.value(), 40);
 
+    const QImage plain = slider.grab().toImage();
     slider.setRamp({QColor(Qt::red), QColor(Qt::blue)});
-    QVERIFY2(!slider.styleSheet().isEmpty(), "a two-stop ramp builds a gradient");
-    QVERIFY(slider.styleSheet().contains(QStringLiteral("qlineargradient")));
+    const QImage ramp = slider.grab().toImage();
+    QVERIFY2(ramp != plain, "a two-stop ramp paints a gradient groove");
+    // The left end of the band is red, the right end blue.
+    const int y = ramp.height() / 2;
+    QVERIFY(qRed(ramp.pixel(12, y)) > qBlue(ramp.pixel(12, y)));
+    QVERIFY(qBlue(ramp.pixel(ramp.width() - 12, y)) > qRed(ramp.pixel(ramp.width() - 12, y)));
+    QVERIFY2(slider.styleSheet().isEmpty(), "the handle stays the style's own");
 
     slider.setRamp({QColor(Qt::red)});
-    QVERIFY2(slider.styleSheet().isEmpty(), "fewer than two stops restores the groove");
+    QVERIFY2(slider.grab().toImage() == plain, "fewer than two stops restores the groove");
 
     slider.setValue(70);
     QCOMPARE(slider.value(), 70);

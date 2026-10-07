@@ -9,7 +9,9 @@
 
 use pictura_core::{PixelBuffer, Sample, Samples};
 
-use crate::color::skin_bump;
+use crate::color::{
+    hue_saturation_is_identity, hue_saturation_rgb, skin_bump, validate_hue_saturation,
+};
 use crate::common::{
     hermite_eval, hsl_to_rgb, linear_to_srgb, luma, monotone_tangents, rgb_to_hsl, srgb_to_linear,
 };
@@ -18,7 +20,7 @@ use crate::tonal::sample_gradient;
 use crate::types::{
     AdjustError, Adjustment, AutoKind, BlackWhiteParams, BrightnessContrastParams,
     ChannelMixerParams, ColorBalanceParams, ColorLookupParams, CurvesParams, ExposureParams,
-    GradientMapParams, HueSaturationParams, LevelsParams, Lut3d, PhotoFilterParams,
+    GradientMapParams, HueSaturationParams, LevelsChannel, Lut3d, PhotoFilterParams,
     SelectiveColorMethod, SelectiveColorParams, SelectiveRange, ShadowsHighlightsParams,
     VibranceParams,
 };
@@ -46,9 +48,19 @@ pub fn apply_native(
             Ok(())
         }
         Adjustment::Levels(p) => {
-            let f = levels_map(p)?;
+            let f = p.composite().map()?;
+            let identity = LevelsChannel {
+                input_black: 0,
+                input_white: 255,
+                gamma: 1.0,
+                output_black: 0,
+                output_white: 255,
+            };
+            let r = p.red.unwrap_or(identity).map()?;
+            let g = p.green.unwrap_or(identity).map()?;
+            let b = p.blue.unwrap_or(identity).map()?;
             map(samples, width, height, channels, |p| {
-                [f(p[0]), f(p[1]), f(p[2])]
+                [f(r(p[0])), f(g(p[1])), f(b(p[2]))]
             });
             Ok(())
         }
@@ -155,30 +167,6 @@ fn desaturate_pixel(p: Rgb) -> Rgb {
     let hi = x[0].max(x[1]).max(x[2]);
     let v = (lo + hi) / 2.0 / 255.0;
     [v, v, v]
-}
-
-fn levels_map(p: &LevelsParams) -> Result<impl Fn(f64) -> f64, AdjustError> {
-    if !p.gamma.is_finite() || p.gamma <= 0.0 {
-        return Err(AdjustError::InvalidParams(
-            "levels gamma must be > 0".into(),
-        ));
-    }
-    if p.input_black >= p.input_white {
-        return Err(AdjustError::InvalidParams(
-            "levels input black must be below input white".into(),
-        ));
-    }
-    let ib = p.input_black as f64;
-    let iw = p.input_white as f64;
-    let ob = p.output_black as f64;
-    let ow = p.output_white as f64;
-    let inv_gamma = 1.0 / p.gamma;
-    Ok(move |u: f64| {
-        let x = u * 255.0;
-        let t = ((x - ib) / (iw - ib)).clamp(0.0, 1.0);
-        let t = t.powf(inv_gamma);
-        (ob + t * (ow - ob)) / 255.0
-    })
 }
 
 fn exposure_map(p: &ExposureParams) -> Result<impl Fn(f64) -> f64, AdjustError> {
@@ -407,37 +395,12 @@ fn hue_saturation_native(
     height: usize,
     channels: u8,
 ) -> Result<(), AdjustError> {
-    if !(-180..=180).contains(&p.hue) {
-        return Err(AdjustError::InvalidParams("hue must be -180..=180".into()));
-    }
-    if !(-100..=100).contains(&p.saturation) {
-        return Err(AdjustError::InvalidParams(
-            "saturation must be -100..=100".into(),
-        ));
-    }
-    if !(-100..=100).contains(&p.lightness) {
-        return Err(AdjustError::InvalidParams(
-            "lightness must be -100..=100".into(),
-        ));
-    }
-    if p.hue == 0 && p.saturation == 0 && p.lightness == 0 {
+    validate_hue_saturation(p)?;
+    if hue_saturation_is_identity(p) {
         return Ok(());
     }
-    let ds = p.saturation as f64 / 100.0;
-    let dl = p.lightness as f64 / 100.0;
-    let hue = p.hue as f64;
-    map(samples, width, height, channels, move |[r, g, b]| {
-        let (h, s, l) = rgb_to_hsl(r, g, b);
-        let h = (h + hue).rem_euclid(360.0);
-        let s = (s * (1.0 + ds)).clamp(0.0, 1.0);
-        let l = if dl >= 0.0 {
-            l + dl * (1.0 - l)
-        } else {
-            l + dl * l
-        }
-        .clamp(0.0, 1.0);
-        let (nr, ng, nb) = hsl_to_rgb(h, s, l);
-        [nr, ng, nb]
+    map(samples, width, height, channels, |[r, g, b]| {
+        hue_saturation_rgb(p, r, g, b)
     });
     Ok(())
 }

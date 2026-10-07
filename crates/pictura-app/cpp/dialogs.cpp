@@ -1,5 +1,7 @@
 #include "dialogs.h"
 
+#include "image_view.h"
+
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/export.cxxqt.h"
 
@@ -16,6 +18,7 @@
 #include <QtCore/QStorageInfo>
 #include <QtCore/QXmlStreamReader>
 #include <QtGui/QKeyEvent>
+#include <QtGui/QMouseEvent>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QDialog>
@@ -443,6 +446,8 @@ void configureFileDialog(QFileDialog& dialog, const QStringList& filters,
 // disable the child dialog too, and a real modal window is what triggers the
 // dim. The portal chooser is a separate host window, so its modality is left
 // alone.
+// The canvas still takes a middle-button drag and the wheel, so the image can
+// be panned (and wheel-zoomed) to look around while a dialog previews on it.
 // ponytail: this only dodges the compositor effect; a user with "Dim Inactive"
 // enabled would still see the blocked window dimmed on focus loss.
 class DialogInputBlocker : public QObject
@@ -480,12 +485,33 @@ protected:
         if (!widget || !blocked_) {
             return QObject::eventFilter(watched, event);
         }
+        if (widget->window() != blocked_ || isCanvasNavigation(widget, event)) {
+            return QObject::eventFilter(watched, event);
+        }
         // Swallow only input addressed to the blocked top-level window; the
         // dialog and its popups are separate windows and pass through.
-        return widget->window() == blocked_ ? true : QObject::eventFilter(watched, event);
+        return true;
     }
 
 private:
+    // A middle-button press / drag / release or a wheel turn over a canvas.
+    static bool isCanvasNavigation(QWidget* widget, QEvent* event)
+    {
+        bool navigation = event->type() == QEvent::Wheel;
+        if (auto* mouse = dynamic_cast<QMouseEvent*>(event)) {
+            navigation = event->type() != QEvent::MouseButtonDblClick
+                         && (mouse->button() == Qt::MiddleButton
+                             || (event->type() == QEvent::MouseMove
+                                 && mouse->buttons() == Qt::MiddleButton));
+        }
+        for (QWidget* w = widget; navigation && w; w = w->parentWidget()) {
+            if (qobject_cast<ImageView*>(w)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     QPointer<QWidget> blocked_;
 };
 

@@ -110,7 +110,21 @@ pub fn default_adjustment_block(
             ]
             .into_iter()
             .map(|(k, v)| (k, DescValue::Long(v)))
-            .chain([(&b"useTint"[..], DescValue::Bool(false))])
+            .chain([
+                (&b"useTint"[..], DescValue::Bool(false)),
+                // The Tint swatch's default (hue 42°, saturation 20%), 0..1.
+                (
+                    &b"tintColor"[..],
+                    DescValue::Object {
+                        name: String::new(),
+                        class_id: b"RGBC".to_vec(),
+                        items: [(b"Rd  ", 0xe1), (b"Grn ", 0xd3), (b"Bl  ", 0xb4)]
+                            .into_iter()
+                            .map(|(k, v)| (k.to_vec(), DescValue::Double(f64::from(v) / 255.0)))
+                            .collect(),
+                    },
+                ),
+            ])
             .collect(),
         ),
         // CS6's default, Warming Filter (85).

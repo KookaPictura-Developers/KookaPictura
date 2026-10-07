@@ -48,6 +48,39 @@ Snapshot for resuming after a context break. Update after each milestone.
   approximation; Image ▸ Reveal All, Edit ▸
   Find And Replace Text / Define Brush|Pattern|Custom Shape, and Type ▸ Create
   Work Path / Convert to Shape stay disabled stubs.
+- **In flight:** `image-mode-conversion` (uncommitted; no issue yet). Ports
+  photorust's `Image ▸ Mode` onto the source-store model, so a conversion
+  saves in its new mode/depth rather than only relabelling.
+  - **Engine.** `pictura-render::document_ops::mode` adds:
+    - `convert_mode`: Grayscale (rounded Rec. 601 luma, native-depth when a
+      16/32 store is retained), RGB, CMYK (photorust GCR in the codec's stored
+      convention), and Lab (profile-free).
+    - `convert_to_indexed`: flatten, then the Save for Web quantizer; the
+      palette and index stores make the save Indexed.
+    - `convert_to_bitmap`: 8-bit Gray, Threshold/Bayer/Floyd–Steinberg, to a
+      flat depth-1 store.
+    - `convert_bit_depth`: 8↔16, 8/16→32; 32→16/8 stays HDR.
+    - `can_convert_mode`/`can_convert_depth` (the IMG-004 matrix) and
+      `save_view`.
+  - **Save fix.** `PictureView::save` now writes through `save_view`, which
+    drops the RGBA display alpha of a source-mode document. Before, an opened
+    CMYK/Lab/Indexed/Bitmap file always re-saved from the app as RGB.
+  - **App.** The bridge is `image_adjust/image_mode.rs` (one `Convert Mode`
+    state per conversion, plus the Indexed live preview via `mode_preview`).
+    The C++ side is `frame_menus_image_mode.cpp`, `indexed_color_dialog.*`,
+    and `bitmap_mode_dialog.*`. The Mode entries are checkable with frozen ids,
+    Color Table moves below the depths, and the old "16/8 Bits enabled only at
+    32-bit" gate is replaced (32-bit still routes through the HDR dialog).
+  - **Tests.** 17 unit tests (save→read round trips) and `tst_image_mode`.
+  - **Ceilings (`ponytail:`).**
+    - Duotone, Multichannel, and the Color Table stay stubs.
+    - CMYK/Lab are profile-free, with no gamut clip; a 16-bit CMYK/Lab
+      conversion passes through 8-bit.
+    - Bitmap has no Output resolution, Halftone, or Custom Pattern, and is
+      edited as RGB.
+    - Indexed has no System/Uniform/Master palettes, Forced colors,
+      Transparency, or Matte.
+    - The luma weights and the history label are inferred.
 - **In flight:** `port-adjustments-filters-smart-filters` (branch
   `feat/167-cs6-adjustments-filters-smart-filters`, PR pending). Closes the
   remaining CS6 Image ▸ Adjustments / Filter gaps from #82/#83/#87 — Artistic

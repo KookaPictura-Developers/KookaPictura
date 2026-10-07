@@ -1,7 +1,7 @@
 use pictura_adjust::{
     Adjustment, BlackWhiteParams, BrightnessContrastParams, ExposureParams, GradientMapParams,
-    GradientStop, HueSaturationParams, LevelsParams, PhotoFilterParams, ShadowsHighlightsParams,
-    VibranceParams,
+    GradientStop, HueRange, HueSaturationParams, LevelsChannel, LevelsParams, PhotoFilterParams,
+    ShadowsHighlightsParams, VibranceParams,
 };
 use pictura_codec::DescValue;
 use pictura_core::{
@@ -533,17 +533,53 @@ fn decode_brightness_contrast(d: &[u8]) -> Option<Adjustment> {
     }))
 }
 
-/// `levl`: `u16 version` (2) then 29 five-`u16` records. Record 0 is the
-/// composite channel; this decoder applies it uniformly to R/G/B.
+/// `levl`: `u16 version` (2) then 29 five-`u16` records (input black, input
+/// white, output black, output white, gamma × 100). Record 0 is the composite;
+/// records 1–3 are red, green, and blue, kept when they differ from identity.
+/// The rest (CMYK's fourth plate and the unused tail) are ignored.
 fn decode_levels(d: &[u8]) -> Option<Adjustment> {
     if be_u16(d, 0)? != 2 {
         return None;
     }
-    let input_black = be_u16(d, 2)?;
-    let input_white = be_u16(d, 4)?;
-    let output_black = be_u16(d, 6)?;
-    let output_white = be_u16(d, 8)?;
-    let gamma = be_u16(d, 10)?;
+    let composite = levels_record(d, 0)?;
+    // A short block (some writers stop after the composite) or a zero-filled
+    // record has no channel adjustment.
+    let channel = |k: usize| {
+        let record = d.get(2 + 10 * k..2 + 10 * (k + 1));
+        if record.is_none_or(|bytes| bytes.iter().all(|&b| b == 0)) {
+            return Some(None);
+        }
+        let record = levels_record(d, k)?;
+        Some((record != LEVELS_IDENTITY).then_some(record))
+    };
+    Some(Adjustment::Levels(LevelsParams {
+        input_black: composite.input_black,
+        input_white: composite.input_white,
+        gamma: composite.gamma,
+        output_black: composite.output_black,
+        output_white: composite.output_white,
+        red: channel(1)?,
+        green: channel(2)?,
+        blue: channel(3)?,
+    }))
+}
+
+const LEVELS_IDENTITY: LevelsChannel = LevelsChannel {
+    input_black: 0,
+    input_white: 255,
+    gamma: 1.0,
+    output_black: 0,
+    output_white: 255,
+};
+
+/// `levl` record `k`, or `None` when it is out of range or invalid.
+fn levels_record(d: &[u8], k: usize) -> Option<LevelsChannel> {
+    let at = 2 + 10 * k;
+    let input_black = be_u16(d, at)?;
+    let input_white = be_u16(d, at + 2)?;
+    let output_black = be_u16(d, at + 4)?;
+    let output_white = be_u16(d, at + 6)?;
+    let gamma = be_u16(d, at + 8)?;
     if input_black >= input_white || gamma == 0 {
         return None;
     }
@@ -553,17 +589,20 @@ fn decode_levels(d: &[u8]) -> Option<Adjustment> {
     {
         return None;
     }
-    Some(Adjustment::Levels(LevelsParams {
+    Some(LevelsChannel {
         input_black: input_black as u8,
         input_white: input_white as u8,
         gamma: gamma as f64 / 100.0,
         output_black: output_black as u8,
         output_white: output_white as u8,
-    }))
+    })
 }
 
 /// `hue2` (and legacy `hue `): version `u16`, enable `u8`, pad, colorization
-/// (3×i16), then the master Hue/Saturation/Lightness triplet (3×i16).
+/// (3×i16), the master Hue/Saturation/Lightness triplet (3×i16), then six
+/// 14-byte colour-range records (Reds … Magentas): the band's four hue points
+/// (4×i16) and its Hue/Saturation/Lightness (3×i16). Only ranges carrying
+/// an edit are kept; a band stored as all zeros reads as CS6's default band.
 fn decode_hue_saturation(d: &[u8]) -> Option<Adjustment> {
     if be_u16(d, 0)? != 2 {
         return None;
@@ -577,12 +616,57 @@ fn decode_hue_saturation(d: &[u8]) -> Option<Adjustment> {
     {
         return None;
     }
+    let mut ranges = Vec::new();
+    for (k, default) in HUE_RANGE_BANDS.iter().enumerate() {
+        let at = 16 + 14 * k;
+        // An older or truncated block stops after Master.
+        let Some(record) = d.get(at..at + 14) else {
+            break;
+        };
+        let v = |i: usize| i16::from_be_bytes([record[2 * i], record[2 * i + 1]]);
+        let (hue, saturation, lightness) = (v(4), v(5), v(6));
+        if (hue, saturation, lightness) == (0, 0, 0) {
+            continue;
+        }
+        if !(-180..=180).contains(&hue)
+            || !(-100..=100).contains(&saturation)
+            || !(-100..=100).contains(&lightness)
+        {
+            return None;
+        }
+        let band = if record[..8].iter().all(|&b| b == 0) {
+            *default
+        } else {
+            [v(0), v(1), v(2), v(3)]
+        };
+        ranges.push(HueRange {
+            begin_ramp: band[0],
+            begin_sustain: band[1],
+            end_sustain: band[2],
+            end_ramp: band[3],
+            hue,
+            saturation,
+            lightness,
+        });
+    }
     Some(Adjustment::HueSaturation(HueSaturationParams {
         hue,
         saturation,
         lightness,
+        ranges,
     }))
 }
+
+/// CS6's default colour-range bands, Reds through Magentas, as (begin ramp,
+/// begin sustain, end sustain, end ramp) in degrees.
+pub(crate) const HUE_RANGE_BANDS: [[i16; 4]; 6] = [
+    [315, 345, 15, 45],
+    [15, 45, 75, 105],
+    [75, 105, 135, 165],
+    [135, 165, 195, 225],
+    [195, 225, 255, 285],
+    [255, 285, 315, 345],
+];
 
 /// `expA`: `u16` version (= 1), then big-endian `f32` exposure, offset, and
 /// gamma.
@@ -870,7 +954,12 @@ pub fn encode_hue_saturation(hue: i16, saturation: i16, lightness: i16) -> Adjus
     data.extend_from_slice(&hue.to_be_bytes());
     data.extend_from_slice(&saturation.to_be_bytes());
     data.extend_from_slice(&lightness.to_be_bytes());
-    data.extend_from_slice(&[0u8; 84]);
+    // Each colour range: its default band, no edit.
+    for band in HUE_RANGE_BANDS {
+        for v in band.into_iter().chain([0; 3]) {
+            data.extend_from_slice(&v.to_be_bytes());
+        }
+    }
     AdjustmentData {
         key: *b"hue2",
         data,

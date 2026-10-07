@@ -1,51 +1,59 @@
 #include "ramp_slider.h"
 
-#include <QtCore/QString>
-#include <QtCore/QStringList>
+#include <QtGui/QLinearGradient>
+#include <QtGui/QPainter>
+#include <QtGui/QPalette>
 
 namespace pictura {
 
 RampSlider::RampSlider(QWidget* parent)
     : JumpSlider(Qt::Horizontal, parent)
 {
-    // Scopes the groove border in the app stylesheet; widget stylesheets
-    // cannot reference theme tokens, and a hard-coded frame colour would
-    // freeze the ramp at one brightness level.
-    setObjectName(QStringLiteral("rampSlider"));
 }
 
 void RampSlider::setRamp(const QList<QColor>& stops)
 {
-    // Rebuilding a stylesheet makes the widget recalculate its rules, and the
-    // hue ramp is asked for again on every tick of a drag, so nothing happens
-    // unless the colours actually moved.
+    // The hue ramp is asked for again on every tick of a drag, so repaint only
+    // when the colours actually moved.
     if (stops == stops_) {
         return;
     }
     stops_ = stops;
+    update();
+}
 
-    if (stops.size() < 2) {
-        setStyleSheet(QString());
+void RampSlider::paintEvent(QPaintEvent* event)
+{
+    if (stops_.size() < 2) {
+        JumpSlider::paintEvent(event);
         return;
     }
-
-    QStringList gradient;
-    for (int i = 0; i < stops.size(); ++i) {
-        gradient << QStringLiteral("stop:%1 %2")
-                        .arg(qreal(i) / (stops.size() - 1))
-                        .arg(stops.at(i).name());
-    }
+    QStyleOptionSlider option;
+    initStyleOption(&option);
+    const QRect groove =
+        style()->subControlRect(QStyle::CC_Slider, &option, QStyle::SC_SliderGroove, this);
+    const QRect handle =
+        style()->subControlRect(QStyle::CC_Slider, &option, QStyle::SC_SliderHandle, this);
 
     // Taller than the theme's 3px line, which is too thin to read a rainbow off,
-    // and with the filled sub-page turned off: on a ramp there is no "how far
-    // along" to shade, the colour is the information. The groove border comes
-    // from the app stylesheet (see `QSlider#rampSlider` in theme.cpp).
-    setStyleSheet(QStringLiteral(
-                      "QSlider::groove:horizontal {"
-                      "  height: 7px; border-radius: 0px;"
-                      "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, %1); }"
-                      "QSlider::sub-page:horizontal { background: transparent; }")
-                      .arg(gradient.join(QStringLiteral(", "))));
+    // and with no filled sub-page: on a ramp the colour is the information. The
+    // ends stop half a handle in, where the handle's centre stops.
+    const int inset = handle.width() / 2;
+    const QRect band(groove.left() + inset, groove.center().y() - 3,
+                     groove.width() - 2 * inset, 7);
+    QLinearGradient ramp(band.topLeft(), band.topRight());
+    for (int i = 0; i < stops_.size(); ++i) {
+        ramp.setColorAt(qreal(i) / (stops_.size() - 1), stops_.at(i));
+    }
+    QPainter painter(this);
+    painter.setOpacity(isEnabled() ? 1.0 : 0.4);
+    painter.fillRect(band, ramp);
+    painter.setPen(palette().color(QPalette::Shadow));
+    painter.drawRect(band.adjusted(0, 0, -1, -1));
+    painter.setOpacity(1.0);
+
+    option.subControls = QStyle::SC_SliderHandle;
+    style()->drawComplexControl(QStyle::CC_Slider, &option, &painter, this);
 }
 
 } // namespace pictura

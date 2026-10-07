@@ -63,6 +63,9 @@ fn covered() -> Vec<Adjustment> {
             gamma: 1.3,
             output_black: 5,
             output_white: 250,
+            red: None,
+            green: None,
+            blue: None,
         }),
         Adjustment::Curves(CurvesParams {
             points: vec![(0, 0), (64, 80), (192, 180), (255, 255)],
@@ -121,6 +124,7 @@ fn covered() -> Vec<Adjustment> {
             hue: 25,
             saturation: 35,
             lightness: -12,
+            ranges: Vec::new(),
         }),
         Adjustment::Vibrance(VibranceParams {
             vibrance: 45,
@@ -326,6 +330,9 @@ fn depth16_native_edit_is_not_the_widened_byte() {
         gamma: 1.0,
         output_black: 0,
         output_white: 200,
+        red: None,
+        green: None,
+        blue: None,
     });
     apply_native(&levels, &mut store, 4, 1, 3).unwrap();
     let Samples::U16(v) = &store else { panic!() };

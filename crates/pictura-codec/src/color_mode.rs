@@ -6,7 +6,7 @@ use pictura_core::{BitDepth, Channel, ColorMode, Document, Layer, Samples, Sourc
 
 /// Expand a depth-1 Bitmap plane into planar RGB. Rows are `ceil(width / 8)`
 /// bytes, MSB-first; a set bit is black (0) and a clear bit is white (255).
-pub(crate) fn bitmap_rows_to_rgb(bits: &[u8], width: usize, height: usize) -> Vec<u8> {
+pub fn bitmap_rows_to_rgb(bits: &[u8], width: usize, height: usize) -> Vec<u8> {
     let row_bytes = width.div_ceil(8);
     let plane = width * height;
     let mut out = vec![0u8; plane * 3];
@@ -56,7 +56,7 @@ pub(crate) fn cmy_to_rgb(cmy: &[u8]) -> Vec<u8> {
 
 /// Expand a single index plane through a 768-byte palette laid out as 256 red,
 /// then 256 green, then 256 blue bytes.
-pub(crate) fn indexed_to_rgb(indices: &[u8], palette: &[u8; 768]) -> Vec<u8> {
+pub fn indexed_to_rgb(indices: &[u8], palette: &[u8; 768]) -> Vec<u8> {
     let plane = indices.len();
     let mut out = vec![0u8; plane * 3];
     for (i, &index) in indices.iter().enumerate() {
@@ -71,7 +71,7 @@ pub(crate) fn indexed_to_rgb(indices: &[u8], palette: &[u8; 768]) -> Vec<u8> {
 /// ponytail: profile-free approximation of the reference's ICC CMYK transform;
 /// saturated colors differ. Stored 0 is full ink, 255 is no ink, so each RGB
 /// channel is `floor(color * black / 255)`.
-pub(crate) fn cmyk_to_rgb(cmyk: &[u8]) -> Vec<u8> {
+pub fn cmyk_to_rgb(cmyk: &[u8]) -> Vec<u8> {
     let plane = cmyk.len() / 4;
     let (c, rest) = cmyk.split_at(plane);
     let (m, rest) = rest.split_at(plane);
@@ -125,7 +125,7 @@ pub fn xyz_d50_to_srgb_u8(xyz: [f64; 3]) -> [u8; 3] {
 /// an optimized color LUT (psd-tools / Pillow `.convert("RGB")`) can diverge by
 /// up to ~20 LSB on some in-gamut colors, so that optimized path is not the
 /// reference; saturated out-of-gamut colors also clip instead of gamut-mapping.
-pub(crate) fn lab_to_rgb(lab: &[u8]) -> Vec<u8> {
+pub fn lab_to_rgb(lab: &[u8]) -> Vec<u8> {
     const XN: f64 = 0.96422;
     const ZN: f64 = 0.82521;
     let plane = lab.len() / 3;
@@ -148,7 +148,7 @@ pub(crate) fn lab_to_rgb(lab: &[u8]) -> Vec<u8> {
 /// The profile-free algebraic inverse of [`lab_to_rgb`]: decode sRGB, rotate the
 /// linear RGB back to XYZ D50 with the inverse Bradford matrix, then express it
 /// as CIELAB bytes. Same approximation class as the read side; no profile.
-pub(crate) fn rgb_to_lab(rgb: &[u8]) -> Vec<u8> {
+pub fn rgb_to_lab(rgb: &[u8]) -> Vec<u8> {
     const M_INV: [[f64; 3]; 3] = [
         [0.4360747, 0.3850649, 0.1430804],
         [0.2225045, 0.7168786, 0.0606169],

@@ -5,7 +5,7 @@ use crate::common::{
 };
 use crate::types::{
     AdjustError, BrightnessContrastParams, CurvesParams, ExposureParams, GradientMapParams,
-    GradientStop, LevelsParams, ShadowsHighlightsParams,
+    GradientStop, LevelsChannel, LevelsParams, ShadowsHighlightsParams,
 };
 
 // ---------------------------------------------------------------------------
@@ -13,27 +13,22 @@ use crate::types::{
 // ---------------------------------------------------------------------------
 
 pub(crate) fn levels(p: &LevelsParams, buf: &mut PixelBuffer, n: usize) -> Result<(), AdjustError> {
-    if !p.gamma.is_finite() || p.gamma <= 0.0 {
-        return Err(AdjustError::InvalidParams(
-            "levels gamma must be > 0".into(),
-        ));
+    let composite = p.composite().lut()?;
+    let channel = |c: &Option<LevelsChannel>| c.as_ref().map(LevelsChannel::lut).transpose();
+    let (red, green, blue) = (channel(&p.red)?, channel(&p.green)?, channel(&p.blue)?);
+    {
+        let (r, g, b) = planes_mut(buf, n);
+        for (plane, lut) in [(r, red), (g, green), (b, blue)] {
+            if let Some(lut) = lut {
+                for v in plane.iter_mut() {
+                    *v = lut[*v as usize];
+                }
+            }
+        }
     }
-    if p.input_black >= p.input_white {
-        return Err(AdjustError::InvalidParams(
-            "levels input black must be below input white".into(),
-        ));
-    }
-    let ib = p.input_black as f64;
-    let iw = p.input_white as f64;
-    let ob = p.output_black as f64;
-    let ow = p.output_white as f64;
-    let mut lut = [0u8; 256];
-    for (i, slot) in lut.iter_mut().enumerate() {
-        let t = ((i as f64 - ib) / (iw - ib)).clamp(0.0, 1.0);
-        let t = t.powf(1.0 / p.gamma);
-        *slot = (ob + t * (ow - ob)).round().clamp(0.0, 255.0) as u8;
-    }
-    map_lut(buf, n, &lut);
+    // ponytail: channel records before the composite mirrors Curves; the
+    // reference order is unpublished (no CS6 baseline carries both).
+    map_lut(buf, n, &composite);
     Ok(())
 }
 

@@ -204,21 +204,25 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Edit", "Preferences", "3D"}, QStringLiteral("3D"));
 
     // Image
-    leaf(registry, {"Image", "Mode", "Bitmap"}, QStringLiteral("Bitmap"));
-    leaf(registry, {"Image", "Mode", "Grayscale"}, QStringLiteral("Grayscale"));
+    // Image ▸ Mode: the checked entry is the document's mode / depth.
+    const auto mode = [&registry](const char* id, const char* name) {
+        registry.add(CommandSpec{id, {"Image", "Mode", name}, QString::fromUtf8(name),
+                                 QKeySequence(), true, true});
+    };
+    mode(command_ids::ImageModeBitmap, "Bitmap");
+    mode(command_ids::ImageModeGrayscale, "Grayscale");
     leaf(registry, {"Image", "Mode", "Duotone"}, QStringLiteral("Duotone"));
-    leaf(registry, {"Image", "Mode", "Indexed Color"}, QStringLiteral("Indexed Color"));
-    leaf(registry, {"Image", "Mode", "RGB Color"}, QStringLiteral("RGB Color"));
-    leaf(registry, {"Image", "Mode", "CMYK Color"}, QStringLiteral("CMYK Color"));
-    leaf(registry, {"Image", "Mode", "Lab Color"}, QStringLiteral("Lab Color"));
+    mode(command_ids::ImageModeIndexed, "Indexed Color");
+    mode(command_ids::ImageModeRgb, "RGB Color");
+    mode(command_ids::ImageModeCmyk, "CMYK Color");
+    mode(command_ids::ImageModeLab, "Lab Color");
     leaf(registry, {"Image", "Mode", "Multichannel"}, QStringLiteral("Multichannel"));
-    leaf(registry, {"Image", "Mode", "Color Table"}, QStringLiteral("Color Table"));
     registry.addSeparator({"Image", "Mode"});
-    registry.add(command_ids::ImageMode8Bits, {"Image", "Mode", "8 Bits/Channel"},
-                 QStringLiteral("8 Bits/Channel"), QKeySequence(), true);
-    registry.add(command_ids::ImageMode16Bits, {"Image", "Mode", "16 Bits/Channel"},
-                 QStringLiteral("16 Bits/Channel"), QKeySequence(), true);
-    leaf(registry, {"Image", "Mode", "32 Bits/Channel"}, QStringLiteral("32 Bits/Channel"));
+    mode(command_ids::ImageMode8Bits, "8 Bits/Channel");
+    mode(command_ids::ImageMode16Bits, "16 Bits/Channel");
+    mode(command_ids::ImageMode32Bits, "32 Bits/Channel");
+    registry.addSeparator({"Image", "Mode"});
+    leaf(registry, {"Image", "Mode", "Color Table"}, QStringLiteral("Color Table"));
     leaf(registry, {"Image", "Adjustments", "Brightness/Contrast"},
          QStringLiteral("Brightness/Contrast"));
     leaf(registry, {"Image", "Adjustments", "Levels"}, QStringLiteral("Levels"),
@@ -236,23 +240,23 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Image", "Adjustments", "Photo Filter"}, QStringLiteral("Photo Filter"));
     leaf(registry, {"Image", "Adjustments", "Channel Mixer"}, QStringLiteral("Channel Mixer"));
     leaf(registry, {"Image", "Adjustments", "Color Lookup"}, QStringLiteral("Color Lookup"));
+    registry.addSeparator({"Image", "Adjustments"});
     leaf(registry, {"Image", "Adjustments", "Invert"}, QStringLiteral("Invert"),
          QStringLiteral("Ctrl+I"));
     leaf(registry, {"Image", "Adjustments", "Posterize"}, QStringLiteral("Posterize"));
     leaf(registry, {"Image", "Adjustments", "Threshold"}, QStringLiteral("Threshold"));
     leaf(registry, {"Image", "Adjustments", "Gradient Map"}, QStringLiteral("Gradient Map"));
     leaf(registry, {"Image", "Adjustments", "Selective Color"}, QStringLiteral("Selective Color"));
+    registry.addSeparator({"Image", "Adjustments"});
     leaf(registry, {"Image", "Adjustments", "Shadows/Highlights"},
          QStringLiteral("Shadows/Highlights"));
     leaf(registry, {"Image", "Adjustments", "HDR Toning"}, QStringLiteral("HDR Toning"));
+    registry.addSeparator({"Image", "Adjustments"});
     leaf(registry, {"Image", "Adjustments", "Desaturate"}, QStringLiteral("Desaturate"),
          QStringLiteral("Shift+Ctrl+U"));
     leaf(registry, {"Image", "Adjustments", "Match Color"}, QStringLiteral("Match Color"));
     leaf(registry, {"Image", "Adjustments", "Replace Color"}, QStringLiteral("Replace Color"));
     leaf(registry, {"Image", "Adjustments", "Equalize"}, QStringLiteral("Equalize"));
-    leaf(registry, {"Image", "Adjustments", "Auto Tone"}, QStringLiteral("Auto Tone"));
-    leaf(registry, {"Image", "Adjustments", "Auto Contrast"}, QStringLiteral("Auto Contrast"));
-    leaf(registry, {"Image", "Adjustments", "Auto Color"}, QStringLiteral("Auto Color"));
     registry.addSeparator({"Image"});
     leaf(registry, {"Image", "Auto Tone"}, QStringLiteral("Auto Tone"), QStringLiteral("Shift+Ctrl+L"));
     leaf(registry, {"Image", "Auto Contrast"}, QStringLiteral("Auto Contrast"),

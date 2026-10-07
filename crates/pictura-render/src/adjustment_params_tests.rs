@@ -21,8 +21,14 @@ fn levels(input_black: u16, input_white: u16, gamma: u16) -> AdjustmentData {
     for v in [input_black, input_white, 0, 255, gamma] {
         data.extend_from_slice(&v.to_be_bytes());
     }
-    // The remaining 28 per-channel records the decoder does not read.
-    data.extend(std::iter::repeat_n(7u8, 280));
+    // Red, green, and blue at identity, then the 25 records the decoder does
+    // not read.
+    for _ in 0..3 {
+        for v in [0u16, 255, 0, 255, 100] {
+            data.extend_from_slice(&v.to_be_bytes());
+        }
+    }
+    data.extend(std::iter::repeat_n(7u8, 250));
     AdjustmentData {
         key: *b"levl",
         data,
@@ -38,18 +44,78 @@ fn a_patch_keeps_what_the_model_does_not_carry() {
     assert_eq!(value(&edited, "brightness"), 55.0);
     assert_eq!(&edited.data[4..7], &[0, 9, 1]);
 
-    // hue2's Colorize byte and a per-range record survive a Master edit.
+    // hue2's Colorize byte and a colour range's band survive a Master edit.
     let mut hue = encode_hue_saturation(30, 0, 0);
     hue.data[2] = 1;
-    hue.data[40] = 0x2a;
+    hue.data[17] = 0x2a;
     let edited = set_adjustment_param(&hue, "hue", -40.0).unwrap();
     assert_eq!(value(&edited, "hue"), -40.0);
-    assert_eq!((edited.data[2], edited.data[40]), (1, 0x2a));
+    assert_eq!((edited.data[2], edited.data[17]), (1, 0x2a));
     assert_eq!(edited.data.len(), hue.data.len());
 
     let edited = set_adjustment_param(&levels(0, 255, 100), "gamma", 1.5).unwrap();
     assert_eq!(value(&edited, "gamma"), 1.5);
-    assert!(edited.data[12..].iter().all(|&b| b == 7));
+    assert!(edited.data[42..].iter().all(|&b| b == 7));
+}
+
+#[test]
+fn black_white_tint_and_its_colour_are_editable() {
+    let bw = crate::default_adjustment_block("black-white", [0; 3], [255; 3]).unwrap();
+    assert_eq!(value(&bw, "tint"), 0.0);
+    assert_eq!(value(&bw, "tintColor"), f64::from(0xe1_d3_b4u32));
+    let tinted = set_adjustment_param(&bw, "tint", 1.0).unwrap();
+    let tinted = set_adjustment_param(&tinted, "tintColor", f64::from(0x80_40_20u32)).unwrap();
+    assert_eq!(value(&tinted, "tintColor"), f64::from(0x80_40_20u32));
+    let Some(pictura_adjust::Adjustment::BlackWhite(p)) = crate::decode_adjustment(&tinted) else {
+        panic!("blwh decode");
+    };
+    assert!(p.tint);
+    assert_eq!(p.tint_color, [0x80, 0x40, 0x20]);
+    assert_eq!(p.red, 40.0);
+}
+
+#[test]
+fn hue_saturation_ranges_are_grouped_and_decode_with_their_band() {
+    let editor = adjustment_editor(&encode_hue_saturation(0, 0, 0)).unwrap();
+    assert_eq!(editor.groups.len(), 7);
+    let blues =
+        set_adjustment_param(&encode_hue_saturation(0, 0, 0), "blues.lightness", 40.0).unwrap();
+    // Blues is range 4: settings at 16 + 14*4 + 8, lightness two i16 further.
+    assert_eq!(&blues.data[84..86], &40i16.to_be_bytes());
+    let Some(pictura_adjust::Adjustment::HueSaturation(p)) = crate::decode_adjustment(&blues)
+    else {
+        panic!("hue2 decode");
+    };
+    assert_eq!(p.ranges.len(), 1);
+    assert_eq!(
+        (p.ranges[0].begin_sustain, p.ranges[0].lightness),
+        (225, 40)
+    );
+    assert_eq!(value(&blues, "lightness"), 0.0);
+}
+
+#[test]
+fn levels_channels_are_grouped_and_edit_their_own_record() {
+    let editor = adjustment_editor(&levels(0, 255, 100)).unwrap();
+    assert_eq!(editor.groups, ["RGB", "Red", "Green", "Blue"]);
+    let green = editor
+        .params
+        .iter()
+        .find(|p| p.key == "green.inputWhite")
+        .unwrap();
+    assert_eq!((green.group, green.value), (Some(2), 255.0));
+
+    // Green's input white is record 2's second u16, at 2 + 20 + 2.
+    let edited = set_adjustment_param(&levels(0, 255, 100), "green.inputWhite", 200.0).unwrap();
+    assert_eq!(&edited.data[24..26], &200u16.to_be_bytes());
+    assert_eq!(value(&edited, "inputWhite"), 255.0);
+    let Some(pictura_adjust::Adjustment::Levels(p)) = crate::decode_adjustment(&edited) else {
+        panic!("levels decode");
+    };
+    assert_eq!((p.red, p.blue), (None, None));
+    assert_eq!(p.green.map(|g| g.input_white), Some(200));
+    // A channel's black past its white is refused, like the composite's.
+    assert!(set_adjustment_param(&edited, "green.inputBlack", 230.0).is_none());
 }
 
 #[test]

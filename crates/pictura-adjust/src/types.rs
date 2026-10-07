@@ -15,6 +15,78 @@ pub struct LevelsParams {
     pub gamma: f64,
     pub output_black: u8,
     pub output_white: u8,
+    /// Optional per-channel records (`levl` records 1–3). Applied to their own
+    /// plane before the composite record, as Curves' channel curves are.
+    pub red: Option<LevelsChannel>,
+    pub green: Option<LevelsChannel>,
+    pub blue: Option<LevelsChannel>,
+}
+
+/// One channel's Levels record.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LevelsChannel {
+    pub input_black: u8,
+    pub input_white: u8,
+    pub gamma: f64,
+    pub output_black: u8,
+    pub output_white: u8,
+}
+
+impl LevelsParams {
+    /// The composite record, in the per-channel shape.
+    pub fn composite(&self) -> LevelsChannel {
+        LevelsChannel {
+            input_black: self.input_black,
+            input_white: self.input_white,
+            gamma: self.gamma,
+            output_black: self.output_black,
+            output_white: self.output_white,
+        }
+    }
+}
+
+impl LevelsChannel {
+    /// Reject a non-positive gamma or an input black at or past white.
+    pub(crate) fn validate(&self) -> Result<(), AdjustError> {
+        if !self.gamma.is_finite() || self.gamma <= 0.0 {
+            return Err(AdjustError::InvalidParams(
+                "levels gamma must be > 0".into(),
+            ));
+        }
+        if self.input_black >= self.input_white {
+            return Err(AdjustError::InvalidParams(
+                "levels input black must be below input white".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// The record over `0.0..=255.0`.
+    fn eval(&self, x: f64) -> f64 {
+        let (ib, iw) = (self.input_black as f64, self.input_white as f64);
+        let (ob, ow) = (self.output_black as f64, self.output_white as f64);
+        let t = ((x - ib) / (iw - ib))
+            .clamp(0.0, 1.0)
+            .powf(1.0 / self.gamma);
+        ob + t * (ow - ob)
+    }
+
+    /// The record as a map over `0.0..=1.0`.
+    pub(crate) fn map(&self) -> Result<impl Fn(f64) -> f64, AdjustError> {
+        self.validate()?;
+        let record = *self;
+        Ok(move |u: f64| record.eval(u * 255.0) / 255.0)
+    }
+
+    /// The record as an 8-bit lookup table.
+    pub(crate) fn lut(&self) -> Result<[u8; 256], AdjustError> {
+        self.validate()?;
+        let mut lut = [0u8; 256];
+        for (i, slot) in lut.iter_mut().enumerate() {
+            *slot = self.eval(i as f64).round().clamp(0.0, 255.0) as u8;
+        }
+        Ok(lut)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -49,6 +121,47 @@ pub struct HueSaturationParams {
     pub hue: i16,
     pub saturation: i16,
     pub lightness: i16,
+    /// The colour ranges (Reds … Magentas) that carry an edit; empty when only
+    /// Master is set.
+    pub ranges: Vec<HueRange>,
+}
+
+/// One Hue/Saturation colour range: its hue band in degrees (full effect
+/// between the sustain points, ramping to none at the ramp points; a band may
+/// wrap through 0) and the Hue / Saturation / Lightness applied within it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HueRange {
+    pub begin_ramp: i16,
+    pub begin_sustain: i16,
+    pub end_sustain: i16,
+    pub end_ramp: i16,
+    pub hue: i16,
+    pub saturation: i16,
+    pub lightness: i16,
+}
+
+impl HueRange {
+    /// How strongly the range applies to hue `h` (0..360): 1 inside the
+    /// sustain band, linear across each ramp, 0 outside.
+    pub fn weight(&self, h: f64) -> f64 {
+        let from = f64::from(self.begin_ramp);
+        let rel = |v: i16| (f64::from(v) - from).rem_euclid(360.0);
+        let (h, b, c, d) = (
+            (h - from).rem_euclid(360.0),
+            rel(self.begin_sustain),
+            rel(self.end_sustain),
+            rel(self.end_ramp),
+        );
+        if h < b {
+            h / b
+        } else if h <= c {
+            1.0
+        } else if h < d {
+            (d - h) / (d - c)
+        } else {
+            0.0
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

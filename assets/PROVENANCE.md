@@ -31,8 +31,11 @@ here.
 ## Ported code
 
 - The shared panel widgets (`AngleDial`, `RampSlider`, `SpectrumBar`,
-  `CurveWidget`), the Swatches grid, and the Info/Channels/Properties panel
-  slices are ported from the upstream photorust tree
+  `CurveWidget`), the Swatches grid, the Info/Channels/Properties panel
+  slices, and the Brightness/Contrast, Vibrance, Exposure, Hue/Saturation,
+  Color Balance, Black & White, Photo Filter (its filter colours), Channel
+  Mixer, Levels (with
+  its `TriangleSlider`), and Curves dialogs are ported from the upstream photorust tree
   (Source: https://github.com/perfecto25/photorust), relicensed under
   **GPL-3.0-or-later** pending KookaPictura issue #1.
 

@@ -10,41 +10,84 @@ use crate::types::{
 // Colour adjustments
 // ---------------------------------------------------------------------------
 
+/// Reject out-of-range Master or range settings.
+pub(crate) fn validate_hue_saturation(p: &HueSaturationParams) -> Result<(), AdjustError> {
+    let triples = std::iter::once((p.hue, p.saturation, p.lightness))
+        .chain(p.ranges.iter().map(|r| (r.hue, r.saturation, r.lightness)));
+    for (hue, saturation, lightness) in triples {
+        if !(-180..=180).contains(&hue) {
+            return Err(AdjustError::InvalidParams("hue must be -180..=180".into()));
+        }
+        if !(-100..=100).contains(&saturation) {
+            return Err(AdjustError::InvalidParams(
+                "saturation must be -100..=100".into(),
+            ));
+        }
+        if !(-100..=100).contains(&lightness) {
+            return Err(AdjustError::InvalidParams(
+                "lightness must be -100..=100".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn hue_saturation_is_identity(p: &HueSaturationParams) -> bool {
+    std::iter::once((p.hue, p.saturation, p.lightness))
+        .chain(p.ranges.iter().map(|r| (r.hue, r.saturation, r.lightness)))
+        .all(|t| t == (0, 0, 0))
+}
+
+/// One pixel (`0.0..=1.0` RGB) through Hue/Saturation. Each colour range adds
+/// its settings scaled by its weight at the pixel's hue.
+/// ponytail: the range blend (additive, faded out toward gray by chroma so a
+/// neutral is not read as red) approximates Photoshop's unpublished one; no
+/// baseline carries a range edit.
+pub(crate) fn hue_saturation_rgb(p: &HueSaturationParams, r: f64, g: f64, b: f64) -> [f64; 3] {
+    let (h, s, l) = rgb_to_hsl(r, g, b);
+    let mut dh = p.hue as f64;
+    let mut ds = p.saturation as f64 / 100.0;
+    let mut dl = p.lightness as f64 / 100.0;
+    if !p.ranges.is_empty() {
+        let presence = ((r.max(g).max(b) - r.min(g).min(b)) * 4.0).min(1.0);
+        for range in &p.ranges {
+            let w = range.weight(h) * presence;
+            dh += w * range.hue as f64;
+            ds += w * range.saturation as f64 / 100.0;
+            dl += w * range.lightness as f64 / 100.0;
+        }
+        ds = ds.clamp(-1.0, 1.0);
+        dl = dl.clamp(-1.0, 1.0);
+    }
+    let h = (h + dh).rem_euclid(360.0);
+    let s = (s * (1.0 + ds)).clamp(0.0, 1.0);
+    let l = if dl >= 0.0 {
+        l + dl * (1.0 - l)
+    } else {
+        l + dl * l
+    }
+    .clamp(0.0, 1.0);
+    let (nr, ng, nb) = hsl_to_rgb(h, s, l);
+    [nr, ng, nb]
+}
+
 pub(crate) fn hue_saturation(
     p: &HueSaturationParams,
     buf: &mut PixelBuffer,
     n: usize,
 ) -> Result<(), AdjustError> {
-    if !(-180..=180).contains(&p.hue) {
-        return Err(AdjustError::InvalidParams("hue must be -180..=180".into()));
-    }
-    if !(-100..=100).contains(&p.saturation) {
-        return Err(AdjustError::InvalidParams(
-            "saturation must be -100..=100".into(),
-        ));
-    }
-    if !(-100..=100).contains(&p.lightness) {
-        return Err(AdjustError::InvalidParams(
-            "lightness must be -100..=100".into(),
-        ));
-    }
-    if p.hue == 0 && p.saturation == 0 && p.lightness == 0 {
+    validate_hue_saturation(p)?;
+    if hue_saturation_is_identity(p) {
         return Ok(());
     }
-    let ds = p.saturation as f64 / 100.0;
-    let dl = p.lightness as f64 / 100.0;
     let (r, g, b) = planes_mut(buf, n);
     for ((rv, gv), bv) in r.iter_mut().zip(g.iter_mut()).zip(b.iter_mut()) {
-        let (h, s, l) = rgb_to_hsl(*rv as f64 / 255.0, *gv as f64 / 255.0, *bv as f64 / 255.0);
-        let h = (h + p.hue as f64).rem_euclid(360.0);
-        let s = (s * (1.0 + ds)).clamp(0.0, 1.0);
-        let l = if dl >= 0.0 {
-            l + dl * (1.0 - l)
-        } else {
-            l + dl * l
-        }
-        .clamp(0.0, 1.0);
-        let (nr, ng, nb) = hsl_to_rgb(h, s, l);
+        let [nr, ng, nb] = hue_saturation_rgb(
+            p,
+            *rv as f64 / 255.0,
+            *gv as f64 / 255.0,
+            *bv as f64 / 255.0,
+        );
         *rv = (nr * 255.0).round().clamp(0.0, 255.0) as u8;
         *gv = (ng * 255.0).round().clamp(0.0, 255.0) as u8;
         *bv = (nb * 255.0).round().clamp(0.0, 255.0) as u8;

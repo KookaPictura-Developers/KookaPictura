@@ -1,5 +1,7 @@
 #include "adjustment_controls.h"
 
+#include "adjustment_dialog.h"
+
 #include "color_picker_dialog.h"
 #include "curve_widget.h"
 #include "jump_slider.h"
@@ -151,7 +153,14 @@ void AdjustmentControls::addSlider(const QStringList& cells)
     spin->setDecimals(decimals);
     spin->setRange(cells.value(6).toDouble(), cells.value(7).toDouble());
     spin->setKeyboardTracking(false);
-    column->addWidget(labelled(cells.value(2), spin));
+    // CS6's value row, as every Adjustments dialog lays it out: the label,
+    // then a fixed-width field at the right, over the slider.
+    spin->setFixedWidth(AdjustmentDialog::kFieldWidth);
+    auto* head = new QHBoxLayout;
+    head->addWidget(new QLabel(cells.value(2) + QLatin1Char(':'), holder));
+    head->addStretch(1);
+    head->addWidget(spin);
+    column->addLayout(head);
     auto* slider = new JumpSlider(Qt::Horizontal, holder);
     slider->setObjectName(QStringLiteral("adjustmentSlider.") + key);
     slider->setRange(qRound(spin->minimum() * factor), qRound(spin->maximum() * factor));
@@ -270,21 +279,9 @@ void AdjustmentControls::addCurves()
         loading_ = false;
     });
     connect(curve_, &CurveWidget::curveChanged, this, [this]() {
-        if (loading_) {
-            return;
+        if (!loading_) {
+            emit curveChanged(curveChannel_->currentIndex(), curve_->pointsText());
         }
-        // Whole levels, strictly increasing inputs, as the curv block stores.
-        QStringList pairs;
-        int lastX = -1;
-        for (const QPointF& p : curve_->points()) {
-            const int x = qBound(0, qRound(p.x() * 255.0), 255);
-            const int y = qBound(0, qRound(p.y() * 255.0), 255);
-            if (x > lastX) {
-                pairs << QStringLiteral("%1,%2").arg(x).arg(y);
-                lastX = x;
-            }
-        }
-        emit curveChanged(curveChannel_->currentIndex(), pairs.join(QLatin1Char(' ')));
     });
     loadCurve();
 }
@@ -294,15 +291,7 @@ void AdjustmentControls::loadCurve()
     if (!curve_ || !curveSource_) {
         return;
     }
-    QVector<QPointF> points;
-    for (const QString& pair : curveSource_(curveChannel_->currentIndex()).split(QLatin1Char(' '))) {
-        const QStringList xy = pair.split(QLatin1Char(','));
-        if (xy.size() == 2) {
-            points.append(QPointF(xy[0].toInt() / 255.0, xy[1].toInt() / 255.0));
-        }
-    }
-    const QSignalBlocker block(curve_);
-    curve_->setPoints(points);
+    curve_->setPointsText(curveSource_(curveChannel_->currentIndex()));
 }
 
 void AdjustmentControls::showGroup(int group)
