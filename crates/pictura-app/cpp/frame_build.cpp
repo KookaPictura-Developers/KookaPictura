@@ -467,7 +467,7 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
 void PicturaMainWindow::buildDocumentTabs()
 {
     // The document tab strip is flat chrome (no base line above the tabs) and
-    // carries the shared bold tab font on the bar itself, so the label weight
+    // carries the shared tab font on the bar itself, so the label weight
     // does not depend on the QSS subcontrol rule and QTabBar's elision metrics
     // match the painted label.
     tabs_->tabBar()->setDrawBase(false);

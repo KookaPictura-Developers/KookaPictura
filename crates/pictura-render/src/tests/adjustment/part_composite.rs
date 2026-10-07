@@ -341,7 +341,15 @@ fn gradient_map_layer_changes_non_uniform_backdrop() {
             adjustment_layer(
                 "gradient-map",
                 *b"grdm",
-                encode_gradient_map(&stops, false).data,
+                encode_gradient_map(
+                    &GradientMapParams {
+                        stops: stops.to_vec(),
+                        reverse: false,
+                        transparency: Vec::new(),
+                    },
+                    false,
+                )
+                .data,
                 255,
                 None,
             ),

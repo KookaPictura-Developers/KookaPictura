@@ -700,11 +700,25 @@ void PicturaMainWindow::removeDocument(int index)
 
 void PicturaMainWindow::showNewDocumentDialog()
 {
+    const QString suggested = QStringLiteral("Untitled-%1").arg(untitledCounter_ + 1);
     NewDocumentSpec spec;
-    if (!NewDocumentDialog::get(this, &spec)) {
+    if (!NewDocumentDialog::get(this, suggested,
+                                tools_ ? tools_->background() : QColor(Qt::white), &spec)) {
         return;
     }
-    newDocument(spec.name, spec.width, spec.height, spec.mode, spec.depth, spec.background);
+    auto* view = new PictureView(this);
+    if (!create_document(*view, spec.width, spec.height, spec.mode, spec.depth,
+                         spec.fill.rgb() & 0xffffffu, spec.transparent, spec.ppi, spec.perCm)) {
+        delete view;
+        statusBar()->showMessage(tr("Could not create the document."));
+        return;
+    }
+    const int index = addDocument(view, QString());
+    // A name the user typed replaces the generated Untitled-n.
+    if (index >= 0 && spec.name.trimmed() != documentName(index) && !spec.name.trimmed().isEmpty()) {
+        docs_[index].displayName = spec.name.trimmed();
+        updateTabTitle(index);
+    }
 }
 
 void PicturaMainWindow::showFileInfo()

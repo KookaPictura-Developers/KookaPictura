@@ -1,10 +1,14 @@
 #include "frame_includes.h"
 
+#include "canvas_size_dialog.h"
+#include "image_size_dialog.h"
+
 #include "pictura_app/src/cxxqt_object/image_adjust/image_ops.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/image_adjust/image_size.cxxqt.h"
 
 namespace pictura {
 
-// Image > Crop, Trim, and Duplicate (Image > Mode is frame_menus_image_mode.cpp).
+// Image > Crop, Trim, Duplicate, Image Size, and Canvas Size (Image > Mode is frame_menus_image_mode.cpp).
 // Lifted out of registerHandlers() to keep frame_menus.cpp within its size
 // budget; the handler bodies are unchanged.
 void PicturaMainWindow::wireImageMenu()
@@ -69,6 +73,40 @@ void PicturaMainWindow::wireImageMenu()
     for (const char* id : {command_ids::ImageTrim, command_ids::ImageDuplicate}) {
         registry_->setEnabledProvider(id, imageEnabled);
     }
+
+    const QString imageSize =
+        commandIdForPath({QStringLiteral("Image"), QStringLiteral("Image Size…")});
+    registry_->setImplemented(imageSize, true);
+    registry_->setEnabledProvider(imageSize, imageEnabled);
+    registry_->setHandler(imageSize, [this]() {
+        PictureView* view = activeView();
+        if (!view || !view->has_document()) {
+            return;
+        }
+        ImageSizeDialog dialog(view, this);
+        if (runDialog(dialog, this) == QDialog::Accepted
+            && image_size_apply(*view, dialog.resampleKind(), dialog.resultWidth(),
+                                dialog.resultHeight(), dialog.resultPpi(), dialog.resultPerCm())) {
+            refresh();
+        }
+    });
+
+    const QString canvasSize =
+        commandIdForPath({QStringLiteral("Image"), QStringLiteral("Canvas Size…")});
+    registry_->setImplemented(canvasSize, true);
+    registry_->setEnabledProvider(canvasSize, imageEnabled);
+    registry_->setHandler(canvasSize, [this]() {
+        PictureView* view = activeView();
+        if (!view || !view->has_document()) {
+            return;
+        }
+        CanvasSizeDialog dialog(view, tools_->foreground(), tools_->background(), this);
+        if (runDialog(dialog, this) == QDialog::Accepted
+            && canvas_size_apply(*view, dialog.anchorName(), dialog.resultWidth(),
+                                 dialog.resultHeight(), dialog.extensionColor().rgb() & 0xffffffu)) {
+            refresh();
+        }
+    });
 }
 
 } // namespace pictura

@@ -34,7 +34,7 @@ pub use types::{
     AdjustError, Adjustment, AutoKind, BlackWhiteParams, BrightnessContrastParams,
     ChannelMixerParams, ColorBalanceParams, ColorLookupKind, ColorLookupParams, CurvesParams,
     ExposureParams, GradientFillParams, GradientKind, GradientMapParams, GradientStop, HueRange,
-    HueSaturationParams, LevelsChannel, LevelsParams, Lut3d, PatternFillParams, PhotoFilterParams,
-    SelectiveColorMethod, SelectiveColorParams, SelectiveRange, ShadowsHighlightsParams,
-    VibranceParams,
+    HueSaturationParams, LevelsChannel, LevelsParams, Lut3d, OpacityStop, PatternFillParams,
+    PhotoFilterParams, SelectiveColorMethod, SelectiveColorParams, SelectiveRange,
+    ShadowsHighlightsParams, VibranceParams,
 };

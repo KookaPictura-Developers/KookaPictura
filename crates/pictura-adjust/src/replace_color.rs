@@ -12,7 +12,8 @@ use pictura_core::PixelBuffer;
 use crate::common::{hsl_to_rgb, rgb_to_hsl};
 use crate::types::AdjustError;
 
-/// One eyedropper reading: the document position it was taken at plus its RGB.
+/// One eyedropper reading: the document position it was taken at (negative
+/// when it was not read off the canvas) plus its RGB.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReplaceColorSample {
     pub x: i32,
@@ -71,7 +72,9 @@ pub(crate) fn match_weight(
         } else {
             (1.0 - d / fuzziness).clamp(0.0, 1.0)
         };
-        if localized && w > 0.0 {
+        // A sample with no canvas position (the foreground colour the dialog
+        // opens on) has no cluster to stay near.
+        if localized && w > 0.0 && s.x >= 0 && s.y >= 0 {
             let dx = (x - s.x) as f64;
             let dy = (y - s.y) as f64;
             w *= (-(dx * dx + dy * dy) / (2.0 * sigma)).exp();

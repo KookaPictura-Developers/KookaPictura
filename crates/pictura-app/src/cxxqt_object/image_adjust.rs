@@ -9,8 +9,11 @@
 //!
 //! [`PictureView`]: super::qobject::PictureView
 
+mod gradient_map;
 mod image_mode;
 mod image_ops;
+mod image_size;
+mod new_document;
 
 use super::adjustment_edit::{format_points, page_rows, parse_points};
 use super::impl_filters::{apply_op_active_region, ActiveOp};

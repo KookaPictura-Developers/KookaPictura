@@ -50,6 +50,40 @@ pub fn document_resolution(document: &Document) -> Option<Resolution> {
     })
 }
 
+/// Write `resolution` into the document's ResolutionInfo resource (both
+/// axes), replacing it or appending one. The width/height display units an
+/// existing resource names are kept; a new one shows inches, or centimeters
+/// for a pixels/cm resolution. Unparsed trailing bytes are preserved.
+pub fn set_document_resolution(document: &mut Document, resolution: Resolution) {
+    let (mut resources, consumed) = decode_image_resources_with_len(document);
+    let unit: u16 = if resolution.per_cm { 2 } else { 1 };
+    let existing = resources
+        .iter()
+        .find(|r| r.id == RESOLUTION_INFO)
+        .filter(|r| r.data.len() >= 16);
+    let size_unit =
+        |at: usize| existing.map_or(unit, |r| u16::from_be_bytes([r.data[at], r.data[at + 1]]));
+    let (width_unit, height_unit) = (size_unit(6), size_unit(14));
+    let fixed = ((resolution.ppi * 65536.0)
+        .round()
+        .clamp(1.0, u32::MAX as f64) as u32)
+        .to_be_bytes();
+    let mut data = Vec::with_capacity(16);
+    for size in [width_unit, height_unit] {
+        data.extend_from_slice(&fixed);
+        data.extend_from_slice(&unit.to_be_bytes());
+        data.extend_from_slice(&size.to_be_bytes());
+    }
+    let block = frame_image_resource(RESOLUTION_INFO, "", &data);
+    match resources.iter_mut().find(|r| r.id == RESOLUTION_INFO) {
+        Some(slot) => *slot = block,
+        None => resources.push(block),
+    }
+    let mut section = encode_image_resources(&resources);
+    section.extend_from_slice(&document.image_resources[consumed..]);
+    document.image_resources = section;
+}
+
 /// One image-resource block.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImageResource {
@@ -267,6 +301,47 @@ mod tests {
         assert_eq!(document_resolution(&document_with(Vec::new())), None);
         let short = resource(b"8BIM", RESOLUTION_INFO, "", &[0, 72]);
         assert_eq!(document_resolution(&document_with(short)), None);
+    }
+
+    #[test]
+    fn writes_resolution_info_and_keeps_the_size_units() {
+        let mut doc = document_with(resource(b"8BIM", ICC_PROFILE, "ICC", b"a"));
+        set_document_resolution(
+            &mut doc,
+            Resolution {
+                ppi: 300.0,
+                per_cm: false,
+            },
+        );
+        assert_eq!(
+            document_resolution(&doc),
+            Some(Resolution {
+                ppi: 300.0,
+                per_cm: false
+            })
+        );
+        assert_eq!(
+            decode_image_resources(&doc).len(),
+            2,
+            "the ICC block is kept"
+        );
+        // Replacing keeps the existing width/height display units (points).
+        let mut data = (72u32 << 16).to_be_bytes().to_vec();
+        data.extend_from_slice(&[0, 1, 0, 3]);
+        data.extend_from_slice(&(72u32 << 16).to_be_bytes());
+        data.extend_from_slice(&[0, 1, 0, 3]);
+        let mut doc = document_with(resource(b"8BIM", RESOLUTION_INFO, "", &data));
+        let wanted = Resolution {
+            ppi: 118.11,
+            per_cm: true,
+        };
+        set_document_resolution(&mut doc, wanted);
+        let read = document_resolution(&doc).unwrap();
+        assert!((read.ppi - 118.11).abs() < 1e-4 && read.per_cm);
+        let block = decode_image_resources(&doc).remove(0);
+        assert_eq!(block.data.len(), 16);
+        assert_eq!(&block.data[6..8], &[0, 3]);
+        assert_eq!(&block.data[14..16], &[0, 3]);
     }
 
     #[test]

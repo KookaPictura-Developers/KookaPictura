@@ -8,6 +8,7 @@
 #include "pictura_app/src/cxxqt_object/image_hdr_toning.cxxqt.h"
 
 #include <QtCore/QSignalBlocker>
+#include <QtCore/QTimer>
 #include <QtWidgets/QCheckBox>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QDialogButtonBox>
@@ -201,6 +202,10 @@ HdrToningDialog::HdrToningDialog(PictureView* view, const QRect& visible, QWidge
     right->addStretch();
     outer->addLayout(right);
 
+    settle_ = new QTimer(this);
+    settle_->setSingleShot(true);
+    settle_->setInterval(40);
+    connect(settle_, &QTimer::timeout, this, &HdrToningDialog::preview);
     connect(preset_, qOverload<int>(&QComboBox::currentIndexChanged), this,
             &HdrToningDialog::loadPreset);
     connect(preview_, &QCheckBox::toggled, this, [this](bool on) {
@@ -260,7 +265,7 @@ void HdrToningDialog::edited()
         preset_->setCurrentIndex(kPresetCount);
     }
     if (preview_->isChecked()) {
-        preview();
+        settle_->start();
     }
 }
 
@@ -287,6 +292,7 @@ void HdrToningDialog::cancelPreview()
 
 void HdrToningDialog::accept()
 {
+    settle_->stop();
     if (view_
         && hdr_toning_apply(*view_, radius_->value(), strength_->value(), gamma_->value(),
                             exposure_->value(), detail_->value(), shadow_->value(),
@@ -304,6 +310,7 @@ void HdrToningDialog::accept()
 
 void HdrToningDialog::reject()
 {
+    settle_->stop();
     cancelPreview();
     QDialog::reject();
 }

@@ -267,6 +267,18 @@ pub struct GradientStop {
 pub struct GradientMapParams {
     pub stops: Vec<GradientStop>,
     pub reverse: bool,
+    /// Opacity stops; empty is opaque. Where the gradient is part transparent
+    /// the mapped colour is blended over the original pixel.
+    pub transparency: Vec<OpacityStop>,
+}
+
+/// One opacity stop of a [`GradientMapParams`] gradient.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OpacityStop {
+    /// PSD gradient position, `0..=4096`.
+    pub location: u16,
+    /// Percent, `0..=100`.
+    pub opacity: u8,
 }
 
 /// The geometry of a gradient fill (`GdFl`).

@@ -19,9 +19,14 @@ pub(super) fn finalize_import(doc: &mut Document, rgba: &[u8]) {
     if !rgba.as_chunks::<4>().0.iter().all(|px| px[3] == 255) {
         return;
     }
-    let Some(layer) = doc.layers.last_mut() else {
-        return;
-    };
+    if let Some(layer) = doc.layers.last_mut() {
+        make_background(layer);
+    }
+}
+
+/// Turn the opaque `layer` into the locked `Background`, dropping its
+/// redundant alpha channel.
+pub(super) fn make_background(layer: &mut Layer) {
     layer.name = "Background".to_string();
     layer.background = true;
     layer.lock = LockFlags::default()

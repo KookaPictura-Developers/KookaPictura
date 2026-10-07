@@ -1,7 +1,7 @@
 use pictura_adjust::{
-    Adjustment, BlackWhiteParams, BrightnessContrastParams, ExposureParams, GradientMapParams,
-    GradientStop, HueRange, HueSaturationParams, LevelsChannel, LevelsParams, PhotoFilterParams,
-    ShadowsHighlightsParams, VibranceParams,
+    Adjustment, BlackWhiteParams, BrightnessContrastParams, ExposureParams, HueRange,
+    HueSaturationParams, LevelsChannel, LevelsParams, PhotoFilterParams, ShadowsHighlightsParams,
+    VibranceParams,
 };
 use pictura_codec::DescValue;
 use pictura_core::{
@@ -454,7 +454,7 @@ pub fn decode_adjustment(data: &AdjustmentData) -> Option<Adjustment> {
         b"vibA" => decode_vibrance(&data.data),
         b"shdH" => decode_shadows_highlights(&data.data),
         b"blwh" => decode_black_white(&data.data),
-        b"gdrm" | b"grdm" => decode_gradient_map(&data.data),
+        b"gdrm" | b"grdm" => crate::gradient_map::decode_gradient_map(&data.data),
         b"blnc" => crate::color_balance::decode_color_balance(&data.data),
         b"mixr" => crate::channel_mixer::decode_channel_mixer(&data.data),
         b"curv" => crate::curves::decode_curves(&data.data),
@@ -509,7 +509,7 @@ fn be_f32(d: &[u8], at: usize) -> Option<f32> {
     Some(f32::from_be_bytes([s[0], s[1], s[2], s[3]]))
 }
 
-fn be_u32(d: &[u8], at: usize) -> Option<u32> {
+pub(crate) fn be_u32(d: &[u8], at: usize) -> Option<u32> {
     let s = d.get(at..at + 4)?;
     Some(u32::from_be_bytes([s[0], s[1], s[2], s[3]]))
 }
@@ -841,57 +841,6 @@ fn desc_long_or(obj: &DescValue, key: &[u8], default: f64) -> Option<f64> {
     }
 }
 
-/// `grdm`: the legacy Gradient Map struct (psd-tools `GradientMap`). Layout:
-/// `u16` version (1 or 3), `u8` reverse, `u8` dither, a `4`-byte method when
-/// version 3, a unicode name (`u32` UTF-16 char count + data), a `u16` colour
-/// stop count, then each stop: `u32` location, `u32` midpoint, `u16` mode, four
-/// `u16` colour components, `2` pad bytes. Everything after the colour stops
-/// (transparency stops and the trailing gradient fields) is ignored.
-///
-/// ponytail: the first three components are the only colour read, reduced with
-/// `>> 8` so `65535` maps to `255`; midpoint bias, dither, opacity stops, and
-/// non-RGB colour models are not modelled.
-fn decode_gradient_map(d: &[u8]) -> Option<Adjustment> {
-    let version = be_u16(d, 0)?;
-    if version != 1 && version != 3 {
-        return None;
-    }
-    let reverse = *d.get(2)? != 0;
-    let _dither = *d.get(3)?;
-    let mut at = if version == 3 { 8 } else { 4 };
-    let name_chars = be_u32(d, at)? as usize;
-    at += 4 + name_chars * 2;
-    let count = be_u16(d, at)?;
-    at += 2;
-    if count < 2 {
-        return None;
-    }
-    let mut stops = Vec::with_capacity(count as usize);
-    let mut previous: Option<u16> = None;
-    for _ in 0..count {
-        let location = be_u32(d, at)?;
-        if location > 4096 {
-            return None;
-        }
-        let location = location as u16;
-        if previous.is_some_and(|p| location <= p) {
-            return None;
-        }
-        previous = Some(location);
-        let color = [
-            (be_u16(d, at + 10)? >> 8) as u8,
-            (be_u16(d, at + 12)? >> 8) as u8,
-            (be_u16(d, at + 14)? >> 8) as u8,
-        ];
-        stops.push(GradientStop { location, color });
-        at += 20;
-    }
-    Some(Adjustment::GradientMap(GradientMapParams {
-        stops,
-        reverse,
-    }))
-}
-
 // --- Encoders for the same subset ------------------------------------------
 //
 // These build the raw `AdjustmentData` the decoder above reads, so the app can
@@ -1012,49 +961,6 @@ pub fn encode_solid_color_fill(color: [u8; 3]) -> AdjustmentData {
     AdjustmentData {
         key: *b"SoCo",
         data: pictura_codec::write_descriptor(&desc),
-    }
-}
-
-/// `grdm`: the version-1 Gradient Map block. Writes the reverse flag, dither 0,
-/// an empty unicode name, the supplied stops (8-bit colours scaled to the
-/// 16-bit storage scale), zero transparency stops, and psd-tools' trailing
-/// defaults, padded to a 4-byte boundary.
-pub fn encode_gradient_map(stops: &[GradientStop], reverse: bool) -> AdjustmentData {
-    let mut data = Vec::new();
-    data.extend_from_slice(&1u16.to_be_bytes());
-    data.push(u8::from(reverse));
-    data.push(0);
-    data.extend_from_slice(&0u32.to_be_bytes()); // empty unicode name
-    data.extend_from_slice(&(stops.len() as u16).to_be_bytes());
-    for stop in stops {
-        data.extend_from_slice(&(stop.location as u32).to_be_bytes());
-        data.extend_from_slice(&50u32.to_be_bytes()); // midpoint
-        data.extend_from_slice(&0u16.to_be_bytes()); // mode
-        for c in stop.color {
-            let v = (c as u16) * 257; // inverse of the decoder's `>> 8`
-            data.extend_from_slice(&v.to_be_bytes());
-        }
-        data.extend_from_slice(&0u16.to_be_bytes()); // alpha
-        data.extend_from_slice(&[0, 0]); // stop pad
-    }
-    data.extend_from_slice(&0u16.to_be_bytes()); // transparency stop count
-    data.extend_from_slice(&2u16.to_be_bytes()); // expansion
-    data.extend_from_slice(&0u16.to_be_bytes()); // interpolation
-    data.extend_from_slice(&32u16.to_be_bytes()); // length
-    data.extend_from_slice(&0u16.to_be_bytes()); // mode
-    data.extend_from_slice(&0u32.to_be_bytes()); // random seed
-    data.extend_from_slice(&0u16.to_be_bytes()); // show transparency
-    data.extend_from_slice(&0u16.to_be_bytes()); // use vector color
-    data.extend_from_slice(&0u32.to_be_bytes()); // roughness
-    data.extend_from_slice(&0u16.to_be_bytes()); // color model
-    data.extend_from_slice(&[0u8; 16]); // min/max colour (4H each)
-    data.extend_from_slice(&[0, 0]); // dummy
-    while data.len() % 4 != 0 {
-        data.push(0);
-    }
-    AdjustmentData {
-        key: *b"grdm",
-        data,
     }
 }
 

@@ -12,7 +12,7 @@ mod pictura_raw;
 mod resize;
 mod slices;
 
-pub use canvas::resize_canvas_document;
+pub use canvas::{extend_background, resize_canvas_document};
 pub use crop::{
     crop_document, delete_cropped_pixels, translate_layer, translate_layer_active,
     translate_layer_index, translate_layer_rect,

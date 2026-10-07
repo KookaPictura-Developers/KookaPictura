@@ -170,3 +170,26 @@ fn mask_weights_exact_samples_full_and_others_zero() {
     let mask = replace_color_mask(&buf3(&[[250, 0, 0]]), &p, 1);
     assert_eq!(mask.data[0], (0.875f64 * 255.0 + 0.5) as u8);
 }
+
+#[test]
+fn localized_ignores_a_sample_with_no_canvas_position() {
+    // The foreground colour the dialog opens on has x = y = -1; Localized
+    // must not pull its weight toward the canvas origin.
+    let p = ReplaceColorParams {
+        samples: vec![sample(-1, [200, 0, 0])],
+        fuzziness: 40.0,
+        localized: true,
+        hue: 0.0,
+        saturation: 0.0,
+        lightness: 0.0,
+    };
+    let b = PixelBuffer {
+        width: 64,
+        height: 1,
+        channels: 3,
+        data: buf3(&[[200, 0, 0]; 64]).data,
+    };
+    let mask = replace_color_mask(&b, &p, 64);
+    assert_eq!(mask.data[0], 255);
+    assert_eq!(mask.data[63], 255, "the far pixel is not falloff-weighted");
+}

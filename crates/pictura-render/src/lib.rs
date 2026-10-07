@@ -37,9 +37,9 @@ mod composite_rows;
 mod view_pyramid;
 pub(crate) use composite::{channel, mask_alpha, render_smart_source, sample};
 pub use composite::{
-    composite_rgba, decode_adjustment, encode_brightness_contrast, encode_gradient_map,
-    encode_hue_saturation, encode_invert, encode_photo_filter, encode_posterize,
-    encode_solid_color_fill, encode_threshold,
+    composite_rgba, decode_adjustment, encode_brightness_contrast, encode_hue_saturation,
+    encode_invert, encode_photo_filter, encode_posterize, encode_solid_color_fill,
+    encode_threshold,
 };
 pub use view_pyramid::{Planes, PyramidLevel, ViewPyramid, SMALLEST_SIDE, TILE};
 
@@ -47,11 +47,14 @@ mod composite_native;
 pub use composite_native::{composite_native, refresh_native_composite};
 pub use pictura_adjust::{
     replace_color_mask, Adjustment, AutoKind, ExposureGamma, GradientFillParams, GradientKind,
-    GradientStop, PatternFillParams, ReplaceColorParams, ReplaceColorSample,
+    GradientMapParams, GradientStop, OpacityStop, PatternFillParams, ReplaceColorParams,
+    ReplaceColorSample,
 };
 
 mod color_balance;
+mod gradient_map;
 pub use color_balance::encode_color_balance;
+pub use gradient_map::{encode_gradient_map, gradient_map_dither};
 
 mod channel_mixer;
 pub use channel_mixer::encode_channel_mixer;
@@ -127,8 +130,8 @@ pub use document_ops::{
     convert_to_indexed, convert_to_smart_object, copy_layer, copy_merged, coverage_bounds,
     create_clipping_mask, crop_document, delete_cropped_pixels, delete_hidden_layers, delete_paths,
     distribute_layers, document_bit_depth, document_color_mode, duplicate_layer, duplicate_paths,
-    flatten, flatten_rows, flip_document, group_layer, group_paths, identity_mesh,
-    indexed_exact_available, is_background, is_fill_content_layer, is_shape_layer,
+    extend_background, flatten, flatten_rows, flip_document, group_layer, group_paths,
+    identity_mesh, indexed_exact_available, is_background, is_fill_content_layer, is_shape_layer,
     is_visible_in_panel, layer_from_background, layer_live_shape, layer_shape_paths,
     layer_via_copy, layer_via_cut, merge_scope, move_path, move_path_to, move_selection_content,
     neutral_color, next_layer_name, open_as_smart_object, parent_path, paste_clip,

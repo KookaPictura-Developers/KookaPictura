@@ -16,7 +16,7 @@ use crate::common::{
     hermite_eval, hsl_to_rgb, linear_to_srgb, luma, monotone_tangents, rgb_to_hsl, srgb_to_linear,
 };
 use crate::lut::sample;
-use crate::tonal::sample_gradient;
+use crate::tonal::gradient_lut;
 use crate::types::{
     AdjustError, Adjustment, AutoKind, BlackWhiteParams, BrightnessContrastParams,
     ChannelMixerParams, ColorBalanceParams, ColorLookupParams, CurvesParams, ExposureParams,
@@ -352,38 +352,15 @@ fn gradient_map_native(
     height: usize,
     channels: u8,
 ) -> Result<(), AdjustError> {
-    if p.stops.len() < 2 {
-        return Err(AdjustError::InvalidParams(
-            "gradient map needs at least 2 stops".into(),
-        ));
-    }
-    if p.stops.iter().any(|s| s.location > 4096) {
-        return Err(AdjustError::InvalidParams(
-            "gradient stop location must be <= 4096".into(),
-        ));
-    }
-    if p.stops.windows(2).any(|w| w[0].location >= w[1].location) {
-        return Err(AdjustError::InvalidParams(
-            "gradient stop locations must be strictly increasing".into(),
-        ));
-    }
     // ponytail: luma is quantized to the 8-bit gradient LUT exactly as the
-    // 8-bit kernel does, so the outputs are a fixed set of u8 colors; a native
-    // luma sample would need the gradient interpolation to move off 8-bit too.
-    let mut lut = [[0u8; 3]; 256];
-    for (i, slot) in lut.iter_mut().enumerate() {
-        let l = i as f64 / 255.0;
-        let l = if p.reverse { 1.0 - l } else { l };
-        *slot = sample_gradient(&p.stops, (l * 4096.0).round());
-    }
+    // 8-bit kernel does, so the mapped colours are a fixed set of u8 colours; a
+    // native luma sample would need the gradient interpolation to move off
+    // 8-bit too.
+    let lut = gradient_lut(p)?;
     map(samples, width, height, channels, move |p| {
         let y = luma(p[0] * 255.0, p[1] * 255.0, p[2] * 255.0);
-        let c = lut[y.round().clamp(0.0, 255.0) as usize];
-        [
-            c[0] as f64 / 255.0,
-            c[1] as f64 / 255.0,
-            c[2] as f64 / 255.0,
-        ]
+        let (c, a) = lut[y.round().clamp(0.0, 255.0) as usize];
+        [0, 1, 2].map(|i| p[i] + (c[i] as f64 / 255.0 - p[i]) * a)
     });
     Ok(())
 }

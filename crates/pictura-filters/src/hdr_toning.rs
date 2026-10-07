@@ -9,12 +9,12 @@
 //!
 //! Source: https://github.com/perfecto25/photorust
 //!
-//! ponytail: the blur runs on the CPU through `kernel::gaussian_blur_planes`;
-//! fold it into the GPU blur kernel if live preview latency ever matters.
+//! Only the base's luminance is read, so one luminance plane is blurred, by
+//! `pictura_core::blur::approx_gaussian` (three box passes): its cost does not
+//! grow with the radius, where photorust leans on a GPU blur to stay usable.
 
 use pictura_core::PixelBuffer;
 
-use crate::kernel::gaussian_blur_planes;
 use crate::{validate, FilterError};
 
 /// Local Adaptation controls, in dialog order.
@@ -79,10 +79,21 @@ pub fn hdr_toning(buf: &mut PixelBuffer, p: &HdrToningParams) -> Result<(), Filt
     validate_params(p)?;
     let channels = buf.channels as usize;
 
-    // photorust's blur treats its radius as the Gaussian sigma; this crate's
-    // kernel takes a sigma too, so the preset radii transfer unchanged.
-    let mut blurred = buf.clone();
-    gaussian_blur_planes(&mut blurred, p.radius);
+    // photorust's blur treats its radius as the Gaussian sigma, so the preset
+    // radii transfer unchanged.
+    let luminance = |i: usize| {
+        (0.299 * buf.data[i] as f64
+            + 0.587 * buf.data[n + i] as f64
+            + 0.114 * buf.data[2 * n + i] as f64)
+            / 255.0
+    };
+    let mut local = (0..n).map(luminance).collect::<Vec<_>>();
+    pictura_core::blur::approx_gaussian(
+        &mut local,
+        buf.width as usize,
+        buf.height as usize,
+        p.radius,
+    );
 
     let opaque = |data: &[u8], i: usize| channels < 4 || data[3 * n + i] != 0;
 
@@ -125,19 +136,9 @@ pub fn hdr_toning(buf: &mut PixelBuffer, p: &HdrToningParams) -> Result<(), Filt
     let exposure_ln = p.exposure.clamp(-5.0, 5.0) * std::f64::consts::LN_2;
     const DETAIL_KNEE: f64 = 0.06;
 
-    for i in 0..n {
-        if !opaque(&buf.data, i) {
-            continue;
-        }
-        let r = buf.data[i] as f64 / 255.0;
-        let g = buf.data[n + i] as f64 / 255.0;
-        let b = buf.data[2 * n + i] as f64 / 255.0;
+    let tone = |r: u8, g: u8, b: u8, local_lum: f64| -> [u8; 3] {
+        let (r, g, b) = (r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0);
         let lum = 0.299 * r + 0.587 * g + 0.114 * b;
-
-        let local_lum = (0.299 * blurred.data[i] as f64
-            + 0.587 * blurred.data[n + i] as f64
-            + 0.114 * blurred.data[2 * n + i] as f64)
-            / 255.0;
 
         // 1. Split into base (blurred) and detail (residual) in the log domain.
         let log_lum = (lum + EPS).ln();
@@ -212,10 +213,36 @@ pub fn hdr_toning(buf: &mut PixelBuffer, p: &HdrToningParams) -> Result<(), Filt
             nb = b2;
         }
 
-        buf.data[i] = to_u8(nr);
-        buf.data[n + i] = to_u8(ng);
-        buf.data[2 * n + i] = to_u8(nb);
-    }
+        [to_u8(nr), to_u8(ng), to_u8(nb)]
+    };
+
+    // Every pixel is independent: split the planes into one band per core.
+    let (colour, alpha) = buf.data.split_at_mut(3 * n);
+    let alpha: &[u8] = if channels >= 4 { &alpha[..n] } else { &[] };
+    let (red, rest) = colour.split_at_mut(n);
+    let (green, blue) = rest.split_at_mut(n);
+    let threads = std::thread::available_parallelism().map_or(1, |t| t.get());
+    let band = n.div_ceil(threads).max(4096);
+    std::thread::scope(|scope| {
+        let bands = red
+            .chunks_mut(band)
+            .zip(green.chunks_mut(band))
+            .zip(blue.chunks_mut(band))
+            .zip(local.chunks(band))
+            .enumerate();
+        for (index, (((red, green), blue), local)) in bands {
+            let start = index * band;
+            let tone = &tone;
+            scope.spawn(move || {
+                for k in 0..red.len() {
+                    if alpha.get(start + k) == Some(&0) {
+                        continue;
+                    }
+                    [red[k], green[k], blue[k]] = tone(red[k], green[k], blue[k], local[k]);
+                }
+            });
+        }
+    });
     Ok(())
 }
 

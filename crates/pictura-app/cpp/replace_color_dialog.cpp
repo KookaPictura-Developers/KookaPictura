@@ -1,5 +1,6 @@
 #include "replace_color_dialog.h"
 
+#include "color_picker_dialog.h"
 #include "icons.h"
 #include "image_view.h"
 #include "panels/jump_slider.h"
@@ -20,6 +21,8 @@
 #include <QtWidgets/QSpinBox>
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QVBoxLayout>
+
+#include <QtCore/QSignalBlocker>
 
 #include <cmath>
 
@@ -66,6 +69,9 @@ ReplaceColorDialog::ReplaceColorDialog(PictureView* view, ToolController* tools,
     setWindowTitle(QStringLiteral("Replace Color"));
     setObjectName(QStringLiteral("replaceColorDialog"));
     buildUi();
+    if (tools_) {
+        samples_.append({QPoint(-1, -1), tools_->foreground()});
+    }
     refreshSampler();
     refreshMask();
     refreshSwatches();
@@ -173,7 +179,10 @@ void ReplaceColorDialog::buildUi()
             QStringLiteral("replaceColorLightness"));
 
     auto* resultCol = new QVBoxLayout;
-    resultSwatch_ = makeSwatch();
+    resultSwatch_ = new QToolButton(this);
+    resultSwatch_->setObjectName(QStringLiteral("replaceColorResult"));
+    resultSwatch_->setFixedSize(34, 26);
+    resultSwatch_->setToolTip(QStringLiteral("Click to set the result color"));
     resultCol->addWidget(resultSwatch_);
     resultCol->addWidget(new QLabel(QStringLiteral("Result"), this));
     grid->addLayout(resultCol, 0, 3, 3, 1, Qt::AlignCenter);
@@ -208,6 +217,16 @@ void ReplaceColorDialog::buildUi()
     connect(saturationSlider_, &QSlider::valueChanged, this, [this] { applyChange(false); });
     connect(lightnessSlider_, &QSlider::valueChanged, this, [this] { applyChange(false); });
     connect(imageButton_, &QRadioButton::toggled, this, [this] { refreshMask(); });
+    connect(resultSwatch_, &QToolButton::clicked, this, [this] {
+        if (samples_.isEmpty()) {
+            return;
+        }
+        const QColor picked =
+            ColorPickerDialog::getColor(resultForTest(), this, QStringLiteral("Result Color"));
+        if (picked.isValid()) {
+            pickResult(picked);
+        }
+    });
     connect(preview_, &QCheckBox::toggled, this, [this](bool on) {
         if (on) {
             applyPreview();
@@ -341,20 +360,17 @@ void ReplaceColorDialog::refreshMask()
     }
 }
 
-void ReplaceColorDialog::refreshSwatches()
+// "Color" is the most recently sampled colour; "Result" is that colour put
+// through the same HSL shift the image will get.
+QColor ReplaceColorDialog::resultForTest() const
 {
-    // "Color" is the most recently sampled colour; "Result" is that colour put
-    // through the same HSL shift the image will get.
-    const QColor sampled = samples_.isEmpty() ? QColor() : samples_.back().color;
-    setSwatchColor(colorSwatch_, sampled);
-    if (!sampled.isValid()) {
-        setSwatchColor(resultSwatch_, QColor());
-        return;
+    if (samples_.isEmpty()) {
+        return {};
     }
     float h = 0.0f;
     float s = 0.0f;
     float l = 0.0f;
-    sampled.getHslF(&h, &s, &l);
+    samples_.back().color.getHslF(&h, &s, &l);
     if (h < 0.0f) {
         // Achromatic: Qt reports hue -1, which would wrap to nonsense.
         h = 0.0f;
@@ -365,8 +381,58 @@ void ReplaceColorDialog::refreshSwatches()
     h = std::fmod(h + hue + 1.0f, 1.0f);
     s = sat >= 0.0f ? s + (1.0f - s) * sat : s * (1.0f + sat);
     l = light >= 0.0f ? l + (1.0f - l) * light : l * (1.0f + light);
-    setSwatchColor(resultSwatch_,
-                   QColor::fromHslF(h, qBound(0.0f, s, 1.0f), qBound(0.0f, l, 1.0f)));
+    return QColor::fromHslF(h, qBound(0.0f, s, 1.0f), qBound(0.0f, l, 1.0f));
+}
+
+void ReplaceColorDialog::refreshSwatches()
+{
+    setSwatchColor(colorSwatch_, samples_.isEmpty() ? QColor() : samples_.back().color);
+    const QColor result = resultForTest();
+    resultSwatch_->setStyleSheet(
+        result.isValid()
+            ? QStringLiteral("QToolButton { background-color: %1; border: 1px solid #000; }")
+                  .arg(result.name())
+            : QStringLiteral("QToolButton { border: 1px solid #000; }"));
+}
+
+void ReplaceColorDialog::pickResult(const QColor& result)
+{
+    if (samples_.isEmpty() || !result.isValid()) {
+        return;
+    }
+    float h0 = 0.0f;
+    float s0 = 0.0f;
+    float l0 = 0.0f;
+    float h1 = 0.0f;
+    float s1 = 0.0f;
+    float l1 = 0.0f;
+    samples_.back().color.getHslF(&h0, &s0, &l0);
+    result.getHslF(&h1, &s1, &l1);
+    // The inverse of the shift `resultForTest` applies: Saturation and
+    // Lightness move toward 1 when positive and toward 0 when negative.
+    const auto amount = [](float from, float to) {
+        if (to >= from) {
+            return from >= 1.0f ? 0.0f : (to - from) / (1.0f - from);
+        }
+        return from <= 0.0f ? 0.0f : to / from - 1.0f;
+    };
+    int hue = 0;
+    if (h1 >= 0.0f && s1 > 0.0f) {
+        // Qt reports an achromatic sample's hue as -1; the engine (and
+        // `resultForTest`) rotate from 0.
+        hue = qRound((h1 - qMax(h0, 0.0f)) * 360.0f);
+        hue = (hue + 540) % 360 - 180;
+    }
+    const int values[] = {hue, qRound(amount(s0, s1) * 100.0f), qRound(amount(l0, l1) * 100.0f)};
+    QSlider* sliders[] = {hueSlider_, saturationSlider_, lightnessSlider_};
+    QSpinBox* spins[] = {hueSpin_, saturationSpin_, lightnessSpin_};
+    for (int i = 0; i < 3; ++i) {
+        const QSignalBlocker blockSlider(sliders[i]);
+        const QSignalBlocker blockSpin(spins[i]);
+        sliders[i]->setValue(values[i]);
+        spins[i]->setValue(values[i]);
+    }
+    applyChange(false);
 }
 
 void ReplaceColorDialog::accept()

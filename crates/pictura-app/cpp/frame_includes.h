@@ -16,6 +16,7 @@
 #include "icons.h"
 #include "image_view.h"
 #include "new_document_dialog.h"
+#include "pictura_app/src/cxxqt_object/image_adjust/new_document.cxxqt.h"
 #include "options_bar.h"
 #include "pictura_raw_dialog.h"
 #include "panels/brush_panel.h"

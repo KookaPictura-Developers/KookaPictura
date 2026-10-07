@@ -100,8 +100,13 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/channel_mixer_dialog.cpp
     crates/pictura-app/cpp/color_balance_dialog.cpp
     crates/pictura-app/cpp/curves_dialog.cpp
+    crates/pictura-app/cpp/canvas_size_dialog.cpp
     crates/pictura-app/cpp/exposure_dialog.cpp
+    crates/pictura-app/cpp/gradient_editor_dialog.cpp
+    crates/pictura-app/cpp/gradient_map_dialog.cpp
+    crates/pictura-app/cpp/gradient_noise_page.cpp
     crates/pictura-app/cpp/hue_saturation_dialog.cpp
+    crates/pictura-app/cpp/image_size_dialog.cpp
     crates/pictura-app/cpp/levels_dialog.cpp
     crates/pictura-app/cpp/photo_filter_dialog.cpp
     crates/pictura-app/cpp/slider_dialog.cpp
@@ -256,8 +261,13 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/channel_mixer_dialog.h
     crates/pictura-app/cpp/color_balance_dialog.h
     crates/pictura-app/cpp/curves_dialog.h
+    crates/pictura-app/cpp/canvas_size_dialog.h
     crates/pictura-app/cpp/exposure_dialog.h
+    crates/pictura-app/cpp/gradient_editor_dialog.h
+    crates/pictura-app/cpp/gradient_map_dialog.h
+    crates/pictura-app/cpp/gradient_noise_page.h
     crates/pictura-app/cpp/hue_saturation_dialog.h
+    crates/pictura-app/cpp/image_size_dialog.h
     crates/pictura-app/cpp/levels_dialog.h
     crates/pictura-app/cpp/photo_filter_dialog.h
     crates/pictura-app/cpp/slider_dialog.h

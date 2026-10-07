@@ -3,6 +3,7 @@ use super::*;
 use crate::common::{luma, rgb_to_hsl, srgb_to_linear};
 use pictura_core::PixelBuffer;
 
+mod gradient_map;
 mod hue_ranges;
 mod levels;
 
@@ -944,6 +945,7 @@ fn gradient_map_black_white_identity_on_greys() {
         &Adjustment::GradientMap(GradientMapParams {
             stops: bw_stops(),
             reverse: false,
+            transparency: Vec::new(),
         }),
         &mut b,
     )
@@ -963,6 +965,7 @@ fn gradient_map_reverse_flips() {
         &Adjustment::GradientMap(GradientMapParams {
             stops: bw_stops(),
             reverse: true,
+            transparency: Vec::new(),
         }),
         &mut b,
     )
@@ -994,6 +997,7 @@ fn gradient_map_interior_stop_is_honored() {
         &Adjustment::GradientMap(GradientMapParams {
             stops,
             reverse: false,
+            transparency: Vec::new(),
         }),
         &mut b,
     )
@@ -1023,6 +1027,7 @@ fn gradient_map_clamps_outside_stops() {
         &Adjustment::GradientMap(GradientMapParams {
             stops,
             reverse: false,
+            transparency: Vec::new(),
         }),
         &mut b,
     )
@@ -1041,6 +1046,7 @@ fn gradient_map_rejects_invalid_stops() {
             color: [0, 0, 0],
         }],
         reverse: false,
+        transparency: Vec::new(),
     };
     assert!(apply(&Adjustment::GradientMap(one), &mut b).is_err());
 
@@ -1056,6 +1062,7 @@ fn gradient_map_rejects_invalid_stops() {
             },
         ],
         reverse: false,
+        transparency: Vec::new(),
     };
     assert!(apply(&Adjustment::GradientMap(decreasing), &mut b).is_err());
 
@@ -1071,6 +1078,7 @@ fn gradient_map_rejects_invalid_stops() {
             },
         ],
         reverse: false,
+        transparency: Vec::new(),
     };
     assert!(apply(&Adjustment::GradientMap(out_of_range), &mut b).is_err());
 }
@@ -1208,6 +1216,7 @@ fn alpha_is_never_modified() {
                 },
             ],
             reverse: false,
+            transparency: Vec::new(),
         }),
         Adjustment::GradientFill(GradientFillParams {
             stops: vec![

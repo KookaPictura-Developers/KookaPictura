@@ -106,6 +106,7 @@ fn covered() -> Vec<Adjustment> {
                 },
             ],
             reverse: false,
+            transparency: Vec::new(),
         }),
         Adjustment::GradientMap(GradientMapParams {
             stops: vec![
@@ -119,6 +120,7 @@ fn covered() -> Vec<Adjustment> {
                 },
             ],
             reverse: true,
+            transparency: Vec::new(),
         }),
         Adjustment::HueSaturation(HueSaturationParams {
             hue: 25,

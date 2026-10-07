@@ -43,6 +43,58 @@ pub fn resize_canvas_document(
     Ok(())
 }
 
+/// Grow the Background layer to cover the whole canvas, filling what it did
+/// not cover with `color` (Canvas Size's extension colour). False when there
+/// is no Background or it already covers the canvas.
+/// ponytail: the extended Background drops any retained 16/32-bit or Lab
+/// source samples, so it re-saves from its 8-bit pixels.
+pub fn extend_background(doc: &mut pictura_core::Document, color: [u8; 3]) -> bool {
+    let canvas = pictura_core::PsdRect {
+        top: 0,
+        left: 0,
+        bottom: doc.height as i32,
+        right: doc.width as i32,
+    };
+    let gray = doc.mode == pictura_core::ColorMode::Grayscale;
+    let Some(layer) = doc.layers.iter_mut().find(|l| l.background && !l.is_group) else {
+        return false;
+    };
+    if layer.rect == canvas {
+        return false;
+    }
+    let old = layer.rect;
+    let (width, height) = (canvas.width() as u32, canvas.height() as u32);
+    let old_w = old.width().max(0) as usize;
+    for channel in &mut layer.channels {
+        let fill = match channel.id {
+            0 if gray => {
+                let [r, g, b] = color.map(f64::from);
+                (0.299 * r + 0.587 * g + 0.114 * b).round() as u8
+            }
+            id @ 0..=2 => color[id as usize],
+            -1 => 255,
+            _ => 0,
+        };
+        let mut plane = vec![fill; width as usize * height as usize];
+        let x0 = old.left.max(0);
+        let x1 = old.right.min(width as i32);
+        for y in old.top.max(0)..old.bottom.min(height as i32) {
+            let src = (y - old.top) as usize * old_w;
+            let dst = y as usize * width as usize;
+            for x in x0..x1 {
+                if let Some(&v) = channel.data.get(src + (x - old.left) as usize) {
+                    plane[dst + x as usize] = v;
+                }
+            }
+        }
+        channel.data = plane.into();
+    }
+    layer.rect = canvas;
+    layer.source_channels = None;
+    recompute(doc);
+    true
+}
+
 /// Offset-blit a retained composite store into the resized canvas so its dims
 /// still match the document and `composite_retained` stays valid.
 pub(super) fn rebase_source_planes(
@@ -208,6 +260,33 @@ mod tests {
             data: (0..16u8).collect(),
         }];
         doc
+    }
+
+    #[test]
+    fn extend_background_fills_the_new_area_with_the_colour() {
+        let mut doc = sample_doc();
+        doc.layers[0].background = true;
+        resize_canvas_document(&mut doc, 6, 4, Anchor::TopLeft).unwrap();
+        assert!(extend_background(&mut doc, [200, 100, 50]));
+        let layer = &doc.layers[0];
+        assert_eq!(layer.rect, full(6, 4));
+        let at = |id: i16, i: usize| layer.channels.iter().find(|c| c.id == id).unwrap().data[i];
+        assert_eq!(
+            (at(0, 0), at(1, 0), at(2, 0)),
+            (10, 20, 30),
+            "the old pixels stay"
+        );
+        assert_eq!(
+            (at(0, 4), at(1, 4), at(2, 4), at(-1, 4)),
+            (200, 100, 50, 255)
+        );
+        assert!(
+            !extend_background(&mut doc, [0; 3]),
+            "already covers the canvas"
+        );
+        let mut plain = sample_doc();
+        resize_canvas_document(&mut plain, 6, 4, Anchor::TopLeft).unwrap();
+        assert!(!extend_background(&mut plain, [0; 3]), "no Background");
     }
 
     #[test]
