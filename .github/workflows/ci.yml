@@ -26,8 +26,48 @@ env:
   SCCACHE_GHA_ENABLED: "true"
 
 jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      cpp_only: ${{ steps.bucket.outputs.cpp_only }}
+    steps:
+      # Explicit, not *checkout: this job precedes the anchor's definition.
+      - uses: actions/checkout@v7
+      - name: Detect changed files
+        id: filter
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          list-files: shell
+          filters: |
+            changed:
+              - '**'
+      - name: Classify the change
+        id: bucket
+        env:
+          FILES: ${{ steps.filter.outputs.changed_files }}
+        run: |
+          cpp_only=false
+          if [ -n "$FILES" ]; then
+            cpp_only=true
+            # ponytail: odd filenames in the shell list fail the match below,
+            # yielding cpp_only=false and a full run (fail open, never a bad skip)
+            for f in $FILES; do
+              case "$f" in
+                crates/pictura-app/cpp/*) ;;
+                *) cpp_only=false; break ;;
+              esac
+            done
+          fi
+          echo "cpp_only=$cpp_only" >> "$GITHUB_OUTPUT"
+
   lint:
     runs-on: ubuntu-24.04
+    needs: changes
+    if: needs.changes.outputs.cpp_only != 'true'
     timeout-minutes: 30
     steps:
       - &checkout
@@ -73,6 +113,8 @@ jobs:
 
   test:
     runs-on: ubuntu-24.04
+    needs: changes
+    if: needs.changes.outputs.cpp_only != 'true'
     timeout-minutes: 30
     steps:
       - *checkout
@@ -139,6 +181,8 @@ jobs:
 
   oracles:
     runs-on: ubuntu-24.04
+    needs: changes
+    if: needs.changes.outputs.cpp_only != 'true'
     timeout-minutes: 30
     steps:
       - *checkout
