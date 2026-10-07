@@ -8,10 +8,17 @@ use std::f64::consts::PI;
 
 use pictura_core::PixelBuffer;
 
-use crate::artistic::reduce::clamp_u8;
 use crate::kernel::clamp_index;
 use crate::luma::luma;
 use crate::{validate, FilterError};
+
+/// Round and clamp a float to an 8-bit sample (non-finite reads as 0).
+fn clamp_u8(v: f64) -> u8 {
+    if !v.is_finite() {
+        return 0;
+    }
+    v.round().clamp(0.0, 255.0) as u8
+}
 
 fn check_unit(name: &str, v: f64) -> Result<(), FilterError> {
     if v.is_finite() && (0.0..=10.0).contains(&v) {

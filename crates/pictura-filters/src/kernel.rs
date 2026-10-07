@@ -92,37 +92,6 @@ pub(crate) fn invalid(msg: String) -> FilterError {
     FilterError::InvalidParams(msg)
 }
 
-/// Separable box mean with clamp-to-edge, for smoothness merges.
-pub(crate) fn box_mean(src: &[f64], w: usize, h: usize, radius: usize) -> Vec<f64> {
-    if radius == 0 {
-        return src.to_vec();
-    }
-    let mut tmp = vec![0.0f64; src.len()];
-    for y in 0..h {
-        for x in 0..w {
-            let mut s = 0.0;
-            for d in 0..=2 * radius {
-                let sx = clamp_index(x as isize + d as isize - radius as isize, w);
-                s += src[y * w + sx];
-            }
-            tmp[y * w + x] = s;
-        }
-    }
-    let area = ((2 * radius + 1) * (2 * radius + 1)) as f64;
-    let mut out = vec![0.0f64; src.len()];
-    for y in 0..h {
-        for x in 0..w {
-            let mut s = 0.0;
-            for d in 0..=2 * radius {
-                let sy = clamp_index(y as isize + d as isize - radius as isize, h);
-                s += tmp[sy * w + x];
-            }
-            out[y * w + x] = s / area;
-        }
-    }
-    out
-}
-
 /// 3x3 clamp-to-edge convolution of the color planes (alpha untouched).
 pub(crate) fn convolve3x3_planes(buf: &mut PixelBuffer, kernel: &[[f64; 3]; 3], norm: f64) {
     let w = buf.width as usize;

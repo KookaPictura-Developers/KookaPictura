@@ -11,22 +11,18 @@
 
 use pictura_core::PixelBuffer;
 
-pub mod artistic;
 pub mod blur;
-pub mod brush_strokes;
-pub mod distort;
+mod distort;
 pub mod hdr_toning;
 pub mod kernel;
-pub mod luma;
-pub mod noise;
+mod luma;
+mod noise;
 pub mod oil_paint;
-pub mod other;
-pub mod pixelate;
+mod other;
+mod photorust;
 pub mod render;
 pub mod sharpen;
-pub mod sketch;
-pub mod stylize;
-pub mod texture;
+mod stylize;
 
 pub use hdr_toning::HdrToningParams;
 pub use render::{LensType, LightType, Lighting, TextureChannel};

@@ -8,76 +8,7 @@ use pictura_core::PixelBuffer;
 use rand_chacha::{rand_core::SeedableRng, ChaCha8Rng};
 
 use crate::kernel::{clamp_index, to_u8, unit_f64};
-use crate::{validate, FilterError, ZigZagStyle};
-
-/// Radial displacement about the image center.
-///
-/// `amount` is a percent in `-100..=100` (sign flips direction, `0` is a
-/// bit-exact no-op); `ridges` in `0..=20` sets the direction reversals from the
-/// center to the edge (`0` is a single direction). `AroundCenter` displaces
-/// tangentially, `OutFromCenter` radially, `PondRipples` diagonally.
-pub fn zigzag(
-    buf: &mut PixelBuffer,
-    amount: f64,
-    ridges: u32,
-    style: ZigZagStyle,
-) -> Result<(), FilterError> {
-    validate(buf)?;
-    if !amount.is_finite() || !(-100.0..=100.0).contains(&amount) {
-        return Err(FilterError::InvalidParams(format!(
-            "zigzag amount {amount} must be finite and within -100..=100"
-        )));
-    }
-    if ridges > 20 {
-        return Err(FilterError::InvalidParams(format!(
-            "zigzag ridges {ridges} outside 0..=20"
-        )));
-    }
-    if amount == 0.0 {
-        return Ok(());
-    }
-
-    // ponytail: the reference's ridge falloff is closed. This uses a cosine radial
-    // profile pinned to zero at the edge, so reversals == ridges. Ceiling: no
-    // CS6 pixel parity. Upgrade by fitting reference renders (oracle hook M11-B).
-    let (w, h) = (buf.width as usize, buf.height as usize);
-    let n = w * h;
-    let planes = (buf.channels as usize).min(3);
-    let cx = (w as f64 - 1.0) / 2.0;
-    let cy = (h as f64 - 1.0) / 2.0;
-    let rmax = cx.max(cy).max(1.0);
-    let amp = amount / 100.0;
-    let pi = std::f64::consts::PI;
-    let src = buf.data.clone();
-    for y in 0..h {
-        for x in 0..w {
-            let vx = x as f64 - cx;
-            let vy = y as f64 - cy;
-            let r = vx.hypot(vy);
-            let rn = (r / rmax).clamp(0.0, 1.0);
-            let mag = amp * rmax * (1.0 - rn) * (ridges as f64 * pi * rn).cos();
-            let (ux, uy) = if r > 0.0 {
-                (vx / r, vy / r)
-            } else {
-                (0.0, 0.0)
-            };
-            let (dx, dy) = match style {
-                ZigZagStyle::AroundCenter => (-uy * mag, ux * mag),
-                ZigZagStyle::OutFromCenter => (ux * mag, uy * mag),
-                ZigZagStyle::PondRipples => {
-                    let s = std::f64::consts::FRAC_1_SQRT_2;
-                    ((ux - uy) * s * mag, (ux + uy) * s * mag)
-                }
-            };
-            let (sx, sy) = (x as f64 + dx, y as f64 + dy);
-            for c in 0..planes {
-                let plane = &src[c * n..c * n + n];
-                buf.data[c * n + y * w + x] = to_u8(sample(plane, w, h, sx, sy));
-            }
-        }
-    }
-    Ok(())
-}
+use crate::{validate, FilterError};
 
 /// Seeded random ripple displacement.
 ///
@@ -174,68 +105,12 @@ mod tests {
         b
     }
 
-    fn buf4(w: u32, h: u32, px: &[[u8; 4]]) -> PixelBuffer {
-        let mut b = PixelBuffer::new(w, h, 4);
-        let n = px.len();
-        for (i, p) in px.iter().enumerate() {
-            for (c, &v) in p.iter().enumerate() {
-                b.data[c * n + i] = v;
-            }
-        }
-        b
-    }
-
     /// Deterministic high-frequency pattern so a warp cannot be invariant.
     fn ramp(w: u32, h: u32) -> PixelBuffer {
         let px: Vec<[u8; 3]> = (0..(w * h) as usize)
             .map(|i| [i as u8, (i * 5) as u8, (i * 11) as u8])
             .collect();
         buf3(w, h, &px)
-    }
-
-    #[test]
-    fn zigzag_zero_is_noop_and_nonzero_displaces() {
-        let base = ramp(24, 24);
-        let mut noop = base.clone();
-        zigzag(&mut noop, 0.0, 5, ZigZagStyle::AroundCenter).unwrap();
-        assert_eq!(noop.data, base.data, "amount 0 must be bit-exact");
-
-        for style in [
-            ZigZagStyle::AroundCenter,
-            ZigZagStyle::OutFromCenter,
-            ZigZagStyle::PondRipples,
-        ] {
-            let mut out = base.clone();
-            zigzag(&mut out, 80.0, 5, style).unwrap();
-            assert_ne!(out.data, base.data, "{style:?} must displace");
-        }
-    }
-
-    #[test]
-    fn zigzag_styles_differ() {
-        let base = ramp(24, 24);
-        let run = |style| {
-            let mut b = base.clone();
-            zigzag(&mut b, 80.0, 5, style).unwrap();
-            b.data
-        };
-        let around = run(ZigZagStyle::AroundCenter);
-        let out = run(ZigZagStyle::OutFromCenter);
-        let pond = run(ZigZagStyle::PondRipples);
-        assert_ne!(around, out);
-        assert_ne!(around, pond);
-        assert_ne!(out, pond);
-    }
-
-    #[test]
-    fn zigzag_rejects_out_of_range_amount_and_ridges() {
-        let base = ramp(8, 8);
-        for bad in [-101.0, 101.0, f64::NAN, f64::INFINITY] {
-            let mut b = base.clone();
-            assert!(zigzag(&mut b, bad, 5, ZigZagStyle::AroundCenter).is_err());
-        }
-        let mut b = base.clone();
-        assert!(zigzag(&mut b, 50.0, 21, ZigZagStyle::AroundCenter).is_err());
     }
 
     #[test]
@@ -261,33 +136,5 @@ mod tests {
         assert!(ocean_ripple(&mut b, 0, 5, 1).is_err());
         assert!(ocean_ripple(&mut b, 16, 5, 1).is_err());
         assert!(ocean_ripple(&mut b, 9, 21, 1).is_err());
-    }
-
-    #[test]
-    fn alpha_preserved_and_tiny_images_do_not_panic() {
-        let px: Vec<[u8; 4]> = (0..24 * 24)
-            .map(|i| [i as u8, (i * 3) as u8, (i * 7) as u8, (i * 11) as u8])
-            .collect();
-        let base = buf4(24, 24, &px);
-        let n = base.pixel_count();
-        let alpha = base.data[3 * n..].to_vec();
-
-        let mut z = base.clone();
-        zigzag(&mut z, 90.0, 7, ZigZagStyle::PondRipples).unwrap();
-        assert_eq!(&z.data[3 * n..], &alpha[..]);
-        let mut o = base.clone();
-        ocean_ripple(&mut o, 9, 15, 3).unwrap();
-        assert_eq!(&o.data[3 * n..], &alpha[..]);
-
-        for &(w, h) in &[(1u32, 1u32), (1, 8), (8, 1)] {
-            let px: Vec<[u8; 3]> = (0..(w * h) as usize)
-                .map(|i| [i as u8, (i * 2) as u8, 255 - i as u8])
-                .collect();
-            let base = buf3(w, h, &px);
-            let mut z = base.clone();
-            assert!(zigzag(&mut z, 100.0, 20, ZigZagStyle::AroundCenter).is_ok());
-            let mut o = base.clone();
-            assert!(ocean_ripple(&mut o, 15, 20, 5).is_ok());
-        }
     }
 }

@@ -1,14 +1,9 @@
-//! Distort family (`FILT-040`): geometric inverse-mapping warps.
-//!
-//! Split into two modules so the radial and undulating filters can be worked in
-//! parallel: [`radial`] (Twirl, Pinch, Spherize) and [`undulate`] (Ripple, Wave).
+//! Distort family (`FILT-040`): the geometric warps Kooka still runs itself,
+//! Shear and Ocean Ripple. The rest of the family is the photorust engine's
+//! (`crate::photorust::distort`).
 
 mod coord;
-mod radial;
 mod ripples;
-mod undulate;
 
-pub use coord::{polar_coordinates, shear};
-pub use radial::{pinch, spherize, twirl};
-pub use ripples::{ocean_ripple, zigzag};
-pub use undulate::{ripple, wave};
+pub use coord::shear;
+pub use ripples::ocean_ripple;
