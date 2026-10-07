@@ -212,6 +212,9 @@ pub fn duplicate_layer(doc: &mut Document, index: i32) -> i32 {
     let source = index as usize;
     let mut copy = doc.layers[source].clone();
     copy.name = format!("{} copy", copy.name);
+    if copy.background {
+        release_background(&mut copy);
+    }
     doc.layers.insert(source + 1, copy);
     (source + 1) as i32
 }
@@ -502,10 +505,23 @@ pub fn layer_from_background(doc: &mut Document, path: &str) -> bool {
     let Some(layer) = resolve_path_mut(doc, path) else {
         return false;
     };
-    layer.background = false;
-    layer.lock = LockFlags::default();
+    release_background(layer);
     layer.name = name;
     true
+}
+
+/// Make a Background (or a copy of one) an ordinary layer: unflagged,
+/// unlocked, and given an opaque alpha channel so it can take transparency.
+pub(super) fn release_background(layer: &mut Layer) {
+    layer.background = false;
+    layer.lock = LockFlags::default();
+    if !layer.channels.iter().any(|c| c.id == -1) {
+        let pixels = layer.rect.width().max(0) as usize * layer.rect.height().max(0) as usize;
+        layer.channels.push(Channel {
+            id: -1,
+            data: vec![255; pixels].into(),
+        });
+    }
 }
 
 /// `Background From Layer`: flag the node at `path` as the Background, make its

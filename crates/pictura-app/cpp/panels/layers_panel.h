@@ -101,6 +101,8 @@ public:
     bool opacityValueFitsForTest() const;
     int dragOpacitySliderForTest(int fromX1000, int toX1000);
     int lockBadgeLeftForTest(const QString& path) const;
+    // Press the lock badge of `path`'s row; false when the row shows none.
+    bool clickLockBadgeForTest(const QString& path);
     // The row's thumbnail as painted (a T card for a type layer); null if hidden.
     QImage rowThumbnailForTest(const QString& path) const;
     bool rowCheckStateForTest(const QString& path) const;

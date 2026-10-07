@@ -7,6 +7,7 @@
 #include "commands.h"
 #include "frame.h"
 #include "image_view.h"
+#include "panels/layers_panel.h"
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/paint_tools/fills.cxxqt.h"
 
@@ -24,6 +25,7 @@ private slots:
     void ctrlEqualsZoomsIn();
     void freeTransformLiftsTheSelectedPixels();
     void freeTransformBoxHugsTheLayerContent();
+    void backgroundCopyIsUnlockedAndTheLockBadgeUnlocks();
 
 private:
     bool openPhoto(QTemporaryDir& dir);
@@ -215,6 +217,34 @@ void EditShortcutsTest::freeTransformBoxHugsTheLayerContent()
     QTest::keyClick(frame.imageView(), Qt::Key_Escape);
     QVERIFY(!view->transform_session_active());
     QCOMPARE(view->composite_argb(12, 10), filled);
+    frame.closeDocument(doc, false);
+}
+
+// Duplicating the Background makes an ordinary, unlocked layer; clicking the
+// Background's lock badge unlocks it in one step.
+void EditShortcutsTest::backgroundCopyIsUnlockedAndTheLockBadgeUnlocks()
+{
+    pictura::PicturaMainWindow& frame = *window_;
+    QTemporaryDir dir;
+    QVERIFY(openPhoto(dir));
+    pictura::PictureView* view = frame.activeView();
+    const int doc = frame.activeDocumentIndex();
+    QCOMPARE(view->duplicate_layer(0), 1);
+    QCOMPARE(view->layer_kind(0), QStringLiteral("background"));
+    QCOMPARE(view->layer_kind(1), QStringLiteral("pixel"));
+    QCOMPARE(view->layer_name(1), QStringLiteral("Background copy"));
+    QCOMPARE(view->layer_lock(1), 0);
+
+    auto* panel = frame.findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    QVERIFY(panel);
+    panel->setView(view);
+    panel->refresh();
+    QVERIFY(panel->lockBadgeLeftForTest(QStringLiteral("1")) < 0);
+    const int history = view->history_count();
+    QVERIFY(panel->clickLockBadgeForTest(QStringLiteral("0")));
+    QCOMPARE(view->layer_kind(0), QStringLiteral("pixel"));
+    QCOMPARE(view->layer_lock(0), 0);
+    QCOMPARE(view->history_count(), history + 1);
     frame.closeDocument(doc, false);
 }
 
