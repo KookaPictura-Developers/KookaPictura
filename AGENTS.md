@@ -10,6 +10,8 @@ lives in `crates/`.
   update it at the end of a milestone.
 - `docs/dev/testing-conventions.md` — how every test layer is built and reports.
   The source of truth for test mechanics; don't restate it, follow it.
+- `DEVELOPING.md` — onboarding: build, architecture, common tasks, OpenSpec CLI.
+- `CONTRIBUTING.md` — provenance, asset, and dependency rules (not optional).
 
 ## Layout
 
@@ -48,100 +50,85 @@ cmake -S . -B build -G Ninja -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld && cmake --bu
 
 Toolchain is pinned by `rust-toolchain.toml` (1.98). Qt is the system Qt 6
 (`qmake6 -query QT_VERSION`). Cargo links with `lld` (`.cargo/config.toml`);
-CMake builds with Ninja. `cargo deny check` is a no-op locally (no `deny.toml`);
-CI runs it only when the file exists.
+CMake builds with Ninja. `deny.toml` gates licenses and dependencies; CI runs
+`cargo deny check`.
 
 ## Serena (symbol intelligence)
 
-Serena is the project's symbol-level IDE (configured globally; see also
-`.opencode/`). The repo is already a Serena project: `.serena/project.yml` (config)
-and `.serena/memories/*` (project knowledge) belong with the repo — commit them
-alongside it; only Serena's `cache/` and `project.local.yml` are gitignored.
-Prefer its LSP tools (`find_symbol`, `find_referencing_symbols`,
-`replace_symbol_body`, `rename_symbol`) over text search for reading and editing
-code, and read the relevant memory before a non-trivial task.
+The repo is already a Serena project: commit `.serena/project.yml` and
+`.serena/memories/*`; only `cache/`, `project.local.yml`, and
+`compile_commands.json` are gitignored. Prefer its LSP tools (`find_symbol`,
+`find_referencing_symbols`, `replace_symbol_body`, `rename_symbol`) over text
+search, and read the relevant memory before a non-trivial task.
 
 - **Index upkeep.** `serena project index` is needed only once, after a fresh
-  clone. During normal use Serena updates the index itself whenever files change,
-  so edits and builds need no manual re-index. (A heavy Rust rebuild can still
-  make rust-analyzer re-index and feel slow for a moment.)
-- **C++ needs a compile database.** clangd, and therefore Serena's C++ cross-file
-  references, reads `compile_commands.json` from the repo root. The CMake
-  configure (command above) links it there from `build/`; if C++ navigation looks
-  fuzzy, (re)configure first.
+  clone; afterwards Serena updates the index itself as files change.
+- **C++ needs a compile database.** clangd reads `compile_commands.json` from the
+  repo root, linked there by the CMake configure; if C++ navigation looks fuzzy,
+  (re)configure first.
 - **Keep memories current.** Update `.serena/memories/*` (via `write_memory`) when
-  conventions or architecture change — they are the durable project knowledge.
+  conventions or architecture change.
 
 ## Headless mode
 
 `./build/pictura --headless` selects the offscreen QPA plugin before
 `QApplication` and implies `--self-test` when no document is given, so it never
-blocks. The first check asserts the platform is `offscreen`. Explicit
-`QT_QPA_PLATFORM=offscreen` and `xvfb-run` remain valid. `--interop-probe`
-requires a real platform Vulkan instance and is **not** offscreen-compatible.
+blocks. `--interop-probe` requires a real platform Vulkan instance and is **not**
+offscreen-compatible. See `DEVELOPING.md` for the self-test token protocol.
 
 ## Verification (the non-obvious parts)
 
 - **The C++ self-test is a hand-rolled oracle**, not Qt Test:
   `crates/pictura-app/cpp/selftest*.cpp` + `selftest_report.*`, one long
-  sequential `runSelfTest()`.
-- It emits one token per check to stderr:
-  `pictura self-test: PASS|SKIP|FAIL <suite> <name> ...`, closed by
+  sequential `runSelfTest()`. It emits one token per check to stderr
+  (`pictura self-test: PASS|SKIP|FAIL <suite> <name>`), closed by
   `SUMMARY passed=<n> failed=<n> skipped=<n>`. **The exit code is the failure
-  identity** — `ST_FAIL(code)` returns its code, and codes are append-only.
-  Names carry no milestone.
+  identity** — `ST_FAIL(code)` returns its code; codes are append-only, and
+  names carry no milestone.
 - Add a check with `ST_BEGIN` / `ST_PASS` / `ST_SKIP` / `ST_FAIL` / `ST_FINISH`,
   take the next free code, and keep each `selftest*.cpp` inside its
   `scripts/file-size-allowlist.txt` ceiling.
 - **Qt Test is the GUI growth path.** The app C++ builds as a `pictura_shell`
-  static library (every app source except `main.cpp` + `selftest*`); the Qt Test
-  suites in `crates/pictura-app/cpp/tests/tst_*.cpp` link `pictura_shell` plus
-  `Qt6::Test`. `include(CTest)` and `Qt6::Test` are gated on `BUILD_TESTING`,
-  and suites run under `QT_QPA_PLATFORM=offscreen` via
-  `ctest --test-dir build -R '^tst_' --output-on-failure`. `add_test` passes
-  `-o <build>/qt-test-results/<name>.xml,junitxml`, so CTest emits per-executable
-  JUnit; `scripts/test-report.sh` runs CTest and folds
-  `build/qt-test-results/*.xml` into the unified report. New GUI checks go
-  here — the self-test only shrinks (retired exit codes are append-only and never
-  reused). The mechanical guard is `scripts/check-selftest-budget.sh` with the
-  lower-only budget in `scripts/selftest-budget.txt`, run by `verify-fast.sh` and
-  the guards CI workflow, in addition to `selftest.cpp`'s
-  `scripts/file-size-allowlist.txt` ceiling.
+  static library (every app source except `main.cpp` + `selftest*`); suites in
+  `crates/pictura-app/cpp/tests/tst_*.cpp` link it plus `Qt6::Test`, gated on
+  `BUILD_TESTING`, and run offscreen via
+  `ctest --test-dir build -R '^tst_' --output-on-failure`.
+  `scripts/test-report.sh` runs CTest and folds
+  `build/qt-test-results/*.xml` into the unified report. New GUI checks go here
+  — the self-test only shrinks (retired exit codes are never reused). The
+  mechanical guard is `scripts/check-selftest-budget.sh` with the lower-only
+  budget in `scripts/selftest-budget.txt`, run by `verify-fast.sh` and the
+  guards CI workflow.
 - Rust tests are std `#[test]` only (no framework). Oracle tests self-skip when
   `magick` / `psd-tools` are absent; CI's `oracles` job installs both. Profiling
   and GPU tests are `#[ignore]`d with a reason string (`--ignored --nocapture`).
 
 ## Spec workflow (OpenSpec)
 
-This project uses [OpenSpec](https://github.com/Fission-AI/OpenSpec) to turn work
-into reviewable change proposals before code. `docs/` remains the long-form
-contract; OpenSpec carries the per-change *requirements* and their task list.
+[OpenSpec](https://github.com/Fission-AI/OpenSpec) turns work into reviewable
+change proposals before code. `docs/` remains the long-form contract; OpenSpec
+carries the per-change *requirements* and task list. **It is mandatory for
+non-trivial changes and works from the CLI, with or without an agent** (the
+`/opsx-*` commands wrap the same CLI; see `DEVELOPING.md`).
 
-- A change lives in `openspec/changes/<kebab-name>/`:
+- A change lives flat in `openspec/changes/<kebab-name>/`:
   `proposal.md` (why / what / capabilities), `design.md` (how),
-  `specs/<domain>/<capability>/spec.md` (ADDED / MODIFIED / REMOVED requirement
-  deltas), `tasks.md` (implementation checklist). Changes stay flat; only the
-  delta path inside a change nests.
-- Capabilities live in a two-level tree, `openspec/specs/<domain>/<capability>/spec.md`.
-  A capability's id is its path relative to `specs/` (e.g. `compositing/layer-compositing`).
-  The domains are `document`, `codec`, `color`, `compositing`, `imaging`, `tools`,
-  `ui`, `interop`, `verification`, and `meta` (repository/process contracts); the taxonomy and the mirrored delta-path
-  rule are declared in `openspec/config.yaml`. Prefer new capability names over
-  `MODIFIED` unless the requirement itself changes.
-- The CLI is pinned to OpenSpec 1.13.2 (minimum 1.7.0 for nested specs); CI installs
-  the same pin. Run `openspec update` to regenerate `.opencode/skills/openspec-*`
-  and `.opencode/commands/opsx-*` after an upgrade, and commit the diff.
-- Commands: `/opsx-explore`, `/opsx-propose`, `/opsx-apply`, `/opsx-archive`,
-  `/opsx-sync`
-  (skills in `.opencode/skills/openspec-*`). Artifacts are generated from
-  `openspec instructions <artifact> --change <name> --json`; validate before
-  committing with `openspec validate --all --strict`.
+  `specs/<domain>/<capability>/spec.md` (ADDED / MODIFIED / REMOVED deltas),
+  `tasks.md` (checklist). Only the delta path inside a change nests.
+- Capabilities live in `openspec/specs/<domain>/<capability>/spec.md`; a
+  capability's id is its path relative to `specs/` (e.g.
+  `compositing/layer-compositing`). Taxonomy and the mirrored delta-path rule
+  are in `openspec/config.yaml`. Prefer new capability names over `MODIFIED`
+  unless the requirement itself changes.
 - Format is strict: `### Requirement:` then `#### Scenario:` (exactly four `#`),
-  normative SHALL/MUST wording, at least one scenario per requirement.
+  normative SHALL/MUST wording, at least one scenario per requirement. Validate
+  with `openspec validate --all --strict` before committing.
+- CLI pinned to 1.13.2 (minimum 1.7.0 for nested specs); CI installs the same
+  pin. Run `openspec update` to regenerate `.opencode/skills/openspec-*` and
+  `.opencode/commands/opsx-*` after an upgrade, and commit the diff.
 - Archive a completed change with `openspec archive <name>` to merge its deltas
-  into `openspec/specs/`.
-- The M0–M5 work predates this workflow; it is documented retroactively as the
-  `openspec/changes/m0-*` … `m5-*` proposals.
+  into `openspec/specs/`. Pre-OpenSpec milestone work (m0…m47) is retroactively
+  archived under `openspec/changes/archive/`.
 
 ## Git conventions
 
@@ -152,7 +139,7 @@ contract; OpenSpec carries the per-change *requirements* and their task list.
   or system affected).
 - **Every commit ends with its GH issue number in parentheses**, e.g.
   `fix(codec): RLE row padding (#12)`. Open or reuse an issue first. A `docs/`
-  change also carries `TASK-ALLOWS-DOCS` (guard rule 4), after the description:
+  change also carries `TASK-ALLOWS-DOCS` (guard rule 4) after the description:
   `docs: record free-transform-quad (#21) TASK-ALLOWS-DOCS`.
 - **Branch names** — `type/issue-number-kebab-description`, e.g.
   `feat/14-port-release-please`; include the issue number after the slash.
@@ -165,10 +152,9 @@ contract; OpenSpec carries the per-change *requirements* and their task list.
 
 ## Rules
 
-1. **Specs are the contract.** Do not change `docs/` unless the task says so.
-   Any `docs/` change must carry `TASK-ALLOWS-DOCS` in the commit message (or
-   run with `TASK_ALLOWS_DOCS=1`), or `scripts/guard.sh` fails. Commit docs
-   separately; `GUARD_BASE=<ref>` re-checks committed docs changes.
+1. **Specs are the contract.** Do not change `docs/` unless the task says so;
+   any `docs/` change needs `TASK-ALLOWS-DOCS` or `scripts/guard.sh` fails.
+   Commit docs separately; `GUARD_BASE=<ref>` re-checks committed docs changes.
 2. **Definition of done.** Non-trivial logic (a branch, loop, parser, or
    money/security path) ships with one runnable check: a unit test, a `demo()`
    self-check, or an integration test. Trivial one-liners need none.
@@ -189,20 +175,15 @@ contract; OpenSpec carries the per-change *requirements* and their task list.
 9. **File size.** Target under **800 LOC**; hard cap **1200** for code and
    **1400** for tests. Tests are detected by path: Rust under `tests/` or named
    `tests.rs`, C++ `*_test.{cpp,h}`. A file over its cap must be listed in
-   `scripts/file-size-allowlist.txt`, a ceiling that only
-   shrinks. Split along class/concern seams with pure moves (no behavior change):
-   C++ classes may span several `.cpp` translation units, Rust modules become
-   submodule directories.
+   `scripts/file-size-allowlist.txt`, a ceiling that only shrinks. Split along
+   class/concern seams with pure moves (no behavior change).
 10. **Milestones (`mNN`) live only in comments, docs, and specs** — never in
     identifiers, string literals, or test names. `scripts/check-milestone-names.py`
     (run by `guard.sh`) enforces this.
 11. **GUI test migration guard.** New GUI checks are Qt Test cases under
     `crates/pictura-app/cpp/tests/`, never new `runSelfTest()` checks; the
-    self-test only shrinks. Retired self-test exit codes are append-only and
-    never reused. The mechanical guard is `scripts/check-selftest-budget.sh`
-    (lower-only budget in `scripts/selftest-budget.txt`), run by
-    `verify-fast.sh` and the guards CI workflow, in addition to `selftest.cpp`'s
-    `scripts/file-size-allowlist.txt` ceiling.
+    self-test only shrinks and retired exit codes are never reused (see
+    Verification).
 
 ## Anti-patterns
 
