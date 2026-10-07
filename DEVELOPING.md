@@ -1,156 +1,20 @@
 # Developing Kooka Pictura
 
-Build, test, and contribution mechanics. Before your first change, read
-[`CONTRIBUTING.md`](CONTRIBUTING.md): the provenance and licensing rules there
-are not optional.
+An onboarding guide to the codebase, its build, its tests, and its workflow.
+Before your first change, read [`CONTRIBUTING.md`](CONTRIBUTING.md): the
+provenance and licensing rules there are not optional.
 
-## Prerequisites
+## Orientation
 
-- Rust 1.98, pinned by `rust-toolchain.toml`.
-- Qt 6 with the Core, Gui, Widgets, Svg, and Network modules, plus the matching
-  `qmake6` (`qt6-base-dev` on Debian/Ubuntu).
-- CMake >= 3.24, Ninja, and the `lld` linker.
-- Little CMS 2 development headers (`liblcms2-dev`). The C++ binary links
-  `-llcms2` because a Rust `staticlib` does not propagate its native link
+Kooka Pictura is two halves stitched together:
+
+- **Engine crates** (`crates/pictura-*`) — the spec math: document model, codecs,
+  color, adjustments, filters, selection, ops, paint, rendering, test
+  utilities. They are **Qt-free** and testable headless. `pictura-core` has no
   dependencies.
-- Optional, for the oracle tests: ImageMagick 7 (`magick`) and Python
-  `psd-tools>=1.19`. Suites self-skip when these are absent.
-- Optional, for the `--interop-probe` diagnostic: Vulkan development headers
-  (`libvulkan-dev`). The app and its wgpu GPU path build and run without them;
-  the probe compiles to a stub when `vulkan.h` is missing.
-- OpenSpec CLI, pinned to 1.13.2 (`npm i -g @fission-ai/openspec@1.13.2`; the
-  floor is 1.7.0, the first release with nested spec discovery). See
-  [AI-assisted development](#ai-assisted-development).
-- Optional, for LLM-assisted work and symbol navigation: the Serena MCP server
-  on `PATH`. See [AI-assisted development](#ai-assisted-development).
-
-## Build and run
-
-```bash
-cmake -S . -B build -G Ninja -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld
-cmake --build build --parallel
-./build/pictura
-```
-
-The app is a Rust `staticlib` (`pictura_app`, built by Corrosion from Cargo)
-linked into the C++ `pictura` binary. cxx-qt codegen is driven by
-`crates/pictura-app/build.rs` and `src/cxxqt_object.rs`. The engine crates stay
-Qt-free; only `pictura-app` touches Qt.
-
-`CMakeLists.txt` lists every `.cpp`/`.h` explicitly, so a new source file must be
-added there. The CMake configure also links `compile_commands.json` into the
-repo root for clangd/Serena C++ navigation; if C++ cross-file references look
-fuzzy, reconfigure.
-
-## Headless
-
-```bash
-./build/pictura --headless --self-test [file.psd]
-```
-
-`--headless` selects the offscreen QPA plugin before `QApplication` starts and
-implies `--self-test` when no document is given, so it never blocks. The first
-check asserts the platform is `offscreen`.
-
-The C++ self-test is a hand-rolled sequential oracle in
-`crates/pictura-app/cpp/selftest*.cpp`. It emits one
-`pictura self-test: PASS|SKIP|FAIL <suite> <name>` token to stderr per check,
-closes with `SUMMARY passed=<n> failed=<n> skipped=<n>`, and uses the exit code
-as the failure identity: `ST_FAIL(code)` returns its code, and codes are
-append-only. Names carry no milestone.
-
-`--interop-probe` requires a real platform Vulkan instance and is not
-offscreen-compatible.
-
-## Test and verify
-
-Rust tests are std `#[test]` only (no framework); nextest runs them.
-
-```bash
-cargo fmt --all                                  # CI runs --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo nextest run --workspace                    # one crate/test: -p <crate> [name]
-cargo test --workspace --doc                     # doctests; nextest skips them
-
-bash scripts/verify-fast.sh                      # fmt, clippy, test-report, guards
-bash scripts/verify-full.sh                      # CMake build first, then verify-fast
-openspec validate --all --strict
-```
-
-Oracle suites self-skip when `magick` / `psd-tools` are absent. Profiling and
-GPU tests are `#[ignore]`d with a reason string and run with
-`--ignored --nocapture`. See
-[`docs/dev/testing-conventions.md`](docs/dev/testing-conventions.md) for how
-each layer is built and reports.
-
-## Speeding up local builds
-
-`sccache` is optional. To route Rust compilation through it, export the wrapper
-before building or testing:
-
-```bash
-export RUSTC_WRAPPER=sccache
-```
-
-`scripts/verify-full.sh` adds `-DCMAKE_CXX_COMPILER_LAUNCHER=sccache` to the
-CMake configure automatically when `sccache` is on `PATH`. It applies only on a
-fresh configure, so delete `build/` to pick it up.
-
-`target/` grows to tens of GB. Reclaim space with `cargo sweep` (install
-`cargo-sweep` if you want it) or a plain `cargo clean`.
-
-`scripts/verify-fast.sh` skips fmt, clippy, and tests when every changed path is
-`docs/`, `openspec/`, a `*.md`, or under `.serena/`, running only the guard and
-spec validation.
-
-## AI-assisted development
-
-The repository is set up for LLM coding agents; a human contributor can use the
-same tooling.
-
-### OpenSpec
-
-Per-change requirements live in `openspec/changes/<name>/`, and the canonical
-capability specs in the two-level `openspec/specs/{domain}/{capability}/` tree.
-Install the pinned CLI:
-
-```bash
-npm i -g @fission-ai/openspec@1.13.2   # >=1.7.0 required for nested specs
-```
-
-After a CLI upgrade, run `openspec update` to regenerate
-`.opencode/skills/openspec-*` and `.opencode/commands/opsx-*`, then commit the
-diff. The workflow commands are `/opsx-explore`, `/opsx-propose`, `/opsx-apply`,
-`/opsx-archive`, and `/opsx-sync`. The taxonomy and the mirrored delta-path rule
-are declared in `openspec/config.yaml`.
-
-### Serena
-
-Serena is a symbol-level MCP server. Its project config and memories are
-committed (`.serena/project.yml`, `.serena/memories/`); `cache/`,
-`project.local.yml`, and `compile_commands.json` are ignored. The MCP server is
-declared in `opencode.json`, so it needs the `serena` executable on `PATH`.
-After a fresh clone, index the project once:
-
-```bash
-serena project index
-```
-
-Serena updates the index itself as files change. C++ cross-file navigation reads
-`compile_commands.json` from the repo root, which the CMake configure links from
-`build/`; reconfigure if it is missing.
-
-### How the pieces divide
-
-- `AGENTS.md` — the agent rules (verification, git, non-goals).
-- `.opencode/` — the OpenSpec skills and slash commands.
-- `.serena/memories/` — durable project knowledge; update it when architecture
-  or conventions change.
-- `docs/` — the long-form contract, read-only unless the task allows it. A
-  `docs/` change needs `TASK-ALLOWS-DOCS` in the commit message (or
-  `TASK_ALLOWS_DOCS=1`), including when an agent makes it.
-
-## Layout
+- **The app** (`crates/pictura-app`) — the only Qt crate. A Rust `staticlib`
+  exposes a cxx-qt `PictureView` QObject and links into the C++/Qt `pictura`
+  binary. All UI lives in its `cpp/` tree.
 
 ```
 crates/        10 engine crates + the app
@@ -177,6 +41,248 @@ scripts/       verification gates + Python oracle tools
 | `pictura-paint` | Brush/pencil dab-splatting stroke engine |
 | `pictura-app` | cxx-qt `PictureView`, Qt C++ shell, panels, tools, bridge |
 
+The documentation corpus has three layers:
+
+- [`docs/`](docs/README.md) — the long-form behavioral contract: what the
+  application is supposed to do. **Read-only unless the task allows docs changes**
+  (a `docs/` commit needs `TASK-ALLOWS-DOCS`).
+- [`docs/dev/STATE.md`](docs/dev/STATE.md) — the resume anchor: where things
+  are right now. Read it first, but treat its counts as a snapshot.
+- [`docs/dev/testing-conventions.md`](docs/dev/testing-conventions.md) — how
+  every test layer is built and reports; the source of truth for test mechanics.
+
+Where to start: read this file, then `docs/dev/STATE.md`, then the crate that
+owns the behavior you are changing.
+
+## Prerequisites
+
+- Rust 1.98, pinned by `rust-toolchain.toml`.
+- Qt 6 with the Core, Gui, Widgets, Svg, and Network modules, plus the matching
+  `qmake6` (`qt6-base-dev` on Debian/Ubuntu).
+- CMake >= 3.24, Ninja, and the `lld` linker.
+- Little CMS 2 development headers (`liblcms2-dev`). The C++ binary links
+  `-llcms2` because a Rust `staticlib` does not propagate its native link
+  dependencies.
+- Optional, for the oracle tests: ImageMagick 7 (`magick`) and Python
+  `psd-tools>=1.19`. Suites self-skip when these are absent.
+- Optional, for the `--interop-probe` diagnostic: Vulkan development headers
+  (`libvulkan-dev`). The app and its wgpu GPU path build and run without them;
+  the probe compiles to a stub when `vulkan.h` is missing.
+- **OpenSpec CLI, pinned to 1.13.2** — required, not optional. It is the spec
+  workflow for every non-trivial change and runs entirely from the terminal;
+  see [OpenSpec — the required spec workflow](#openspec--the-required-spec-workflow).
+- Optional, for symbol navigation and LLM-assisted work: the Serena MCP server
+  on `PATH`. See [AI-assisted development](#ai-assisted-development).
+
+## Build and run
+
+```bash
+cmake -S . -B build -G Ninja -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld
+cmake --build build --parallel
+./build/pictura
+```
+
+The app is a Rust `staticlib` (`pictura_app`, built by Corrosion from Cargo)
+linked into the C++ `pictura` binary. cxx-qt codegen is driven by
+`crates/pictura-app/build.rs` and `src/cxxqt_object.rs`. The engine crates stay
+Qt-free; only `pictura-app` touches Qt.
+
+`CMakeLists.txt` lists every `.cpp`/`.h` explicitly, so a new source file must be
+added there. The CMake configure also links `compile_commands.json` into the
+repo root for clangd/Serena C++ navigation; if C++ cross-file references look
+fuzzy, reconfigure.
+
+## Architecture and data flow
+
+The engine is the source of truth for pixels and document structure; the app is
+a thin Qt shell around it.
+
+- **Bridge.** `crates/pictura-app/build.rs` plus `src/cxxqt_object.rs` drive
+  cxx-qt codegen. The Rust-2018 root keeps the `#[cxx_qt::bridge]` and shared
+  helpers; concern submodules live under `src/cxxqt_object/`
+  (`impl_{core,layers,selection,transform,paint,history,filters}.rs`, and so
+  on). Keep the root-plus-directory layout — the generated header path and the
+  C++ includes depend on it.
+- **Boundary.** Qt decodes images to packed RGBA8888 at the app edge
+  (`cpp/decode_image.cpp`); the engine never sees a Qt type.
+- **Shell.** `cpp/main.cpp` is startup only: it selects the offscreen QPA plugin
+  before `QApplication` for `--headless` (which implies `--self-test` when no
+  document is given), then calls `runSelfTest`. Large classes are split across
+  several translation units registered in `CMakeLists.txt` (for example
+  `frame.cpp` → `frame_{columns,session,menus,build,test}.cpp`).
+- **Rendering.** The CPU compositor is the reference; the wgpu/Vulkan path is an
+  accelerator, never an oracle. GPU interop notes live in
+  `crates/pictura-app/GPU-INTEROP-NOTES.md`.
+
+A typical edit therefore touches: engine crate (math + unit test), the cxx-qt
+bridge (expose it), the C++/Qt shell (UI), and `CMakeLists.txt` for any new
+file.
+
+## OpenSpec — the required spec workflow
+
+OpenSpec turns work into reviewable change proposals before code is written,
+and it is **mandatory for any non-trivial change**. The canonical capability
+specs are the contract; a change is a proposal plus validated requirement deltas
+plus a task list. You can drive the whole thing from the terminal — no AI agent
+is needed. The `/opsx-*` commands and skills under `.opencode/` are conveniences
+that wrap the same CLI.
+
+Install the pinned CLI:
+
+```bash
+npm i -g @fission-ai/openspec@1.13.2   # >=1.7.0 required for nested specs
+```
+
+The day-to-day loop:
+
+```bash
+openspec list                                   # active changes
+openspec view                                   # one-screen dashboard
+openspec show <name> --diff                     # a change and its requirement diffs
+
+openspec new change <kebab-name> --description "..."
+# write proposal.md, design.md, specs/<domain>/<capability>/spec.md, tasks.md
+
+openspec status --change <name>                 # which artifact is next
+openspec instructions specs --change <name>     # how to write the next artifact
+openspec validate <name> --strict
+openspec validate --all --strict                # the gate verify-fast.sh runs
+openspec archive <name> --yes                   # merge deltas into openspec/specs/
+```
+
+Layout and format:
+
+- Changes stay flat under `openspec/changes/<name>/`; only the delta path inside
+  a change nests, mirroring the main spec it targets.
+- Capabilities live in the two-level tree
+  `openspec/specs/{domain}/{capability}/spec.md`. A capability's id is its path
+  relative to `specs/` (for example `compositing/layer-compositing`).
+- The domains and the mirrored delta-path rule are declared in
+  `openspec/config.yaml`.
+- Spec format is strict: `### Requirement:` then `#### Scenario:` (exactly four
+  `#`), SHALL/MUST wording, at least one scenario per requirement.
+- Prefer a new capability name over `MODIFIED` unless the requirement itself
+  changes.
+
+After a CLI upgrade, run `openspec update` to regenerate
+`.opencode/skills/openspec-*` and `.opencode/commands/opsx-*`, then commit the
+diff. The workflow commands are `/opsx-explore`, `/opsx-propose`, `/opsx-apply`,
+`/opsx-archive`, and `/opsx-sync`.
+
+## Test and verify
+
+Rust tests are std `#[test]` only (no framework); nextest runs them.
+
+```bash
+cargo fmt --all                                  # CI runs --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo nextest run --workspace                    # one crate/test: -p <crate> [name]
+cargo test --workspace --doc                     # doctests; nextest skips them
+
+bash scripts/verify-fast.sh                      # fmt, clippy, test-report, guards, openspec
+bash scripts/verify-full.sh                      # CMake build first, then verify-fast
+openspec validate --all --strict
+```
+
+Oracle suites self-skip when `magick` / `psd-tools` are absent. Profiling and
+GPU tests are `#[ignore]`d with a reason string and run with
+`--ignored --nocapture`. See
+[`docs/dev/testing-conventions.md`](docs/dev/testing-conventions.md) for how
+each layer is built and reports.
+
+## Headless
+
+```bash
+./build/pictura --headless --self-test [file.psd]
+```
+
+`--headless` selects the offscreen QPA plugin before `QApplication` starts and
+implies `--self-test` when no document is given, so it never blocks. The first
+check asserts the platform is `offscreen`.
+
+The C++ self-test is a hand-rolled sequential oracle in
+`crates/pictura-app/cpp/selftest*.cpp`. It emits one
+`pictura self-test: PASS|SKIP|FAIL <suite> <name>` token to stderr per check,
+closes with `SUMMARY passed=<n> failed=<n> skipped=<n>`, and uses the exit code
+as the failure identity: `ST_FAIL(code)` returns its code, and codes are
+append-only. Names carry no milestone. The self-test only shrinks — new GUI
+checks are Qt Test cases under `crates/pictura-app/cpp/tests/`, not new
+`runSelfTest()` checks.
+
+`--interop-probe` requires a real platform Vulkan instance and is not
+offscreen-compatible.
+
+## Common tasks
+
+- **Change behavior.** Write an OpenSpec change first
+  ([above](#openspec--the-required-spec-workflow)); implement against its tasks,
+  then archive it.
+- **Add an engine filter or adjustment.** Add to the owning crate
+  (`pictura-filters`, `pictura-adjust`, …) with an inline `#[cfg(test)]` unit
+  test, then expose it through the cxx-qt bridge and the Qt shell.
+- **Add a GUI check.** Add a Qt Test case under `crates/pictura-app/cpp/tests/`
+  (registered in `CMakeLists.txt`). Do not add `runSelfTest()` checks.
+- **Add a self-test check (shrinking path).** Put it in a `selftest_*.cpp`
+  translation unit, take the next free exit code, and register the file in
+  `CMakeLists.txt`. Never grow `selftest.cpp`; keep within its
+  `scripts/file-size-allowlist.txt` ceiling.
+- **Change `docs/`.** A docs change fails `scripts/guard.sh` unless the commit
+  carries `TASK-ALLOWS-DOCS` (or you run with `TASK_ALLOWS_DOCS=1`).
+
+## Speeding up local builds
+
+`sccache` is optional. To route Rust compilation through it, export the wrapper
+before building or testing:
+
+```bash
+export RUSTC_WRAPPER=sccache
+```
+
+`scripts/verify-full.sh` adds `-DCMAKE_CXX_COMPILER_LAUNCHER=sccache` to the
+CMake configure automatically when `sccache` is on `PATH`. It applies only on a
+fresh configure, so delete `build/` to pick it up.
+
+`target/` grows to tens of GB. Reclaim space with `cargo sweep` (install
+`cargo-sweep` if you want it) or a plain `cargo clean`.
+
+`scripts/verify-fast.sh` skips fmt, clippy, and tests when every changed path is
+`docs/`, `openspec/`, a `*.md`, or under `.serena/`, running only the guard and
+spec validation.
+
+## AI-assisted development
+
+The repository is set up for LLM coding agents; a human contributor can use the
+same tooling. AI use is optional — see the project's
+[`A note on AI`](README.md#a-note-on-ai) — and every contribution is
+human-reviewed. The spec workflow itself is
+[OpenSpec](#openspec--the-required-spec-workflow), which is CLI-first and does
+not need an agent.
+
+### Serena
+
+Serena is a symbol-level MCP server. Its project config and memories are
+committed (`.serena/project.yml`, `.serena/memories/`); `cache/`,
+`project.local.yml`, and `compile_commands.json` are ignored. The MCP server is
+declared in `opencode.json`, so it needs the `serena` executable on `PATH`.
+After a fresh clone, index the project once:
+
+```bash
+serena project index
+```
+
+Serena updates the index itself as files change. C++ cross-file navigation reads
+`compile_commands.json` from the repo root, which the CMake configure links from
+`build/`; reconfigure if it is missing.
+
+### How the pieces divide
+
+- `AGENTS.md` — the agent rules (verification, git, non-goals); `CLAUDE.md` just
+  imports it.
+- `.opencode/` — the OpenSpec skills and slash commands (wrappers over the CLI).
+- `.serena/memories/` — durable project knowledge; update it when architecture
+  or conventions change.
+- `docs/` — the long-form contract, read-only unless the task allows it.
+
 ## Conventions
 
 - **Definition of done.** Non-trivial logic (a branch, loop, parser, or
@@ -187,7 +293,8 @@ scripts/       verification gates + Python oracle tools
   `scripts/file-size-allowlist.txt`, a ceiling that only shrinks.
 - **No unrequested abstractions, no new dependencies** without a stated reason.
 - **Milestones (`mNN`) live only in comments, docs, and specs** — never in
-  identifiers, string literals, or test names (`scripts/check-milestone-names.py`).
+  identifiers, string literals, or test names
+  (`scripts/check-milestone-names.py`).
 - **Docs are gated.** A change under `docs/` fails `scripts/guard.sh` unless the
   commit message carries `TASK-ALLOWS-DOCS` (or you run with
   `TASK_ALLOWS_DOCS=1`).
