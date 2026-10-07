@@ -13,84 +13,19 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **1826 tests, 0 failed, 12 skipped** (the `move_profile_*` pair,
-  the `scroll_zoom_pan_profile_*` pair, `region_move_timing_4000`,
-  `region_refresh_profile_4000`, `undo_profile_4000`, the `composite_profile_*`
-  pair, and `filter_profile_1024`; counted from `cargo nextest run --workspace`,
-  which excludes the pre-existing ignored `pictura-render` doctest that
-  `cargo test --workspace` reports separately).
-  The C++ self-test reports **480 passed, 0 failed, 0 skipped** standalone; the
-  unified report (`scripts/verify-fast.sh`, which reruns both plus the workspace
-  probes) reports **2344 passed, 13 skipped, 0 failed**.
-- **In flight:** `paragraph-styles-panel` + `edit-image-menu-commands` (branch
-  `feat/76-84-paragraph-styles-and-menu-commands`, in review). #76 adds the
-  Paragraph Styles panel (`panels/paragraph_styles_panel.*`,
-  `paragraph_style_dialog.*` + `paragraph_style_dialog_pages.cpp`, the
-  resolved-attribute read-back in `type_tools.rs`) with the Window/Type ▸ Panels
-  ▸ Paragraph Styles toggles; the `Basic Paragraph` default is protected and a
-  rename is delete-then-create. The options dialog now carries all seven CS6
-  pages (Basic/Advanced Character Formats, OpenType Features, Indents and
-  Spacing, Composition, Justification, Hyphenation) over an extended type model
-  (faux bold/italic, the ten OpenType features, language, vertical Roman
-  alignment, auto leading, and the hyphenation dictionary; the codec reads and
-  authors the EngineData keys), with a live Preview
-  (`type_preview_paragraph_style`, no history) that Cancel restores.
-  #84 wires Edit ▸ Fill… / Stroke… / Purge ▸ Undo|Histories|All and Image ▸
-  Trim… / Duplicate… (`paint_tools/fills.rs`, `impl_history/purge.rs`,
-  `image_adjust/image_ops.rs`, `frame_menus_edit.cpp`, `frame_menus_image.cpp`).
-  Every `QFontComboBox` goes through `font_combo.*`, which draws emoji faces’
-  names in the UI font with no sample (their previews cost ~400 ms a repaint).
-  Both OpenSpec changes validate; `verify-fast` is green. Ceilings
-  (`ponytail:`): no style-override "+" marker or `.psd` persistence; faux
-  bold/italic and the OpenType features are stored and authored, not painted;
-  `language`/`vertical_roman_alignment` are model-only and Preview is disabled
-  while creating a style; the stroke band is a square-capped dilate/erode
-  approximation; Image ▸ Reveal All, Edit ▸
-  Find And Replace Text / Define Brush|Pattern|Custom Shape, and Type ▸ Create
-  Work Path / Convert to Shape stay disabled stubs.
-- **In flight:** `image-mode-conversion` (uncommitted; no issue yet). Ports
-  photorust's `Image ▸ Mode` onto the source-store model, so a conversion
-  saves in its new mode/depth rather than only relabelling.
-  - **Engine.** `pictura-render::document_ops::mode` adds:
-    - `convert_mode`: Grayscale (rounded Rec. 601 luma, native-depth when a
-      16/32 store is retained), RGB, CMYK (photorust GCR in the codec's stored
-      convention), and Lab (profile-free).
-    - `convert_to_indexed`: flatten, then the Save for Web quantizer; the
-      palette and index stores make the save Indexed.
-    - `convert_to_bitmap`: 8-bit Gray, Threshold/Bayer/Floyd–Steinberg, to a
-      flat depth-1 store.
-    - `convert_bit_depth`: 8↔16, 8/16→32; 32→16/8 stays HDR.
-    - `can_convert_mode`/`can_convert_depth` (the IMG-004 matrix) and
-      `save_view`.
-  - **Save fix.** `PictureView::save` now writes through `save_view`, which
-    drops the RGBA display alpha of a source-mode document. Before, an opened
-    CMYK/Lab/Indexed/Bitmap file always re-saved from the app as RGB.
-  - **App.** The bridge is `image_adjust/image_mode.rs` (one `Convert Mode`
-    state per conversion, plus the Indexed live preview via `mode_preview`).
-    The C++ side is `frame_menus_image_mode.cpp`, `indexed_color_dialog.*`,
-    and `bitmap_mode_dialog.*`. The Mode entries are checkable with frozen ids,
-    Color Table moves below the depths, and the old "16/8 Bits enabled only at
-    32-bit" gate is replaced (32-bit still routes through the HDR dialog).
-  - **Tests.** 17 unit tests (save→read round trips) and `tst_image_mode`.
-  - **Ceilings (`ponytail:`).**
-    - Duotone, Multichannel, and the Color Table stay stubs.
-    - CMYK/Lab are profile-free, with no gamut clip; a 16-bit CMYK/Lab
-      conversion passes through 8-bit.
-    - Bitmap has no Output resolution, Halftone, or Custom Pattern, and is
-      edited as RGB.
-    - Indexed has no System/Uniform/Master palettes, Forced colors,
-      Transparency, or Matte.
-    - The luma weights and the history label are inferred.
-- **In flight:** `port-adjustments-filters-smart-filters` (branch
-  `feat/167-cs6-adjustments-filters-smart-filters`, PR pending). Closes the
-  remaining CS6 Image ▸ Adjustments / Filter gaps from #82/#83/#87 — Artistic
-  family exposure, Lighting Effects / Diffuse / Glowing Edges, Shadows/Highlights,
-  destructive Color Lookup, HDR Toning, Replace Color, and the New Adjustment
-  Layer submenu — and renders + exposes PSD smart filters (filterFX chain) in the
-  Layers panel. Reviewed; the critical/major findings were fixed (opacity-preserving
-  filters skip the alpha pass, Replace Color dialog lifetime, HDR apron/preview,
-  smart-filter toggle persistence, camera-raw `Fltr` key merge, Shadows/Highlights
-  gain). Follow-ups: #168 (Lens Flare preview), #169 (dead code), #87 (Pattern fill).
+- Test suite: **2209 tests, 0 failed, 17 skipped** from
+  `cargo nextest run --workspace` (the skips are the `#[ignore]`d profiling/GPU
+  probes; nextest also excludes the pre-existing ignored `pictura-render` doctest
+  that `cargo test --workspace` reports separately). The C++ self-test reports
+  **475 passed, 0 failed, 0 skipped** standalone; the unified report
+  (`scripts/verify-fast.sh`, which reruns both plus the workspace probes and the
+  Qt Test suites) reports **2921 passed, 18 skipped, 0 failed**.
+- **In flight:** no feature branch. Open PRs are docs-only — #191 (README AI
+  disclosure, real screenshot, `CLAUDE.md`, developer guide) and #135 (Fedora 43
+  build instructions). The Paragraph Styles panel + Edit/Image menu commands
+  (#76/#84 → #177), the CS6 adjustments/filters/Smart Filters port (#167 → #170),
+  and the adjustment dialogs + Image ▸ Mode + Properties canvas section
+  (#181 → #182) have all merged, so the earlier in-flight entries are closed.
 - **Lucide icon set** (archived `lucide-icon-set`, spec `ui/icon-assets`): all 165
   `assets/icons/` SVGs are now Lucide-derived (91, vendored verbatim from
   `lucide-static` 1.50.0) or Lucide-style custom (61), with 3 flagged notes and
