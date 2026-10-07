@@ -2,7 +2,9 @@
 
 ## Purpose
 The Qt6 plus Rust application shell: the cxx-qt bridge, the CMake build, the headless window, the theme, and the status readouts.
+
 ## Requirements
+
 ### Requirement: CXX-Qt bridge exposes a Rust QObject to C++
 The system SHALL define a Rust `QObject` through a `#[cxx_qt::bridge]` module and
 SHALL expose it to the C++ shell using `cxx-qt` 0.10 and `cxx-qt-build`, rather
@@ -239,24 +241,25 @@ the document tab strip so the rest of the chrome is unaffected.
 ### Requirement: Default dock grouping and canvas colour
 
 The system SHALL present the default workspace with the right-hand panels
-hosted by the `PanelColumn` in the CS6 Essentials groups: **Color, Swatches, and
-Styles**; **Adjustments**; **Layers, Channels, and Paths**; **Navigator,
-Histogram, and Info**; and the iconic **History** and **Actions**. The central
-area SHALL be a horizontal splitter hosting an ordered set of `PanelColumn`s
-around the document tab area: zero or more columns to the left of the document
-tabs and zero or more to the right, with the document tabs keeping the stretch.
-A `PanelColumn` SHALL be creatable dynamically by a drop and removed when
-emptied. The document canvas SHALL use the CS6 dark canvas colour, and the
-document tab strip SHALL be styled to match the chrome. Panel `objectName`s SHALL
-remain stable so the persisted session layout keeps working. The Tools panel
-SHALL remain a left/right dock separate from the columns.
+hosted by the `PanelColumn` in the authentic CS6 Essentials two-column layout:
+a wider main right-hand column with the groups **Color, Swatches**;
+**Adjustments, Styles**; and **Layers, Channels, Paths**, and a narrower
+secondary right-hand column collapsed to icons holding **History** and
+**Properties**. The central area SHALL be a horizontal splitter hosting an
+ordered set of `PanelColumn`s around the document tab area: zero or more columns
+to the left of the document tabs and zero or more to the right, with the document
+tabs keeping the stretch. A `PanelColumn` SHALL be creatable dynamically by a
+drop and removed when emptied. The document canvas SHALL use the CS6 dark canvas
+colour, and the document tab strip SHALL be styled to match the chrome. Panel
+`objectName`s SHALL remain stable so the persisted session layout keeps working.
+The Tools panel SHALL remain a left/right dock separate from the columns.
 
 #### Scenario: Panels form the CS6 Essentials groups
 
 - **WHEN** the frame starts with a fresh session
-- **THEN** Color, Swatches, and Styles share one group; Adjustments is its own
-  group; Layers, Channels, and Paths share one; Navigator, Histogram, and Info
-  share one; and History and Actions are iconic
+- **THEN** Color and Swatches share a group, Adjustments and Styles share a
+  group, Layers, Channels, and Paths share a group, and a secondary iconic
+  column holds History and Properties
 
 #### Scenario: Existing panel behaviour is unchanged
 
@@ -624,4 +627,3 @@ The floating pinned height SHALL NOT be drag-resizable.
   workspace
 - **THEN** the floating overlay is pinned to its content height and the
   re-placed column is free to fill its column height again
-

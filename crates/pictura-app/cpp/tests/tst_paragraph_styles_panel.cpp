@@ -398,7 +398,8 @@ void ParagraphStylesPanelTest::doubleClickOpensDialog()
     auto* panel = frame.findChild<pictura::ParagraphStylesPanel*>();
     QVERIFY(panel);
     panel->setView(f.view);
-    frame.panelColumn()->showPanel(QStringLiteral("paragraphStylesPanel"), true);
+    frame.columnForPanel(QStringLiteral("paragraphStylesPanel"))
+        ->showPanel(QStringLiteral("paragraphStylesPanel"), true);
     QCoreApplication::processEvents();
 
     // A type layer makes the first click apply the style, which records
@@ -502,7 +503,7 @@ void ParagraphStylesPanelTest::menusTogglePanel()
     QVERIFY2(f.ok(), "type fixture");
     showFrame();
 
-    auto* column = frame.panelColumn();
+    auto* column = frame.columnForPanel(QStringLiteral("paragraphStylesPanel"));
     QVERIFY(column);
     column->showPanel(QStringLiteral("paragraphStylesPanel"), false);
     frame.registry()->refresh();

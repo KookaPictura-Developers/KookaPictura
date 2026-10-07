@@ -805,17 +805,29 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Window", "Arrange", "Match All"}, QStringLiteral("Match All"));
     leaf(registry, {"Window", "Arrange", "New Window For [file]"},
          QStringLiteral("New Window For [file]"));
-    leaf(registry, {"Window", "Workspace", "Essentials"}, QStringLiteral("Essentials"));
-    leaf(registry, {"Window", "Workspace", "New Features"}, QStringLiteral("New Features"));
-    leaf(registry, {"Window", "Workspace", "3D"}, QStringLiteral("3D"));
-    leaf(registry, {"Window", "Workspace", "Motion"}, QStringLiteral("Motion"));
-    leaf(registry, {"Window", "Workspace", "Painting"}, QStringLiteral("Painting"));
-    leaf(registry, {"Window", "Workspace", "Photography"}, QStringLiteral("Photography"));
-    leaf(registry, {"Window", "Workspace", "Typography"}, QStringLiteral("Typography"));
-    leaf(registry, {"Window", "Workspace", "Advanced 3D"}, QStringLiteral("Advanced 3D"));
-    leaf(registry, {"Window", "Workspace", "New Workspace…"}, QStringLiteral("New Workspace…"));
-    leaf(registry, {"Window", "Workspace", "Delete Workspace…"}, QStringLiteral("Delete Workspace…"));
-    leaf(registry, {"Window", "Workspace", "Reset [Workspace]"}, QStringLiteral("Reset [Workspace]"));
+    registry.add(CommandSpec{command_ids::WindowWorkspaceEssentials,
+                             {"Window", "Workspace", "Essentials"}, QStringLiteral("Essentials"),
+                             QKeySequence(), true, true});
+    registry.add(CommandSpec{command_ids::WindowWorkspacePainting,
+                             {"Window", "Workspace", "Painting"}, QStringLiteral("Painting"),
+                             QKeySequence(), true, true});
+    registry.add(CommandSpec{command_ids::WindowWorkspacePhotography,
+                             {"Window", "Workspace", "Photography"}, QStringLiteral("Photography"),
+                             QKeySequence(), true, true});
+    registry.add(CommandSpec{command_ids::WindowWorkspaceTypography,
+                             {"Window", "Workspace", "Typography"}, QStringLiteral("Typography"),
+                             QKeySequence(), true, true});
+    registry.addSeparator({"Window", "Workspace"});
+    registry.add(CommandSpec{command_ids::WindowWorkspaceNew,
+                             {"Window", "Workspace", "New Workspace…"},
+                             QStringLiteral("New Workspace…"), QKeySequence(), true, false});
+    registry.add(CommandSpec{command_ids::WindowWorkspaceDelete,
+                             {"Window", "Workspace", "Delete Workspace…"},
+                             QStringLiteral("Delete Workspace…"), QKeySequence(), true, false});
+    registry.add(CommandSpec{command_ids::WindowWorkspaceReset,
+                             {"Window", "Workspace", "Reset [Workspace]"},
+                             QStringLiteral("Reset [Workspace]"), QKeySequence(), true, false});
+    registry.addSeparator({"Window", "Workspace"});
     leaf(registry, {"Window", "Workspace", "Keyboard Shortcuts & Menus…"},
          QStringLiteral("Keyboard Shortcuts & Menus…"));
     registry.addSeparator({"Window"});

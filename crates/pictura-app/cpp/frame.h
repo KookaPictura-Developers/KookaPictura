@@ -12,6 +12,7 @@
 
 #include "panels/panel_column.h"
 #include "tools.h"
+#include "workspace_store.h"
 
 class QDockWidget;
 class QFrame;
@@ -67,6 +68,10 @@ struct SessionState;
 // path needs it (headless implies self-test), so a normal launch starts on the
 // empty workspace with the document commands disabled.
 bool launchCreatesScratchDocument(bool selfTest, bool codecLoaded);
+
+// Factory panel-column layouts for the built-in workspaces (design D6). The
+// name is matched exactly; an unknown name returns an empty array.
+QJsonArray workspacePresets(const QString& name);
 
 // The CS6-shaped application frame: menu bar, tabbed document area, status bar,
 // and dock areas. Owns the UI and the open documents; each document's state
@@ -149,6 +154,27 @@ public:
     // M43 Phase C test hook: re-runs the real startup restore path so a saved
     // layout can be applied and re-applied without a second frame.
     void applyPanelSessionForTest(const SessionState& state) { applyPanelSession(state); }
+    // Applies a workspace-shaped column spec through the re-group-capable path.
+    void applyWorkspaceLayoutForTest(const QJsonArray& columns) { regroupAndApply(columns); }
+    // Workspace controller test hooks; all bypass the modal dialogs.
+    bool createWorkspaceForTest(const QString& name) { return createWorkspace(name); }
+    bool deleteWorkspaceForTest(const QString& name) { return deleteWorkspace(name); }
+    QString workspaceNameErrorForTest(const QString& name) const
+    {
+        return workspaceNameError(name);
+    }
+    void switchWorkspaceForTest(const QString& name) { switchWorkspace(name); }
+    QString activeWorkspaceForTest() const { return workspaceStore_.activeWorkspace; }
+    QStringList userWorkspacesForTest() const;
+    QJsonArray workspaceLayoutForTest() const { return serializeWorkspaceLayout(); }
+    void refreshWorkspaceMenuForTest();
+    QStringList workspaceMenuLabelsForTest() const;
+    int workspaceMenuSeparatorCountForTest() const;
+    QStringList deleteWorkspaceChoicesForTest() const { return deleteWorkspaceChoices(); }
+    // Rebuilds the pre-Essentials single-column default for the legacy self-test
+    // panel machinery and returns the primary column. New default coverage lives
+    // in the Qt Test suites.
+    PanelColumn* restoreLegacyDefaultForTest();
 
     // Bumped when the chrome layout changes shape (M42 removed the old dock
     // set); a persisted layout from another revision is discarded on restore so
@@ -330,6 +356,39 @@ private:
     void exportClipboard();
     void importSystemClipboard();
     void applyPanelSession(const SessionState& state);
+    // Rebuild the widget columns from a workspace-shaped spec, moving panels
+    // between groups (the session restore only reorders/hides them).
+    void regroupAndApply(const QJsonArray& columns);
+    // Serialize the live widget columns into the same `panelColumns` shape
+    // saveSession persists, shared by the session and the workspace store.
+    QJsonArray serializeWorkspaceLayout() const;
+    // Load/reconcile the workspace store; `sessionHadLayout` says whether the
+    // session carried a panel layout to adopt into the active workspace, so a
+    // lost session state does not clobber the active workspace's saved layout.
+    void initWorkspaces(bool sessionHadLayout);
+    // Attach the Window > Workspace menu to the Options-bar switcher.
+    void attachWorkspaceSwitcher();
+    // Keep the Options-bar switcher's value in step with the active workspace.
+    void updateWorkspaceSwitcher();
+    // Snapshot the active workspace's live arrangement into the store; called on
+    // session save so the arrangement is durable independent of state.json.
+    void snapshotActiveWorkspace();
+    void switchWorkspace(const QString& name);
+    void resetWorkspace();
+    bool createWorkspace(const QString& name);
+    bool deleteWorkspace(const QString& name);
+    // Human message for a rejected workspace name, or "" when it is valid.
+    QString workspaceNameError(const QString& name) const;
+    // Wire the Window > Workspace commands and the dynamic user workspace menu.
+    void wireWorkspaceCommands();
+    void refreshWorkspaceMenu(QMenu* menu);
+    int workspaceIndexOf(const QString& name) const;
+    QMenu* workspaceMenu() const;
+    // Every workspace but the active one; the Delete chooser's list.
+    QStringList deleteWorkspaceChoices() const;
+    // Apply the Essentials factory layout when the session has no saved or
+    // legacy panel layout (a fresh session); a stored layout is left untouched.
+    void applyFreshSessionDefault(const SessionState& state);
     void wirePanelColumn(PanelColumn* column);
     void clearDynamicColumns();
     void reapplyColumnStretch();
@@ -409,6 +468,13 @@ private:
     PlaceholderPanel* actionsPanel_ = nullptr;
     PlaceholderPanel* stylesPanel_ = nullptr;
     PanelColumn* panelColumn_ = nullptr;
+    // Named workspaces and the active workspace, independent of the session
+    // store. `workspacesInitialized_` gates snapshots made during construction
+    // before the store is loaded.
+    WorkspaceStore workspaceStore_;
+    bool workspacesInitialized_ = false;
+    // Dynamic user-workspace actions the Window > Workspace menu rebuilds.
+    QList<QAction*> workspaceMenuActions_;
     PreferencesDialog* preferencesDialog_ = nullptr;
     ToolController* tools_ = nullptr;
     OptionsBar* optionsBar_ = nullptr;

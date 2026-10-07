@@ -10,6 +10,8 @@
 class QStackedWidget;
 class QHBoxLayout;
 class QIcon;
+class QMenu;
+class QResizeEvent;
 class QToolButton;
 
 namespace pictura {
@@ -31,6 +33,11 @@ public:
     // Enable the Move tool's Align and Distribute buttons (the frame decides
     // from the selected layers and the selection).
     void setAlignEnabled(bool align, bool distribute);
+    // The right-aligned workspace switcher: shows the active workspace and opens
+    // the `Window > Workspace` menu.
+    void setWorkspaceMenu(QMenu* menu);
+    void setActiveWorkspace(const QString& name);
+    QToolButton* workspaceSwitcherForTest() const { return workspaceSwitcher_; }
 
 signals:
     // A panel toggle (Toggle the Brush panel, Toggle the Clone Source panel)
@@ -45,6 +52,9 @@ public:
     ToolController* controllerForTest() const { return controller_; }
     // The Brush Preset picker behind every brush tip button, made on first use.
     BrushPresetPicker* brushPicker();
+
+protected:
+    void resizeEvent(QResizeEvent* event) override;
 
 private:
     QWidget* buildPage(ToolId id);
@@ -111,6 +121,7 @@ private:
 
     ToolController* controller_ = nullptr;
     QStackedWidget* stack_ = nullptr;
+    QToolButton* workspaceSwitcher_ = nullptr;
     BrushPresetPicker* brushPicker_ = nullptr;
     std::vector<QToolButton*> alignButtons_;
     std::vector<QToolButton*> distributeButtons_;

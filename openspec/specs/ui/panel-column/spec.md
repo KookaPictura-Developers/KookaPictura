@@ -2,7 +2,9 @@
 
 ## Purpose
 The panel column host: groups and top tabs, the default groups, the registry, the width toggle, and compact or iconic modes.
+
 ## Requirements
+
 ### Requirement: Panel column host
 
 The system SHALL host the right-hand panels in a custom `PanelColumn` widget
@@ -108,24 +110,27 @@ strip and shown there, not baked into the normal tab.
 
 ### Requirement: Default panel groups
 
-The system SHALL open with the CS6 Essentials groups: `Color | Swatches |
-Styles`; `Adjustments`; `Layers | Channels | Paths`; `Navigator | Histogram |
-Info`; and the iconic `History` and `Actions`. `Styles` SHALL occupy the former
-Gradients/Patterns tab slot, and the Properties content SHALL fold into
-`Adjustments`. The Gradients, Patterns, Properties, and Libraries panels SHALL
-remain registered and reachable from `Window > Panels` but SHALL NOT be in a
-default visible group.
+The system SHALL open a fresh session in the authentic CS6 Essentials
+workspace: a wider main right-hand column holding the groups `Color | Swatches`,
+`Adjustments | Styles`, and `Layers | Channels | Paths`, and a narrower
+secondary right-hand column collapsed to icons holding `History` and
+`Properties`. `Navigator | Histogram | Info` SHALL NOT be in a default visible
+group. Every other registered panel — `Actions`, `Gradients`, `Patterns`,
+`Notes`, `Brush`, `Clone Source`, and the type panels — SHALL remain registered
+and reachable from `Window > Panels` but SHALL NOT be in a default visible
+group. (This application does not provide a `Libraries` panel.)
 
 #### Scenario: Default groups match CS6 Essentials [m41_groups]
 
 - **WHEN** the frame starts with a fresh session
-- **THEN** the visible groups are exactly Color/Swatches/Styles, Adjustments,
-  Layers/Channels/Paths, Navigator/Histogram/Info, and iconic History and Actions
+- **THEN** the main right-hand column contains the groups `Color | Swatches`,
+  `Adjustments | Styles`, and `Layers | Channels | Paths`, and a second
+  right-hand column to its left is iconic and holds `History` and `Properties`
 
 #### Scenario: A folded panel stays reachable [m41_groups]
 
-- **WHEN** the `Window > Panels > Properties` toggle is invoked
-- **THEN** the Properties panel can be shown even though it is not in a default
+- **WHEN** the `Window > Panels > Navigator` toggle is invoked
+- **THEN** the Navigator panel can be shown even though it is not in a default
   visible group
 
 ### Requirement: Panel registry and content widgets
@@ -1430,4 +1435,3 @@ edge — and the resulting width SHALL persist.
 - **WHEN** an iconic column is docked on the right and its left edge is dragged,
   or docked on the left and its right edge is dragged
 - **THEN** its width changes in both cases and the new width is kept
-

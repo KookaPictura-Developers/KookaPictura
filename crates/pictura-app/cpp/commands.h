@@ -165,6 +165,13 @@ inline constexpr char WindowPanelsParagraph[] = "window.panels.paragraph";
 // Not a CS6 panel (Photoshop CC 2015); kept for the photorust port (#65).
 inline constexpr char WindowPanelsGlyphs[] = "window.panels.glyphs";
 inline constexpr char WindowPanelsParagraphStyles[] = "window.panels.paragraphStyles";
+inline constexpr char WindowWorkspaceEssentials[] = "window.workspace.essentials";
+inline constexpr char WindowWorkspacePainting[] = "window.workspace.painting";
+inline constexpr char WindowWorkspacePhotography[] = "window.workspace.photography";
+inline constexpr char WindowWorkspaceTypography[] = "window.workspace.typography";
+inline constexpr char WindowWorkspaceNew[] = "window.workspace.new";
+inline constexpr char WindowWorkspaceDelete[] = "window.workspace.delete";
+inline constexpr char WindowWorkspaceReset[] = "window.workspace.reset";
 inline constexpr char TypePanelsCharacter[] = "type.panels.character";
 inline constexpr char TypePanelsParagraph[] = "type.panels.paragraph";
 inline constexpr char TypePanelsParagraphStyles[] = "type.panels.paragraphStyles";
