@@ -4396,3 +4396,5 @@ M6 through M34 are archived; their deltas now live in `openspec/specs/`.
   OpenCL kernel, no CPU fallback), so the result is a deliberate non-parity
   divergence rather than verified parity.
 - The OS font/filter gallery UI is still absent.
+
+ci-path-probe: docs-only skip check
