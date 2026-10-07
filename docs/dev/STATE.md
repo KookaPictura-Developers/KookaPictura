@@ -4,7 +4,7 @@ Snapshot for resuming after a context break. Update after each milestone.
 
 ## Where things are
 
-- Repo: `github.com/KookaPictura-Developers/KookaPictura`, branch `main`.
+- Repo: `github.com/KookaPictura-Developers/KookaPictura`, branch `master`.
   Docs-only corpus + a working Rust/Qt engine. Licensed GPL-3.0-or-later; the
   corpus is a documentation-first independent reimplementation, not a formal
   two-team process (`docs/00-overview/licensing-and-provenance.md`).

@@ -56,7 +56,7 @@ difference above tolerance, IO error, unknown option, or length mismatch.
 - **THEN** usage is printed and the process exits non-zero
 
 ### Requirement: CI runs format, lint, and tests
-The system SHALL run, on every push to `main` and on every pull request,
+The system SHALL run, on every push to `master` and on every pull request,
 `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D
 warnings`, and the workspace test suite on the pinned toolchain, except when
 the "Jobs are skipped when the change cannot affect them" requirement skips a
@@ -80,7 +80,7 @@ cargo-deny from a prebuilt release rather than compiling it from source. Every
 CI job SHALL set a `timeout-minutes` bound.
 
 #### Scenario: Push or pull request
-- **WHEN** a commit is pushed to `main`, or a pull request is opened or synchronized
+- **WHEN** a commit is pushed to `master`, or a pull request is opened or synchronized
 - **THEN** the workflow runs the format, clippy, and test steps in every job the changed-path rules do not skip, and fails the job on a non-zero exit
 
 #### Scenario: A feature-branch push is covered once
@@ -265,7 +265,7 @@ these rules:
 
 ### Requirement: Local verification fast path and compiler caching
 `scripts/verify-fast.sh` SHALL detect the changed paths of the working tree
-(committed diff against the merge base with `main`, plus untracked files). When
+(committed diff against the merge base with `master`, plus untracked files). When
 every changed path matches `docs/**`, `openspec/**`, `*.md`, or `.serena/**`, it
 SHALL run only `scripts/guard.sh` and `openspec validate --all --strict` and skip
 format, lint, and tests. When the changed-path set is empty or contains any other
