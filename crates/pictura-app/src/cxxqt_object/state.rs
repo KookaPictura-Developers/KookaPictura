@@ -69,6 +69,10 @@ pub struct TransformSession {
     pub(super) quad: Option<[(f64, f64); 4]>,
     /// Quad captured at begin/press for a projective gesture.
     pub(super) start_quad: [(f64, f64); 4],
+    /// For a selection's pixels lifted onto `path` (a floating layer above the
+    /// source): the source path and the document before the lift, which a
+    /// cancel restores.
+    pub(super) lifted: Option<(String, Box<Document>)>,
 }
 
 /// Backing Rust state for [`super::qobject::PictureView`].

@@ -1,5 +1,6 @@
 // Keyboard paths into Edit and View commands: Delete / Backspace clearing a
-// selection (#186) and Ctrl+= / Ctrl+Shift+= zooming in (#187).
+// selection (#186), Ctrl+= / Ctrl+Shift+= zooming in (#187), and Ctrl+T on an
+// opened photo's Background (#188).
 
 #include <QtTest/QtTest>
 
@@ -10,6 +11,9 @@
 
 #include "qt_test_support.h"
 
+#include <QtCore/QTemporaryDir>
+#include <QtGui/QImage>
+
 class EditShortcutsTest : public QObject {
     Q_OBJECT
 
@@ -17,6 +21,7 @@ private slots:
     void initTestCase();
     void deleteAndBackspaceClearTheSelection();
     void ctrlEqualsZoomsIn();
+    void freeTransformLiftsTheSelectedPixels();
 
 private:
     pictura::test::ScopedStateHome stateHome_;
@@ -94,6 +99,74 @@ void EditShortcutsTest::ctrlEqualsZoomsIn()
     const double zoomed = canvas->zoom();
     QTest::keyClick(canvas, Qt::Key_Minus, Qt::ControlModifier);
     QVERIFY(canvas->zoom() < zoomed);
+    frame.closeDocument(doc, false);
+}
+
+// CS6: with no selection a Background cannot be free-transformed; with one,
+// Ctrl+T lifts the selected pixels (the hole clears to white), Escape puts them
+// back, and Return commits one "Free Transform" state that keeps the
+// Background.
+void EditShortcutsTest::freeTransformLiftsTheSelectedPixels()
+{
+    pictura::PicturaMainWindow& frame = *window_;
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString png = dir.filePath(QStringLiteral("photo.png"));
+    QImage photo(40, 30, QImage::Format_RGB32);
+    photo.fill(qRgb(10, 120, 200));
+    QVERIFY(photo.save(png));
+    QVERIFY(frame.openDocumentAtPath(png));
+    QCoreApplication::processEvents();
+    pictura::PictureView* view = frame.activeView();
+    pictura::ImageView* canvas = frame.imageView();
+    QVERIFY(view && canvas);
+    const int doc = frame.activeDocumentIndex();
+    QCOMPARE(view->layer_kind(0), QStringLiteral("background"));
+    QAction* freeTransform =
+        frame.registry()->action(QLatin1String(pictura::command_ids::EditFreeTransform));
+    QVERIFY(freeTransform);
+    canvas->setFocus();
+    const QRgb blue = qRgb(10, 120, 200);
+
+    frame.registry()->refresh();
+    QVERIFY(!freeTransform->isEnabled());
+    QTest::keyClick(canvas, Qt::Key_T, Qt::ControlModifier);
+    QVERIFY(!view->transform_session_active());
+
+    QVERIFY(view->select_rect(5, 5, 20, 16, QStringLiteral("new"), 0.0));
+    frame.registry()->refresh();
+    QVERIFY(freeTransform->isEnabled());
+    const int history = view->history_count();
+    QTest::keyClick(canvas, Qt::Key_T, Qt::ControlModifier);
+    QVERIFY(view->transform_session_active());
+    QCOMPARE(view->layer_count(), 2);
+    QTest::keyClick(canvas, Qt::Key_Escape);
+    QVERIFY(!view->transform_session_active());
+    QCOMPARE(view->layer_count(), 1);
+    QCOMPARE(view->composite_argb(8, 8), blue);
+    QCOMPARE(view->history_count(), history);
+
+    QTest::keyClick(canvas, Qt::Key_T, Qt::ControlModifier);
+    QVERIFY(view->transform_session_active());
+    QCOMPARE(view->transform_press(15.0, 13.0, 1.0, false, false), 9);
+    QVERIFY(view->transform_move(25.0, 18.0, 1.0, false, false));
+    view->transform_release();
+    QCOMPARE(view->transform_dx(), 10.0);
+    QCOMPARE(view->transform_dy(), 5.0);
+    QTest::keyClick(canvas, Qt::Key_Return);
+    QVERIFY(!view->transform_session_active());
+    QCOMPARE(view->history_count(), history + 1);
+    QCOMPARE(view->history_label(view->history_index()), QStringLiteral("Free Transform"));
+    QCOMPARE(view->layer_count(), 1);
+    QCOMPARE(view->layer_kind(0), QStringLiteral("background"));
+    // The hole the move left is white; the moved pixels and the untouched
+    // canvas are blue.
+    QCOMPARE(view->composite_argb(8, 8), qRgb(255, 255, 255));
+    QCOMPARE(view->composite_argb(30, 22), blue);
+    QCOMPARE(view->composite_argb(2, 2), blue);
+    QVERIFY(!view->has_selection());
+    view->undo();
+    QCOMPARE(view->composite_argb(8, 8), blue);
     frame.closeDocument(doc, false);
 }
 
