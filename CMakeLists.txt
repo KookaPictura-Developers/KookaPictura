@@ -5,7 +5,7 @@
 
 cmake_minimum_required(VERSION 3.24)
 
-project(kooka_pictura LANGUAGES CXX)
+project(kooka_pictura VERSION 0.0.0 LANGUAGES CXX) # x-release-please-version
 
 # clangd (and therefore Serena's C++ symbol tools) reads compile_commands.json
 # from the repo root. CMake writes it into the build dir, so link it back.
