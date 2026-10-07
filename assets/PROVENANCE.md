@@ -46,6 +46,13 @@ here.
   stripped, so it carries no Adobe-tool creator strings. Raster only for now;
   a scalable SVG replacement is planned.
 
+## Screenshots
+
+- `assets/screenshot01.jpg` — a capture of the running Kooka Pictura
+  application, used in the top-level `README.md`. Original project artwork
+  released under **MIT**. Metadata stripped, so it carries no Adobe-tool
+  creator strings.
+
 ## Fonts
 
 - `crates/pictura-render/assets/LiberationSans-Regular.ttf` — Liberation Sans,

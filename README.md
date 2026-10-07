@@ -9,7 +9,7 @@ write Photoshop (PSD/PSB) files faithfully.
 
 <img src="assets/icons/app.png" alt="Kooka Pictura icon" width="128">
 
-![Kooka Pictura](docs/images/screenshot-main.png)
+![Kooka Pictura](assets/screenshot01.jpg)
 
 ## What it is
 
@@ -82,6 +82,23 @@ or Adobe plug-in compatibility. [`ROADMAP.md`](ROADMAP.md) lists these
 explicitly. Adobe, Photoshop, and Camera Raw are trademarks of Adobe Inc.; this
 project is independent and ships no Adobe code or assets.
 
+## A note on AI
+
+AI and LLM coding agents are part of how Kooka Pictura is built. This is an
+agentic-coding project: agents write and review code alongside human
+contributors, and that use is disclosed rather than hidden. The approach follows
+the [Software Freedom Conservancy's recommendations for LLM-backed generative
+AI in FOSS](https://sfconservancy.org/llm-gen-ai/llm-backed-generative-ai-recommendations.html):
+
+- Every contribution is human-reviewed. Manual testing of fixes and features is
+  highly recommended before they land.
+- Using AI tools is optional; contributors who do not are equally welcome.
+- All code stays GPL-3.0-or-later, and the provenance rules in
+  [`CONTRIBUTING.md`](CONTRIBUTING.md) apply however it was written.
+
+The agent tooling and the required spec workflow are in
+[`DEVELOPING.md`](DEVELOPING.md#ai-assisted-development).
+
 ## Get help
 
 Open an issue at
@@ -89,7 +106,7 @@ Open an issue at
 
 ## For developers
 
-- [`DEVELOPING.md`](DEVELOPING.md) — build, test, and architecture.
+- [`DEVELOPING.md`](DEVELOPING.md) — onboarding, build, test, and architecture.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — provenance, asset, and dependency rules.
 - [`ROADMAP.md`](ROADMAP.md) — shipped, planned, and not planned.
 - [`docs/README.md`](docs/README.md) — how to read the specification corpus.
