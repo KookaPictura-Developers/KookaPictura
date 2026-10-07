@@ -469,10 +469,11 @@ fn filter_from_kind_maps_known_and_rejects_unknown() {
     );
     assert_eq!(
         filter_from_kind("plastic-wrap"),
+        // docs/06-filters/artistic-filters.md: 15 / 5 / 5.
         Some(Filter::PlasticWrap {
-            highlight_strength: 0,
-            detail: 6,
-            smoothness: 3,
+            highlight_strength: 15,
+            detail: 5,
+            smoothness: 5,
         })
     );
     assert_eq!(

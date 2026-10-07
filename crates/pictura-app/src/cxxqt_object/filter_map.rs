@@ -694,9 +694,9 @@ pub(super) fn filter_from_kind_params(kind: &str, params: &[f64]) -> Option<Filt
         "plastic-wrap" => {
             arity!(params, 3);
             Filter::PlasticWrap {
-                highlight_strength: u8v(params, 0, 0),
-                detail: u8v(params, 1, 6),
-                smoothness: u8v(params, 2, 3),
+                highlight_strength: u8v(params, 0, 15),
+                detail: u8v(params, 1, 5),
+                smoothness: u8v(params, 2, 5),
             }
         }
         "poster-edges" => {
