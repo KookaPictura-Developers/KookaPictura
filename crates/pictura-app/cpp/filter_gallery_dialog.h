@@ -3,6 +3,7 @@
 #include <QtCore/QByteArray>
 #include <QtCore/QList>
 #include <QtCore/QPair>
+#include <QtCore/QPoint>
 #include <QtCore/QString>
 #include <QtGui/QImage>
 #include <QtWidgets/QDialog>
@@ -103,6 +104,9 @@ private:
     int selected_ = 0;
     bool previewShown_ = false;
     double zoom_ = 1.0;
+    bool panning_ = false;
+    QPoint panAnchor_;
+    QPoint panStart_;
 
     QScrollArea* previewArea_ = nullptr;
     QLabel* previewLabel_ = nullptr;

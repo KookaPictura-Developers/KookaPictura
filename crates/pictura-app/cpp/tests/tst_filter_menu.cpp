@@ -67,6 +67,7 @@ private slots:
     void previewToggleShowsAndRevertsPixels();
     void previewShowsWhenDialogOpens();
     void zoomChangesOnlyThumbnailAndLabel();
+    void zoomFollowsKeyboardShortcuts();
     void sliderDragDefersPreviewUntilRelease();
     void numericFieldIsCompactAndSliderAlignsLeft();
     void dialogEntriesEndWithEllipsis();
@@ -442,6 +443,43 @@ void FilterMenuTest::zoomChangesOnlyThumbnailAndLabel()
     QCOMPARE(afterIn, QStringLiteral("200%"));
     QCOMPARE(afterOut, QStringLiteral("50%"));
     QCOMPARE(view->image(), before);
+}
+
+// Ctrl++ / Ctrl+- zoom the preview as the buttons do (#243), even with a
+// parameter field focused and the frame's input blocked by the open dialog;
+// `+` arrives as Ctrl+= or Ctrl+Shift+= on most layouts.
+void FilterMenuTest::zoomFollowsKeyboardShortcuts()
+{
+    QStringList seen;
+    QTimer::singleShot(0, [&] {
+        auto* dialog = activeFilterDialog();
+        if (!dialog) {
+            return;
+        }
+        dialog->activateWindow();
+        auto* label = dialog->findChild<QLabel*>(QStringLiteral("filterZoomLabel"));
+        auto* field = dialog->findChild<QDoubleSpinBox*>();
+        if (!QTest::qWaitForWindowActive(dialog) || !label || !field) {
+            dialog->reject();
+            return;
+        }
+        field->setFocus();
+        seen.append(label->text());
+        QTest::keyClick(field, Qt::Key_Equal, Qt::ControlModifier);
+        seen.append(label->text());
+        QTest::keyClick(field, Qt::Key_Minus, Qt::ControlModifier);
+        seen.append(label->text());
+        QTest::keyClick(field, Qt::Key_Plus, Qt::ControlModifier | Qt::ShiftModifier);
+        seen.append(label->text());
+        QTest::keyClick(field, Qt::Key_Plus, Qt::ControlModifier | Qt::KeypadModifier);
+        seen.append(label->text());
+        dialog->reject();
+    });
+    QVERIFY(window_->registry()->dispatch(
+        filterId(QStringLiteral("Blur"), QStringLiteral("Gaussian Blur"))));
+    QCOMPARE(seen, QStringList({QStringLiteral("100%"), QStringLiteral("200%"),
+                                QStringLiteral("100%"), QStringLiteral("200%"),
+                                QStringLiteral("400%")}));
 }
 
 void FilterMenuTest::sliderDragDefersPreviewUntilRelease()

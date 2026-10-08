@@ -127,6 +127,7 @@ FilterPreviewDialog::FilterPreviewDialog(PictureView* view, const FilterCommandS
             zoom_ = qMax(zoom_ - 1, 0);
             updateThumbnail();
         });
+        addZoomShortcuts(this, zoomIn, zoomOut);
         zoomRow->addStretch(1);
         zoomRow->addWidget(zoomOut);
         zoomRow->addWidget(zoomLabel_);

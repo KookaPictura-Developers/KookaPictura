@@ -5,6 +5,7 @@
 #include <QtCore/QUrl>
 #include <QtCore/QList>
 
+class QAbstractButton;
 class QComboBox;
 class QDialog;
 class QWidget;
@@ -20,6 +21,11 @@ enum class UnsavedChoice { Save, Discard, Cancel };
 // Returns the dialog's result code. With no parent (tests) this is a plain
 // exec(). Every app dialog that used to call `dialog.exec()` should use this.
 int runDialog(QDialog& dialog, QWidget* parent);
+
+// Ctrl++ / Ctrl+- in a dialog with its own preview zoom click `zoomIn` /
+// `zoomOut`. `+` takes Shift on most layouts, so Ctrl+= and Ctrl+Shift+= zoom
+// in too, as they do on the canvas.
+void addZoomShortcuts(QWidget* dialog, QAbstractButton* zoomIn, QAbstractButton* zoomOut);
 
 // Ask what to do with a modified document before closing/reverting/replacing it.
 // A frame-to-front save prompt is expected when the choice is Save.
