@@ -57,8 +57,8 @@ Ranges marked **[AS]** come from the Photoshop CS6 AppleScript Scripting Referen
 |---|---|---|---|---|---|
 | Clouds | — | — | — | No options | [Help] |
 | Difference Clouds | — | — | — | No options | [Help] |
-| Fibers | Variance | int | 16 *(inferred)* | range not stated in Help; *(inferred)* 2–64 | Help (control), range *(inferred)* |
-| Fibers | Strength | int | 4 *(inferred)* | range not stated in Help; *(inferred)* 1–100 | Help (control), range *(inferred)* |
+| Fibers | Variance | int | 16 *(inferred)* | range not stated in Help; *(inferred)* 1–64 | Help (control), range *(inferred)* |
+| Fibers | Strength | int | 4 *(inferred)* | range not stated in Help; *(inferred)* 1–64 | Help (control), range *(inferred)* |
 | Fibers | Randomize | button | — | Re-rolls the pattern | [Help] |
 | Lens Flare | Brightness | int % | 100 *(inferred)* | 10–300% | [AS] |
 | Lens Flare | Flare Center | point | image center *(inferred)* | x/y in image coordinates (unit value) | [AS] |
@@ -88,7 +88,7 @@ Ranges marked **[AS]** come from the Photoshop CS6 AppleScript Scripting Referen
 |---|---|---|
 | Clouds | Fractal/value noise | Random field over the selection, colored by interpolating foreground↔background; `Alt` produces a starker (higher-contrast or different-octave) pattern. Adobe's noise is closed. Replaces the layer's pixels (no blend with source). *(inferred family)* |
 | Difference Clouds | Fractal noise + Difference blend | Same noise generator as Clouds, then blend with the existing pixels using the Difference formula (per `05-layers/blend-modes.md`). Replaces the layer's pixels. *[Help]* |
-| Fibers | Directional/anisotropic noise | Noise elongated along one axis, quantized to foreground/background; Variance = color variation / streak length, Strength = weave tightness; seeded by Randomize. Replaces the layer's pixels. *(inferred family)* |
+| Fibers | Directional/anisotropic noise | Value noise stretched down the picture in two layers: soft clumps tens of pixels wide and hard-edged hairs one or two pixels wide, contrast-stretched to blend background→foreground. Variance shortens the streaks and shifts the mix toward hairs; Strength lengthens them; seeded by Randomize. Replaces the layer's pixels. Kooka uses photorust's model, tuned by eye against CS6 at 500 %. *(inferred family)* |
 | Lens Flare | Optical flare model | A bright source plus a chain of ghost reflections and a starburst; lens type selects the ghost geometry/aberrations. Adobe's model is closed. *(inferred family)* |
 | Lighting Effects | 3D lighting over a bump map | Each light is Point/Infinite/Spot; the surface normal comes from a grayscale bump map (Height); Gloss/Metallic/Exposure/Ambience/Colorize combine diffuse/specular responses. GPU workspace. *(inferred family; CS6 gallery behavior sourced)* |
 | Scripted Patterns | Pattern-tiling scripts (Deco engine) | Scripts place the chosen pattern repeatedly across the layer/selection using geometric rules (brick stagger, cross weave, random placement, spiral, symmetry). Adobe Research documents that these are the Deco scripts. *(inferred internals)* |
@@ -100,7 +100,7 @@ Ranges marked **[AS]** come from the Photoshop CS6 AppleScript Scripting Referen
 
 - `pictura_filter::render` — per-filter submodules implementing `Filter` (or a `Fill` trait for Scripted Patterns).
 - `pictura_filter::noise::FractalNoise` — seeded value/fractal noise; shared by Clouds and Difference Clouds; `Rng` seed stored in params.
-- `pictura_filter::render::fibers` — directional noise with `variance`, `strength`, `seed`.
+- `pictura_filter::render::fibers` — vertical clump + hair streaks (photorust's model) with `variance` 0–64 (0 = even blend), `strength` 1–64, `seed`.
 - `pictura_filter::render::lens_flare` — `LensType` enum + `FlareCenter`; returns an additive contribution.
 - `pictura_filter::render::lighting_effects` — `Light { kind: Point|Infinite|Spot, color, intensity, ... }`, `LightingScene { lights: Vec<Light>, gloss, metallic, exposure, ambience, colorize, bump: Option<ChannelRef> }`; GPU path via `pictura_gpu` (`01-architecture/gpu-rendering-pipeline.md`).
 - `pictura_paint::fill::scripted` — `ScriptedPattern::{BrickFill, CrossWeave, RandomFill, Spiral, SymmetryFill}`; consumes a `PatternRef`.
@@ -152,7 +152,7 @@ Widgets over QML for the CS6 lighting workspace's gizmo interaction is a judgeme
 
 - Given a fresh layer, Clouds fills it with a fg/bg-colored cloud pattern and replaces any prior pixels; `Alt`/`Option` produces a starker pattern.
 - Given Difference Clouds applied once, portions are inverted in a cloud pattern; applying it again changes the result (marble ribs/veins).
-- Given Fibers Variance at minimum, streaks are long; at maximum, fibers are short and varied; Strength at minimum gives a loose weave, at maximum short stringy fibers; Randomize changes the pattern.
+- Given Fibers Variance at minimum, streaks are long and run the full height; at maximum, fibers are short and varied; raising Strength lengthens the streaks; fibers run vertically; Randomize changes the pattern.
 - Given Lens Flare Brightness 10, the flare is faint; at 300 it is bright; changing Lens Type changes the ghost geometry; moving the center moves the flare.
 - Given Lighting Effects with a grayscale bump map at Height 100, the surface relief is maximal; at Height 0 the surface is flat.
 - Given Lighting Effects on a non-RGB document or with no supported GPU, the filter is unavailable.
@@ -180,7 +180,8 @@ Not used in this pass:
 
 ## Open questions
 
-- **Fibers ranges/defaults.** Help names the sliders but states no limits or defaults; the AppleScript reference does not script Fibers. Resolve from a CS6 UI capture.
+- **Fibers ranges/defaults.** Help names the sliders but states no limits or defaults; the AppleScript reference does not script Fibers. Kooka uses 1–64 for both, as photorust does. Resolve from a CS6 UI capture.
+- **Fibers Strength direction.** Help says a high Strength gives "short, stringy fibers"; photorust's model, tuned by eye against CS6, lengthens the streaks as Strength rises. Resolve from CS6 captures at Strength 1 and 64.
 - **Clouds noise model.** Adobe's fractal noise octave count, lacunarity, and the exact `Alt`/`Option` variant are undocumented. Resolve by fitting.
 - **Difference Clouds blend.** Whether the Difference blend is applied in the working space and how it interacts with fg/bg interpolation is inferred. Resolve by fitting.
 - **Lighting Effects Smart Filter support.** The Help exclusion list does not name Lighting Effects; whether CS6 lets it stack as a Smart Filter is unconfirmed. Resolve with a CS6 build test.

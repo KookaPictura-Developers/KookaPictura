@@ -186,6 +186,11 @@ Snapshot for resuming after a context break. Update after each milestone.
   workspace), and Flame/Picture Frame (CC 2014.2, non-goals) stay unported, and
   the Filter menu entries and per-filter dialogs remain disabled stubs — their
   wiring is a separate follow-up.
+- **Fibers** (change `port-photorust-fibers`, issue #224, ported from
+  photorust): `render::fibers` (now `render/fibers.rs`) lays soft clumps and
+  hard-edged hairs down the picture instead of a horizontal fBm field;
+  Variance `0..=64` (0 = even blend), Strength `1..=64`. Clouds and Difference
+  Clouds keep Kooka's seeded, two-colour, Starker model by decision.
 - **Filter menu wiring and dialogs** (change `filter-menu-ui`, issue #82, ported
   from photorust): the CS6 `Filter` menu is live. `cxxqt_object/filter_map.rs`
   exposes `pub(super) filter_from_kind_params(kind, &[f64])` (empty slice = the
