@@ -527,6 +527,24 @@ void LayersPanelTest::dragLayerOntoAnotherDocument()
              "another document's drag is not a drop on this panel");
     QCOMPARE(dst->layer_row_count(), dstRows);
 
+    // Back over the source tab after another document came forward: the drop
+    // is the own-document no-op, not a copy into the last-hovered document.
+    QVERIFY(dragLayerOver(bar, src, sky, bar->tabRect(1).center(), false));
+    QVERIFY2(!dragLayerOver(bar, src, sky, bar->tabRect(0).center(), true),
+             "returning to the source tab copies nothing");
+    QCOMPARE(window_->activeView(), src);
+    QCOMPARE(countNamed(dst, QStringLiteral("Sky")), 2);
+    QCOMPARE(src->layer_row_count(), srcRows);
+
+    // Empty tab-bar space is no target, whatever document is active.
+    QVERIFY(dragLayerOver(bar, src, sky, bar->tabRect(1).center(), false));
+    const QPoint pastTabs(bar->tabRect(bar->count() - 1).right() + 4, bar->height() / 2);
+    if (bar->tabAt(pastTabs) < 0 && bar->rect().contains(pastTabs)) {
+        QVERIFY2(!dragLayerOver(bar, src, sky, pastTabs, true),
+                 "a drop past the last tab copies nothing");
+        QCOMPARE(countNamed(dst, QStringLiteral("Sky")), 2);
+    }
+
     QVERIFY2(!dragLayerOver(bar, src, sky, bar->tabRect(2).center(), true),
              "a Grayscale document refuses an RGB layer");
     QCOMPARE(window_->activeView(), gray);

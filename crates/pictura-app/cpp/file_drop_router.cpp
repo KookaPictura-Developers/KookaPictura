@@ -52,13 +52,16 @@ bool FileDropRouter::routeLayerDrag(QObject* watched, QEvent* event)
     if (!bar && !qobject_cast<ImageView*>(watched)) {
         return false;
     }
-    // Hovering another document's tab brings it forward, as CS6 does, so the
-    // drop can land on its tab or its canvas.
+    // Hovering a tab brings its document forward, as CS6 does, so the drop can
+    // land on its tab or its canvas. The source tab is activated too, so a drag
+    // that returns to it targets nothing rather than the last-hovered document.
     if (bar) {
         const int tab = bar->tabAt(drag->position().toPoint());
-        if (tab >= 0 && frame_->viewAt(tab) != source) {
-            frame_->setActiveDocumentIndex(tab);
+        if (tab < 0) {
+            drag->ignore();
+            return true;
         }
+        frame_->setActiveDocumentIndex(tab);
     }
     const PictureView* target = frame_->activeView();
     if (!target || target == source) {
