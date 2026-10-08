@@ -45,13 +45,19 @@ confirmed on #221.
   colours.
 - `imaging/brush-stroke-filters`: Accented Edges has no neutral brightness.
 - `imaging/artistic-filters`: Film Grain's no-op needs no highlight area; Paint
-  Daubs' seed re-rolls Sparkle.
+  Daubs' seed re-rolls Sparkle, whose contours are drawn as lines of light;
+  Palette Knife is photocraft's Kuwahara-and-palette knife and drops its seed.
+- `imaging/filter-app-ui`: colour parameters show as a swatch that opens the
+  colour picker; the Artistic dialogs open on new defaults, drop their
+  foreground/background swatches, and keep up to eight controls in one column;
+  filter dialogs preview as soon as they open.
 - `imaging/noise-filters`: Add Noise's scale and seeded hash.
 
 ## Impact
 
-- `pictura-filters` only: the `Filter` API, `filter_map.rs`, and the dialogs are
-  unchanged. `rayon` joins `pictura-filters`; it is already in the workspace
+- Mostly `pictura-filters`. The `Filter` API loses `PaletteKnife::seed`;
+  `filter_map.rs` and the dialogs change only for Palette Knife's slot count,
+  the Artistic defaults and slot layouts, and the colour swatch. `rayon` joins `pictura-filters`; it is already in the workspace
   through `pictura-render`, so no new crate enters the tree.
 - **Output changes:** every ported filter's output changes. No golden baseline
   covers these filters. ImageMagick-exact Mosaic stays exact.

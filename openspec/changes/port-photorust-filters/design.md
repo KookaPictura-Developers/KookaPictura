@@ -23,9 +23,8 @@ methods on them are kept.
 ## Seeds
 
 photorust seeds its patterns from pixel coordinates alone. Kooka's dialogs
-expose a Seed. The six hash primitives (`artistic::noise`, `pixelate::jitter`,
-`segment::wobble`, `stylize::hash`, `texture::lattice`, and the pen-line hash in
-`brush_strokes`) XOR in `photorust::seed()`. That is an atomic set by
+expose a Seed. The five hash primitives (`artistic::noise`, `pixelate::jitter`,
+`stylize::hash`, `texture::lattice`, and the pen-line hash in `brush_strokes`) XOR in `photorust::seed()`. That is an atomic set by
 `with_seed` under a mutex for the duration of one filter run.
 
 - **Why a global:** a thread-local would not reach rayon's workers, and
