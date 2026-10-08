@@ -4,9 +4,9 @@
 //! All are classified **no-equivalent**: the reference's noise and flare models
 //! are closed, so these are deterministic approximations verified by property
 //! tests (range, determinism, monotonicity), not delta fitting against
-//! reference output. Clouds/Fibers replace the color planes from a seeded
-//! value-noise field; Lens Flare adds on top of the existing pixels. Alpha is
-//! never modified.
+//! reference output. Clouds replace the color planes from a seeded value-noise
+//! field and Fibers from photorust's streak model ([`fibers`]); Lens Flare adds
+//! on top of the existing pixels. Alpha is never modified.
 
 use pictura_core::PixelBuffer;
 use rand_chacha::{
@@ -16,15 +16,15 @@ use rand_chacha::{
 
 use crate::{kernel::unit_f64, validate, FilterError};
 
+mod fibers;
+pub use fibers::fibers;
+
 /// Clouds: base lattice cells across the image.
 const CLOUD_CELLS: f64 = 8.0;
 /// fBm octaves, lacunarity and gain shared by the noise-driven filters.
 const OCTAVES: usize = 5;
 const LACUNARITY: f64 = 2.0;
 const GAIN: f64 = 0.5;
-/// Fibers: horizontal cell density as a fraction of `strength` (fibers run
-/// along x), roughened further by Variance.
-const FIBER_X_FREQ: f64 = 0.05;
 
 fn smoothstep(t: f64) -> f64 {
     t * t * (3.0 - 2.0 * t)
@@ -158,49 +158,6 @@ pub fn difference_clouds(
             let cloud = lerp_channel(color_a[c], color_b[c], f) as i32;
             let existing = buf.data[c * n + p] as i32;
             buf.data[c * n + p] = existing.abs_diff(cloud) as u8;
-        }
-    }
-    Ok(())
-}
-
-/// Fibers: replace the color planes with an x-elongated noise field mapped
-/// through the color ramp. `variance` (0..=100) sets per-run color variation,
-/// `strength` (1..=100) the fiber definition via the vertical cell density.
-pub fn fibers(
-    buf: &mut PixelBuffer,
-    variance: f64,
-    strength: f64,
-    color_a: [u8; 3],
-    color_b: [u8; 3],
-    seed: u64,
-) -> Result<(), FilterError> {
-    let n = validate(buf)?;
-    if !(0.0..=100.0).contains(&variance) {
-        return Err(FilterError::InvalidParams(format!(
-            "fibers variance {variance} out of range 0..=100"
-        )));
-    }
-    if !(1.0..=100.0).contains(&strength) {
-        return Err(FilterError::InvalidParams(format!(
-            "fibers strength {strength} out of range 1..=100"
-        )));
-    }
-    let w = buf.width as usize;
-    let h = buf.height as usize;
-    let planes = (buf.channels as usize).min(3);
-    let fx = (FIBER_X_FREQ * strength).max(0.25) * (1.0 + variance / 25.0);
-    let fy = strength;
-    let noise = ValueNoise::new(seed);
-    let mut jitter_rng = ChaCha8Rng::seed_from_u64(seed ^ 0xf1be_7a1e);
-    for y in 0..h {
-        let v = (y as f64 + 0.5) / h as f64;
-        let jitter = (unit_f64(&mut jitter_rng) - 0.5) * variance / 100.0;
-        for x in 0..w {
-            let u = (x as f64 + 0.5) / w as f64;
-            let f = (noise.fbm(fx * u, fy * v) + jitter).clamp(0.0, 1.0);
-            for c in 0..planes {
-                buf.data[c * n + y * w + x] = lerp_channel(color_a[c], color_b[c], f);
-            }
         }
     }
     Ok(())
@@ -815,71 +772,6 @@ mod tests {
         let first = buf.data.clone();
         difference_clouds(&mut buf, [0, 0, 0], [255, 255, 255], false, 3).unwrap();
         assert_ne!(buf.data, first);
-    }
-
-    #[test]
-    fn fibers_same_seed_is_deterministic_and_rgb_within_endpoints() {
-        let a = [200, 150, 100];
-        let b = [250, 240, 230];
-        let base = plane(32, 32, [0, 0, 0]);
-        let mut x = base.clone();
-        let mut y = base.clone();
-        fibers(&mut x, 16.0, 4.0, a, b, 7).unwrap();
-        fibers(&mut y, 16.0, 4.0, a, b, 7).unwrap();
-        assert_eq!(x.data, y.data);
-        assert_channels_within(&x, a, b);
-        let n = x.pixel_count();
-        assert!(x.data[3 * n..].iter().all(|&v| v == 200));
-    }
-
-    #[test]
-    fn fibers_variance_grows_along_x_variation() {
-        let base = plane(64, 32, [0, 0, 0]);
-        let mut low = base.clone();
-        let mut high = base.clone();
-        fibers(&mut low, 5.0, 4.0, [0, 0, 0], [255, 255, 255], 12).unwrap();
-        fibers(&mut high, 95.0, 4.0, [0, 0, 0], [255, 255, 255], 12).unwrap();
-        let row_delta = |buf: &PixelBuffer| -> f64 {
-            let w = buf.width as usize;
-            let h = buf.height as usize;
-            let mut total = 0.0;
-            for y in 0..h {
-                let mut row = 0.0;
-                for x in 1..w {
-                    row += buf.data[y * w + x].abs_diff(buf.data[y * w + x - 1]) as f64;
-                }
-                total += row / (w - 1) as f64;
-            }
-            total / h as f64
-        };
-        let low_d = row_delta(&low);
-        let high_d = row_delta(&high);
-        assert!(
-            low_d <= high_d,
-            "low-variance along-x delta {low_d} should not exceed high {high_d}"
-        );
-    }
-
-    #[test]
-    fn fibers_params_are_validated_and_buffer_untouched() {
-        let base = plane(8, 8, [90, 60, 30]);
-        for &(variance, strength) in &[
-            (-1.0, 4.0),
-            (101.0, 4.0),
-            (16.0, 0.0),
-            (16.0, 101.0),
-            (f64::NAN, 4.0),
-            (16.0, f64::NAN),
-        ] {
-            let mut buf = base.clone();
-            let err =
-                fibers(&mut buf, variance, strength, [0, 0, 0], [255, 255, 255], 1).unwrap_err();
-            assert!(
-                matches!(err, FilterError::InvalidParams(_)),
-                "variance {variance} strength {strength} should be rejected"
-            );
-            assert_eq!(buf.data, base.data);
-        }
     }
 
     #[test]
