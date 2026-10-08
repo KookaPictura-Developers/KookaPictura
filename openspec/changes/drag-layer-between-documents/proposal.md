@@ -19,6 +19,8 @@ duplicates a layer into another document when it is dragged there
   the dragged layer in and selects the copy. The panel ignores a drag from
   another document, so after the switch its rows and strip buttons never act on
   the destination's layer at the same path.
+- Move tool: a canvas drag that reaches another document's tab becomes the
+  same layer drag; the source layer keeps its position.
 
 ## Capabilities
 

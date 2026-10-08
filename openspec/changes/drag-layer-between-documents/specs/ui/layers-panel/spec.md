@@ -2,7 +2,10 @@
 
 ### Requirement: Drag a layer into another document
 
-A Layers-panel drag SHALL carry the document it started from. While dragging,
+A Layers-panel drag SHALL carry the document it started from. A Move-tool
+drag on the canvas with no selection SHALL become such a drag of the active
+layer once the pointer reaches another document's tab, leaving the source
+layer where it was. While dragging,
 hovering another open document's tab SHALL make that document active, and
 releasing the drag on that tab or on its canvas SHALL deep-copy the dragged
 layer (children, masks, effects, and attributes included) into it. The copy
@@ -20,6 +23,11 @@ another document as a drop on its rows or strip buttons.
 - **WHEN** layer `Sky` is dragged from one document onto another document's tab and released
 - **THEN** that document becomes active and gains a selected layer `Sky` with
   the same opacity in one undo step, and the source keeps its layers
+
+#### Scenario: Move-tool drag from the canvas onto another document's tab
+
+- **WHEN** the Move tool drags from one document's canvas onto another document's tab and releases
+- **THEN** that document becomes active and gains a copy of the active layer, and the source layer has not moved
 
 #### Scenario: Drop a layer on another document's canvas
 
