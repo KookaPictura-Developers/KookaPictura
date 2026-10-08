@@ -6,7 +6,7 @@
 //! tests (range, determinism, monotonicity), not delta fitting against
 //! reference output. Clouds replace the color planes from a seeded value-noise
 //! field and Fibers from photorust's streak model ([`fibers`]); Lens Flare adds
-//! on top of the existing pixels. Alpha is never modified.
+//! photorust's flare model on top of the existing pixels ([`lens_flare`]). Alpha is never modified.
 
 use pictura_core::PixelBuffer;
 use rand_chacha::{
@@ -17,7 +17,9 @@ use rand_chacha::{
 use crate::{kernel::unit_f64, validate, FilterError};
 
 mod fibers;
+mod lens_flare;
 pub use fibers::fibers;
+pub use lens_flare::{lens_flare, LensType};
 
 /// Clouds: base lattice cells across the image.
 const CLOUD_CELLS: f64 = 8.0;
@@ -158,193 +160,6 @@ pub fn difference_clouds(
             let cloud = lerp_channel(color_a[c], color_b[c], f) as i32;
             let existing = buf.data[c * n + p] as i32;
             buf.data[c * n + p] = existing.abs_diff(cloud) as u8;
-        }
-    }
-    Ok(())
-}
-
-/// Lens model for the Lens Flare ghost chain and starburst.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LensType {
-    Zoom,
-    Prime35,
-    Prime105,
-    MoviePrime,
-}
-
-struct Ghost {
-    /// Position along the center→mirror axis (0 = center, 1 = mirrored point).
-    along: f64,
-    /// Radius as a fraction of the half image diagonal.
-    radius: f64,
-    /// Peak add relative to full scale, before the brightness factor.
-    alpha: f64,
-}
-
-/// (spoke count, perpendicular ghost offset in image heights, ghosts)
-fn lens_model(lens: LensType) -> (usize, f64, &'static [Ghost]) {
-    match lens {
-        LensType::Zoom => (
-            6,
-            0.0,
-            &[
-                Ghost {
-                    along: 0.4,
-                    radius: 0.10,
-                    alpha: 0.22,
-                },
-                Ghost {
-                    along: 0.8,
-                    radius: 0.12,
-                    alpha: 0.20,
-                },
-                Ghost {
-                    along: 1.2,
-                    radius: 0.14,
-                    alpha: 0.18,
-                },
-                Ghost {
-                    along: 1.6,
-                    radius: 0.16,
-                    alpha: 0.16,
-                },
-            ],
-        ),
-        LensType::Prime35 => (
-            4,
-            0.0,
-            &[
-                Ghost {
-                    along: 0.5,
-                    radius: 0.06,
-                    alpha: 0.18,
-                },
-                Ghost {
-                    along: 0.85,
-                    radius: 0.08,
-                    alpha: 0.16,
-                },
-                Ghost {
-                    along: 1.2,
-                    radius: 0.10,
-                    alpha: 0.14,
-                },
-            ],
-        ),
-        LensType::Prime105 => (
-            8,
-            0.05,
-            &[
-                Ghost {
-                    along: 0.7,
-                    radius: 0.09,
-                    alpha: 0.20,
-                },
-                Ghost {
-                    along: 1.3,
-                    radius: 0.11,
-                    alpha: 0.16,
-                },
-            ],
-        ),
-        LensType::MoviePrime => (
-            4,
-            0.0,
-            &[
-                Ghost {
-                    along: 0.6,
-                    radius: 0.08,
-                    alpha: 0.15,
-                },
-                Ghost {
-                    along: 1.1,
-                    radius: 0.10,
-                    alpha: 0.13,
-                },
-            ],
-        ),
-    }
-}
-
-/// Lens Flare: additive core, ghost chain and starburst rays, clamped to
-/// white. `brightness` is a percentage (10..=300); `center` is in unit
-/// coordinates and is clamped, not rejected. Deterministic — no seed.
-///
-/// ponytail: the reference's flare model is closed; these amplitudes are an artistic
-/// guess. Per-pixel exp/atan2 over every contributor — add per-contributor
-/// bounding boxes if large documents get slow.
-pub fn lens_flare(
-    buf: &mut PixelBuffer,
-    brightness: f64,
-    center: (f64, f64),
-    lens: LensType,
-) -> Result<(), FilterError> {
-    let n = validate(buf)?;
-    if !(10.0..=300.0).contains(&brightness) {
-        return Err(FilterError::InvalidParams(format!(
-            "lens flare brightness {brightness} out of range 10..=300"
-        )));
-    }
-    let w = buf.width as usize;
-    let h = buf.height as usize;
-    let planes = (buf.channels as usize).min(3);
-    let cx = center.0.clamp(0.0, 1.0) * (w as f64 - 1.0);
-    let cy = center.1.clamp(0.0, 1.0) * (h as f64 - 1.0);
-    let (spokes, perp, ghosts) = lens_model(lens);
-    let scale = 0.5 * (w as f64).hypot(h as f64);
-    let gain = brightness / 100.0;
-    let core_r = 0.18 * scale;
-    let mirror_x = w as f64 - 1.0 - cx;
-    let mirror_y = h as f64 - 1.0 - cy;
-    let ghost_pos: Vec<(f64, f64, f64, f64)> = ghosts
-        .iter()
-        .map(|g| {
-            (
-                cx + g.along * (mirror_x - cx),
-                cy + g.along * (mirror_y - cy) + perp * h as f64,
-                g.radius * scale,
-                g.alpha,
-            )
-        })
-        .collect();
-    let ray_len = 0.9 * scale;
-    let ray_amp = 0.6;
-    let ray_sigma = 0.07;
-    let streak_amp = 0.35;
-    let streak_h = (0.015 * h as f64).max(1.0);
-    for y in 0..h {
-        for x in 0..w {
-            let dx = x as f64 - cx;
-            let dy = y as f64 - cy;
-            let dist = dx.hypot(dy);
-            let mut add = (-(dist / core_r).powi(2)).exp();
-            let mut ray = 0.0_f64;
-            let ang = dy.atan2(dx);
-            for k in 0..spokes {
-                let phi = k as f64 * std::f64::consts::TAU / spokes as f64;
-                let mut d = ang - phi;
-                if d > std::f64::consts::PI {
-                    d -= std::f64::consts::TAU;
-                } else if d < -std::f64::consts::PI {
-                    d += std::f64::consts::TAU;
-                }
-                ray = ray.max((-(d / ray_sigma).powi(2)).exp());
-            }
-            add += ray_amp * ray * (-(dist / ray_len).powi(2)).exp();
-            for &(gx, gy, gr, galpha) in &ghost_pos {
-                let gd = (x as f64 - gx).hypot(y as f64 - gy);
-                add += galpha * (-(gd / gr).powi(2)).exp();
-            }
-            if lens == LensType::MoviePrime {
-                add += streak_amp
-                    * (-(dy / streak_h).powi(2)).exp()
-                    * (-(dx / (0.7 * w as f64)).powi(2)).exp();
-            }
-            for c in 0..planes {
-                let idx = c * n + y * w + x;
-                let v = buf.data[idx] as f64 + add * 255.0 * gain;
-                buf.data[idx] = v.round().clamp(0.0, 255.0) as u8;
-            }
         }
     }
     Ok(())
@@ -626,7 +441,6 @@ pub fn lighting_effects(buf: &mut PixelBuffer, opt: &Lighting) -> Result<(), Fil
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::luma::luma;
 
     fn plane(w: u32, h: u32, fill: [u8; 3]) -> PixelBuffer {
         let n = w as usize * h as usize;
@@ -673,24 +487,6 @@ mod tests {
         let mean = vals.iter().map(|&v| v as f64).sum::<f64>() / n as f64;
         let var = vals.iter().map(|&v| (v as f64 - mean).powi(2)).sum::<f64>() / n as f64;
         var.sqrt()
-    }
-
-    fn argmax_pixel(buf: &PixelBuffer) -> (usize, usize) {
-        let n = buf.pixel_count();
-        let w = buf.width as usize;
-        let (mut best, mut best_l) = (0usize, f64::MIN);
-        for p in 0..n {
-            let l = luma(
-                buf.data[p] as f64,
-                buf.data[n + p] as f64,
-                buf.data[2 * n + p] as f64,
-            );
-            if l > best_l {
-                best_l = l;
-                best = p;
-            }
-        }
-        (best % w, best / w)
     }
 
     fn assert_channels_within(buf: &PixelBuffer, a: [u8; 3], b: [u8; 3]) {
@@ -772,106 +568,6 @@ mod tests {
         let first = buf.data.clone();
         difference_clouds(&mut buf, [0, 0, 0], [255, 255, 255], false, 3).unwrap();
         assert_ne!(buf.data, first);
-    }
-
-    #[test]
-    fn lens_flare_is_deterministic_and_lens_types_differ() {
-        let base = plane(32, 32, [0, 0, 0]);
-        let mut a = base.clone();
-        let mut b = base.clone();
-        lens_flare(&mut a, 100.0, (0.5, 0.5), LensType::Zoom).unwrap();
-        lens_flare(&mut b, 100.0, (0.5, 0.5), LensType::Zoom).unwrap();
-        assert_eq!(a.data, b.data);
-
-        let mut out_of_range = base.clone();
-        lens_flare(&mut out_of_range, 100.0, (-3.0, 5.0), LensType::Zoom).unwrap();
-        let n = out_of_range.pixel_count();
-        assert!(out_of_range.data[3 * n..].iter().all(|&v| v == 200));
-
-        let mut outputs = Vec::new();
-        for lens in [
-            LensType::Zoom,
-            LensType::Prime35,
-            LensType::Prime105,
-            LensType::MoviePrime,
-        ] {
-            let mut buf = base.clone();
-            lens_flare(&mut buf, 100.0, (0.5, 0.5), lens).unwrap();
-            outputs.push(buf.data);
-        }
-        for i in 0..outputs.len() {
-            for j in i + 1..outputs.len() {
-                assert_ne!(outputs[i], outputs[j], "lens types {i} and {j} collided");
-            }
-        }
-    }
-
-    #[test]
-    fn lens_flare_brightness_is_monotonic_at_core() {
-        let base = plane(32, 32, [0, 0, 0]);
-        let core = |brightness: f64| -> f64 {
-            let mut buf = base.clone();
-            lens_flare(&mut buf, brightness, (0.5, 0.5), LensType::Prime35).unwrap();
-            let n = buf.pixel_count();
-            let p = (buf.height as usize / 2) * buf.width as usize + buf.width as usize / 2;
-            luma(
-                buf.data[p] as f64,
-                buf.data[n + p] as f64,
-                buf.data[2 * n + p] as f64,
-            )
-        };
-        assert!(core(10.0) <= core(100.0));
-        assert!(core(100.0) <= core(300.0));
-    }
-
-    #[test]
-    fn lens_flare_argmax_moves_toward_mapped_center() {
-        let base = plane(64, 64, [0, 0, 0]);
-        let mut left = base.clone();
-        let mut right = base.clone();
-        lens_flare(&mut left, 10.0, (0.2, 0.5), LensType::Zoom).unwrap();
-        lens_flare(&mut right, 10.0, (0.8, 0.5), LensType::Zoom).unwrap();
-        let (lx, ly) = argmax_pixel(&left);
-        let (rx, ry) = argmax_pixel(&right);
-        let mapped = |c: f64| c.clamp(0.0, 1.0) * 63.0;
-        let dist = |x: usize, y: usize, cx: f64, cy: f64| {
-            ((x as f64 - cx).powi(2) + (y as f64 - cy).powi(2)).sqrt()
-        };
-        assert!(
-            dist(lx, ly, mapped(0.2), mapped(0.5)) < dist(lx, ly, mapped(0.8), mapped(0.5)),
-            "left flare argmax ({lx}, {ly}) should sit near the mapped left center"
-        );
-        assert!(
-            dist(rx, ry, mapped(0.8), mapped(0.5)) < dist(rx, ry, mapped(0.2), mapped(0.5)),
-            "right flare argmax ({rx}, {ry}) should sit near the mapped right center"
-        );
-    }
-
-    #[test]
-    fn lens_flare_clamps_white_and_preserves_alpha() {
-        let mut buf = plane(32, 32, [255, 255, 255]);
-        lens_flare(&mut buf, 300.0, (0.5, 0.5), LensType::MoviePrime).unwrap();
-        let n = buf.pixel_count();
-        for p in 0..n {
-            for c in 0..3 {
-                assert_eq!(buf.data[c * n + p], 255, "saturated pixel must stay 255");
-            }
-            assert_eq!(buf.data[3 * n + p], 200);
-        }
-    }
-
-    #[test]
-    fn lens_flare_brightness_is_validated_and_buffer_untouched() {
-        let base = plane(8, 8, [40, 50, 60]);
-        for brightness in [9.0, 301.0, f64::NAN] {
-            let mut buf = base.clone();
-            let err = lens_flare(&mut buf, brightness, (0.5, 0.5), LensType::Zoom).unwrap_err();
-            assert!(
-                matches!(err, FilterError::InvalidParams(_)),
-                "brightness {brightness} should be rejected"
-            );
-            assert_eq!(buf.data, base.data);
-        }
     }
 
     #[test]

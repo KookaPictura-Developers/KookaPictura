@@ -187,11 +187,13 @@ fn filter_preview(mut view: Pin<&mut PictureView>, kind: &QString, params: &QLis
 /// Filters that resolve pixel position or a global statistic against the whole
 /// layer, so a cropped section preview would not match the commit: Diffuse
 /// hashes the pixel's absolute coordinates, Lighting resolves its light span
-/// against the crop, and HDR Toning computes a global pivot.
-/// ponytail: `lens-flare` places its centre as a fraction of the buffer, a
-/// pre-existing case of the same class, left out to keep this fix scoped.
+/// against the crop, HDR Toning computes a global pivot, and Lens Flare places
+/// and sizes itself as a fraction of the buffer.
 pub(crate) fn filter_preview_needs_whole_layer(kind: &str) -> bool {
-    matches!(kind, "diffuse" | "lighting-effects" | "hdr-toning")
+    matches!(
+        kind,
+        "diffuse" | "lighting-effects" | "hdr-toning" | "lens-flare"
+    )
 }
 
 fn filter_preview_section(

@@ -96,6 +96,8 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/filter_param_controls.h
     crates/pictura-app/cpp/filter_preview_dialog.cpp
     crates/pictura-app/cpp/filter_preview_dialog.h
+    crates/pictura-app/cpp/lens_flare_dialog.cpp
+    crates/pictura-app/cpp/lens_flare_dialog.h
     crates/pictura-app/cpp/color_settings_dialog.cpp
     crates/pictura-app/cpp/color_picker_dialog.cpp
     crates/pictura-app/cpp/color_range_dialog.cpp
