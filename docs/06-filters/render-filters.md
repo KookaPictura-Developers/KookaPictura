@@ -89,7 +89,7 @@ Ranges marked **[AS]** come from the Photoshop CS6 AppleScript Scripting Referen
 | Clouds | Fractal/value noise | Random field over the selection, colored by interpolating foreground↔background; `Alt` produces a starker (higher-contrast or different-octave) pattern. Adobe's noise is closed. Replaces the layer's pixels (no blend with source). *(inferred family)* |
 | Difference Clouds | Fractal noise + Difference blend | Same noise generator as Clouds, then blend with the existing pixels using the Difference formula (per `05-layers/blend-modes.md`). Replaces the layer's pixels. *[Help]* |
 | Fibers | Directional/anisotropic noise | Value noise stretched down the picture in two layers: soft clumps tens of pixels wide and hard-edged hairs one or two pixels wide, contrast-stretched to blend background→foreground. Variance shortens the streaks and shifts the mix toward hairs; Strength lengthens them; seeded by Randomize. Replaces the layer's pixels. Kooka uses photorust's model, tuned by eye against CS6 at 500 %. *(inferred family)* |
-| Lens Flare | Optical flare model | A bright source plus a chain of ghost reflections and a starburst; lens type selects the ghost geometry/aberrations. Adobe's model is closed. *(inferred family)* |
+| Lens Flare | Optical flare model | Additive light: an inverse-square core in a soft glow, a halo ring, rays (6 / 8 / 4 for Zoom / 35mm / 105mm) or Movie Prime's horizontal blue streak, and tinted hexagonal ghosts and rings strung from the flare through the middle of the frame and out the far side. Every size is a fraction of the half-diagonal and the centre a fraction of the frame, so a proxy preview matches the full-size result. Kooka uses photorust's model, tuned by eye against CS6. Adobe's model is closed. *(inferred family)* |
 | Lighting Effects | 3D lighting over a bump map | Each light is Point/Infinite/Spot; the surface normal comes from a grayscale bump map (Height); Gloss/Metallic/Exposure/Ambience/Colorize combine diffuse/specular responses. GPU workspace. *(inferred family; CS6 gallery behavior sourced)* |
 | Scripted Patterns | Pattern-tiling scripts (Deco engine) | Scripts place the chosen pattern repeatedly across the layer/selection using geometric rules (brick stagger, cross weave, random placement, spiral, symmetry). Adobe Research documents that these are the Deco scripts. *(inferred internals)* |
 | Flame / Tree / Picture Frame | Procedural per-path / L-system-ish / frame synthesis | **Post-CS6 only**; out of parity scope. |
@@ -101,7 +101,7 @@ Ranges marked **[AS]** come from the Photoshop CS6 AppleScript Scripting Referen
 - `pictura_filter::render` — per-filter submodules implementing `Filter` (or a `Fill` trait for Scripted Patterns).
 - `pictura_filter::noise::FractalNoise` — seeded value/fractal noise; shared by Clouds and Difference Clouds; `Rng` seed stored in params.
 - `pictura_filter::render::fibers` — vertical clump + hair streaks (photorust's model) with `variance` 0–64 (0 = even blend), `strength` 1–64, `seed`.
-- `pictura_filter::render::lens_flare` — `LensType` enum + `FlareCenter`; returns an additive contribution.
+- `pictura_filter::render::lens_flare` — photorust's flare model; `LensType` enum, unit-coordinate centre, brightness 10–300 %; adds light onto the RGB planes, alpha untouched.
 - `pictura_filter::render::lighting_effects` — `Light { kind: Point|Infinite|Spot, color, intensity, ... }`, `LightingScene { lights: Vec<Light>, gloss, metallic, exposure, ambience, colorize, bump: Option<ChannelRef> }`; GPU path via `pictura_gpu` (`01-architecture/gpu-rendering-pipeline.md`).
 - `pictura_paint::fill::scripted` — `ScriptedPattern::{BrickFill, CrossWeave, RandomFill, Spiral, SymmetryFill}`; consumes a `PatternRef`.
 - `pictura_filter::registry` — filter id + CS6 four-char event ids (`'Clou'` unconfirmed), `'DrfC'`, `'Fbrs'`, `'LnsF'`, `'LghE'` → implementation + `supported(mode, depth)`.
@@ -114,7 +114,7 @@ Crossing types: `Tile`, `Rgb`, `ChannelRef` (bump map), `PatternRef`, `Seed`, `B
 |---|---|---|
 | `RenderOptionsDialog` | `QDialog` | Fibers / Lens Flare forms in a `QStackedWidget` |
 | `FibersOptionsPanel` | `QWidget` | Variance/Strength sliders + Randomize button |
-| `LensFlarePanel` | `QWidget` | Preview with click/drag crosshair, Brightness slider, Lens Type combo |
+| `LensFlareDialog` | `QDialog` | Whole-picture proxy preview with the flare and a click/drag crosshair; OK / Cancel / Preview beside it; Brightness field + slider and a Lens Type radio group below |
 | `LightingEffectsWorkspace` | `QWidget` | CS6 gallery: canvas with light gizmos, Presets menu, Lights panel, Properties panel, Texture channel + Height, Save/Delete preset |
 | `LightGizmo` | `QGraphicsObject` | Draggable Point/Spot/Infinite light handles and Intensity ring |
 | `ScriptedPatternsCombo` | `QComboBox` | Sits in the Fill dialog; five scripts; disabled until a pattern is chosen |
@@ -141,7 +141,7 @@ Widgets over QML for the CS6 lighting workspace's gizmo interaction is a judgeme
 - **Lighting Effects gating.** RGB only and requires a supported video card; must grey out with a tooltip when the GPU is unavailable (matching CS6's "supported video card" note).
 - **Lighting Effects bump map depth.** Height 0–100; a missing/empty channel is a flat surface.
 - **Max lights.** 16-light ceiling; the UI must stop adding lights and keep only one editable at a time.
-- **Lens Flare center out of bounds.** Clamp to the canvas or allow off-canvas center per CS6 behavior (verify).
+- **Lens Flare center out of bounds.** Kooka clamps the centre to the canvas; whether CS6 allows an off-canvas centre is unverified.
 - **Scripted Patterns without a pattern.** The script menu is disabled until a pattern preset exists (Help notes Pattern is dimmed until a library is loaded).
 - **Scripted Patterns on huge/PSB documents.** Pattern tiling is area-proportional; stream and cap script iteration counts.
 - **Difference Clouds iteration.** Cumulative marble patterning means repeated application differs; tests must render fresh each time.
@@ -186,7 +186,7 @@ Not used in this pass:
 - **Difference Clouds blend.** Whether the Difference blend is applied in the working space and how it interacts with fg/bg interpolation is inferred. Resolve by fitting.
 - **Lighting Effects Smart Filter support.** The Help exclusion list does not name Lighting Effects; whether CS6 lets it stack as a Smart Filter is unconfirmed. Resolve with a CS6 build test.
 - **Lighting Effects lighting model.** Diffuse/specular weighting, the bump-map normal reconstruction, and the Gloss/Metallic mapping are closed. Resolve by fitting.
-- **Lens Flare model.** Ghost positions/sizes and starburst geometry per lens type are closed. Resolve by fitting.
+- **Lens Flare model.** Ghost positions/sizes and starburst geometry per lens type are closed; Kooka's are photorust's by-eye tuning. Resolve by fitting.
 - **Scripted Patterns internals and parameters.** The Deco script semantics (and whether CS6 exposed any script parameters) are not in the Help; the Adobe Research "Programming Scripted Patterns" guide is the likely source. The task's suggestion that Picture Frame came "from Adobe Exchange" for CS6 could not be verified — no fetched source supports it, and the only sourced statement places Picture Frame in CC 2014.2. Resolve with a CS6.0 install or an Adobe Exchange archive.
 - **`Clouds` four-char event id.** Not captured from the fetched event-code table; confirm the exact code if the Rust registry keys on it.
 - **Scripted Patterns file/undo shape.** Whether the fill is recorded as a script invocation or as a raster fill for undo is unconfirmed.

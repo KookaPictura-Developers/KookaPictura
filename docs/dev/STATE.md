@@ -191,6 +191,16 @@ Snapshot for resuming after a context break. Update after each milestone.
   hard-edged hairs down the picture instead of a horizontal fBm field;
   Variance `0..=64` (0 = even blend), Strength `1..=64`. Clouds and Difference
   Clouds keep Kooka's seeded, two-colour, Starker model by decision.
+- **Lens Flare** (change `port-photorust-lens-flare`, issue #225, ported from
+  photorust): `render::lens_flare` (now `render/lens_flare.rs`) is photorust's
+  size-invariant model: an inverse-square core and glow, a halo, rays or the
+  Movie Prime streak, and tinted hexagonal ghosts along the axis through the
+  frame centre. Filter ▸ Render ▸ Lens Flare… opens a dedicated
+  `LensFlareDialog` (`lens_flare_dialog.{h,cpp}`, tested by
+  `tst_lens_flare_dialog`): a 250 px proxy with the flare under a draggable
+  crosshair, Brightness field + slider, and a Lens Type radio group. Lens Flare
+  previews against the whole layer (#168). Lighting Effects, the other half of
+  #225, is still on the generic slot dialog.
 - **Filter menu wiring and dialogs** (change `filter-menu-ui`, issue #82, ported
   from photorust): the CS6 `Filter` menu is live. `cxxqt_object/filter_map.rs`
   exposes `pub(super) filter_from_kind_params(kind, &[f64])` (empty slice = the
