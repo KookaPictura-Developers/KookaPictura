@@ -99,8 +99,6 @@ pub const HALFTONE_SIZE: std::ops::RangeInclusive<u32> = 1..=12;
 
 pub const HALFTONE_CONTRAST: std::ops::RangeInclusive<u32> = 0..=50;
 
-impl HalftonePattern {}
-
 /// The finest cell the Line and Circle screens can be ruled into, in pixels.
 ///
 /// CS6's Size runs down to 1, but a band or a ring one or two pixels across
@@ -487,7 +485,7 @@ pub fn note_paper(
 }
 
 /// CS6's ranges for Photocopy, which its two sliders run over.
-pub const COPY_DETAIL: std::ops::RangeInclusive<u32> = 1..=24;
+pub const COPY_DETAIL: std::ops::RangeInclusive<u32> = 0..=24;
 
 pub const COPY_DARKNESS: std::ops::RangeInclusive<u32> = 1..=50;
 
@@ -596,7 +594,7 @@ pub fn photocopy(
 /// CS6's ranges for Plaster, which its two sliders run over.
 pub const PLASTER_BALANCE: std::ops::RangeInclusive<u32> = 0..=50;
 
-pub const PLASTER_SMOOTHNESS: std::ops::RangeInclusive<u32> = 1..=15;
+pub const PLASTER_SMOOTHNESS: std::ops::RangeInclusive<u32> = 0..=15;
 
 /// How far the picture is softened before it is poured, in pixels: a floor,
 /// and how much each step of Smoothness adds. This rounds the outline off —

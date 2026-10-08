@@ -625,10 +625,9 @@ pub(super) fn filter_from_kind_params(kind: &str, params: &[f64]) -> Option<Filt
                 pencil_width: u8v(params, 0, 4),
                 stroke_pressure: u8v(params, 1, 8),
                 paper_brightness: u8v(params, 2, 25),
-                // ponytail: CS6 draws with the document foreground and
-                // background; the dialog shows no swatches, so the defaults
-                // stand in until the bridge passes the document colours.
-                foreground: [0, 0, 0],
+                // ponytail: CS6's paper is the document background colour;
+                // the dialog shows no swatch, so white stands in until the
+                // bridge passes the document colours.
                 background: [255, 255, 255],
                 seed: u64v(params, 3, 1),
             }
@@ -718,9 +717,6 @@ pub(super) fn filter_from_kind_params(kind: &str, params: &[f64]) -> Option<Filt
                     relief: u8v(params, 4, 20),
                     ..texture(params, 2)
                 },
-                // ponytail: document colours, as for Colored Pencil.
-                foreground: [0, 0, 0],
-                background: [255, 255, 255],
                 seed: 1,
             }
         }
@@ -760,9 +756,6 @@ pub(super) fn filter_from_kind_params(kind: &str, params: &[f64]) -> Option<Filt
                 brush_detail: u8v(params, 0, 9),
                 shadow_intensity: u8v(params, 1, 1),
                 texture: u8v(params, 2, 1),
-                // ponytail: document colours, as for Colored Pencil.
-                foreground: [0, 0, 0],
-                background: [255, 255, 255],
                 seed: u64v(params, 3, 1),
             }
         }

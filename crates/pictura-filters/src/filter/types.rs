@@ -218,7 +218,6 @@ pub enum Filter {
         pencil_width: u8,
         stroke_pressure: u8,
         paper_brightness: u8,
-        foreground: [u8; 3],
         background: [u8; 3],
         seed: u64,
     },
@@ -238,8 +237,6 @@ pub enum Filter {
         stroke_length: u8,
         stroke_detail: u8,
         texture: TextureOptions,
-        foreground: [u8; 3],
-        background: [u8; 3],
         seed: u64,
     },
     SmudgeStick {
@@ -258,8 +255,6 @@ pub enum Filter {
         brush_detail: u8,
         shadow_intensity: u8,
         texture: u8,
-        foreground: [u8; 3],
-        background: [u8; 3],
         seed: u64,
     },
     AccentedEdges {

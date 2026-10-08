@@ -212,8 +212,6 @@ pub fn ripple(pixmap: &mut Pixmap, amount: f32, size: RippleSize) {
     });
 }
 
-impl SpherizeMode {}
-
 /// The radius a spherize reads from, for a destination at radius `r`.
 ///
 /// Wrapping the picture onto a ball means reading it from `asin`, which is
@@ -420,8 +418,6 @@ pub fn wave(
         (x + dx / n * scale_x, y + dy / n * scale_y)
     });
 }
-
-impl ZigZagStyle {}
 
 /// How far a zigzag pushes at normalized radius `r`, as a fraction of the
 /// radius. Shared with the wireframe.

@@ -27,8 +27,6 @@ pub const SCALING: std::ops::RangeInclusive<u32> = 50..=200;
 
 pub const RELIEF: std::ops::RangeInclusive<u32> = 0..=50;
 
-impl Texture {}
-
 impl Light {
     /// Which way the light points from, as a unit step in image coordinates
     /// (y down).
@@ -828,8 +826,6 @@ pub fn craquelure(pixmap: &mut Pixmap, spacing: u32, depth: u32, brightness: u32
 pub const GRAIN_INTENSITY: std::ops::RangeInclusive<u32> = 0..=100;
 
 pub const GRAIN_CONTRAST: std::ops::RangeInclusive<u32> = 0..=100;
-
-impl GrainType {}
 
 /// How strong the grain is, as a spread in levels per step of Intensity.
 /// Read off CS6 on `samples/horse-3.jpg`: at 40 Regular is a plain but

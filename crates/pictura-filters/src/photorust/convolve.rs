@@ -168,20 +168,20 @@ pub fn disc_blur(pixmap: &mut Pixmap, radius: u32) {
     pixmap.premultiply();
 
     // (height + 1) × (width + 1) so that a span sum needs no bounds test, and
-    // `u32` because the largest total a channel can reach is 255 × the pixel
-    // count, which stays inside it for any image this program can open.
+    // `u64` because a channel's total reaches 255 × the pixel count, which
+    // overflows `u32` past about 16.8 million pixels.
     let stride_sat = (width + 1) * 4;
-    let mut sat = vec![0u32; (height + 1) * stride_sat];
+    let mut sat = vec![0u64; (height + 1) * stride_sat];
     {
         let src = pixmap.as_bytes();
         for y in 0..height {
             let above = y * stride_sat;
             let here = (y + 1) * stride_sat;
-            let mut running = [0u32; 4];
+            let mut running = [0u64; 4];
             for x in 0..width {
                 let i = (y * width + x) * 4;
                 for c in 0..4 {
-                    running[c] += src[i + c] as u32;
+                    running[c] += src[i + c] as u64;
                     sat[here + (x + 1) * 4 + c] = sat[above + (x + 1) * 4 + c] + running[c];
                 }
             }

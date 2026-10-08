@@ -167,8 +167,8 @@ pub(crate) const STAMP_CUT_SOFT: f32 = 0.015;
 /// No GPU path. The blur is the only real work and would fit, but the cut
 /// is read off it at a width of a few levels, so it has to stay in floating
 /// point: the GPU blur works in eight bits, and its rounding would come back
-/// as stair-steps along every edge. The blur is local, so a preview crop is
-/// filtered with enough margin round it — see `Filter::reach`.
+/// as stair-steps along every edge. The blur is local, so a preview crop
+/// needs only a margin round it.
 pub fn stamp(
     pixmap: &mut Pixmap,
     balance: u32,

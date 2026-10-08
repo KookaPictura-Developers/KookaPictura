@@ -113,7 +113,6 @@ fn each_filter_changes_the_colour_planes() {
             pencil_width: 6,
             stroke_pressure: 8,
             paper_brightness: 20,
-            foreground: [10, 10, 10],
             background: [240, 240, 240],
             seed: 3,
         },
@@ -197,19 +196,18 @@ fn every_artistic_filter_preserves_alpha_via_apply() {
             pencil_width: 24,
             stroke_pressure: 15,
             paper_brightness: 50,
-            foreground: [0, 0, 0],
             background: [255, 255, 255],
             seed: 9,
         },
         Filter::DryBrush {
-            brush_size: 50,
-            brush_detail: 12,
+            brush_size: 10,
+            brush_detail: 10,
             texture: 3,
             seed: 9,
         },
         Filter::Fresco {
-            brush_size: 50,
-            brush_detail: 12,
+            brush_size: 10,
+            brush_detail: 10,
             texture: 3,
             seed: 9,
         },
@@ -330,31 +328,20 @@ fn new_artistic_boundaries_accept_and_out_of_range_rejects() {
         assert_eq!(out, base, "rejected sponge modified the buffer");
     }
 
-    assert!(colored_pencil(&mut base.clone(), 1, 0, 0, [0, 0, 0], [255, 255, 255], 1).is_ok());
-    assert!(colored_pencil(&mut base.clone(), 24, 15, 50, [0, 0, 0], [255, 255, 255], 1).is_ok());
+    assert!(colored_pencil(&mut base.clone(), 1, 0, 0, [255, 255, 255], 1).is_ok());
+    assert!(colored_pencil(&mut base.clone(), 24, 15, 50, [255, 255, 255], 1).is_ok());
     for (pw, sp, pb) in [(0u8, 0u8, 0u8), (25, 0, 0), (1, 16, 0), (1, 0, 51)] {
         let mut out = base.clone();
         assert!(matches!(
-            colored_pencil(&mut out, pw, sp, pb, [0, 0, 0], [255, 255, 255], 1),
+            colored_pencil(&mut out, pw, sp, pb, [255, 255, 255], 1),
             Err(FilterError::InvalidParams(_))
         ));
         assert_eq!(out, base, "rejected colored pencil modified the buffer");
     }
-    assert!(
-        colored_pencil(&mut base.clone(), 8, 8, 20, [7, 7, 7], [7, 7, 7], 1).is_ok(),
-        "equal fg/bg must not panic"
-    );
 
-    assert!(dry_brush(&mut base.clone(), 1, 1, 1, 1).is_ok());
-    assert!(dry_brush(&mut base.clone(), 50, 12, 3, 1).is_ok());
-    for (b, d, t) in [
-        (0u8, 1u8, 1u8),
-        (51, 1, 1),
-        (1, 0, 1),
-        (1, 13, 1),
-        (1, 1, 0),
-        (1, 1, 4),
-    ] {
+    assert!(dry_brush(&mut base.clone(), 0, 0, 1, 1).is_ok());
+    assert!(dry_brush(&mut base.clone(), 10, 10, 3, 1).is_ok());
+    for (b, d, t) in [(11u8, 1u8, 1u8), (1, 11, 1), (1, 1, 0), (1, 1, 4)] {
         let mut out = base.clone();
         assert!(matches!(
             dry_brush(&mut out, b, d, t, 1),
@@ -363,16 +350,9 @@ fn new_artistic_boundaries_accept_and_out_of_range_rejects() {
         assert_eq!(out, base, "rejected dry brush modified the buffer");
     }
 
-    assert!(fresco(&mut base.clone(), 1, 1, 1, 1).is_ok());
-    assert!(fresco(&mut base.clone(), 50, 12, 3, 1).is_ok());
-    for (b, d, t) in [
-        (0u8, 1u8, 1u8),
-        (51, 1, 1),
-        (1, 0, 1),
-        (1, 13, 1),
-        (1, 1, 0),
-        (1, 1, 4),
-    ] {
+    assert!(fresco(&mut base.clone(), 0, 0, 1, 1).is_ok());
+    assert!(fresco(&mut base.clone(), 10, 10, 3, 1).is_ok());
+    for (b, d, t) in [(11u8, 1u8, 1u8), (1, 11, 1), (1, 1, 0), (1, 1, 4)] {
         let mut out = base.clone();
         assert!(matches!(
             fresco(&mut out, b, d, t, 1),
@@ -396,17 +376,17 @@ fn flat(w: u32, h: u32, value: u8) -> PixelBuffer {
 fn colored_pencil_background_shows_and_edges_survive() {
     let base = flat(16, 8, 120);
     let (mut light, mut dark) = (base.clone(), base.clone());
-    colored_pencil(&mut light, 6, 6, 10, [0, 0, 0], [255, 255, 255], 5).unwrap();
-    colored_pencil(&mut dark, 6, 6, 10, [0, 0, 0], [0, 0, 0], 5).unwrap();
+    colored_pencil(&mut light, 6, 6, 10, [255, 255, 255], 5).unwrap();
+    colored_pencil(&mut dark, 6, 6, 10, [0, 0, 0], 5).unwrap();
     assert_ne!(
         light.data, dark.data,
         "two background colours must give different flat regions"
     );
 
     let (mut a, mut b, mut c) = (base.clone(), base.clone(), base.clone());
-    colored_pencil(&mut a, 6, 6, 10, [0, 0, 0], [255, 255, 255], 5).unwrap();
-    colored_pencil(&mut b, 6, 6, 10, [0, 0, 0], [255, 255, 255], 5).unwrap();
-    colored_pencil(&mut c, 6, 6, 10, [0, 0, 0], [255, 255, 255], 6).unwrap();
+    colored_pencil(&mut a, 6, 6, 10, [255, 255, 255], 5).unwrap();
+    colored_pencil(&mut b, 6, 6, 10, [255, 255, 255], 5).unwrap();
+    colored_pencil(&mut c, 6, 6, 10, [255, 255, 255], 6).unwrap();
     assert_eq!(a.data, b.data, "same seed must be bit-identical");
     assert_ne!(a.data, c.data, "different seed must differ");
 
@@ -428,7 +408,7 @@ fn colored_pencil_background_shows_and_edges_survive() {
         data: data.into(),
     };
     let mut edged = step.clone();
-    colored_pencil(&mut edged, 4, 4, 0, [0, 0, 0], [255, 255, 255], 1).unwrap();
+    colored_pencil(&mut edged, 4, 4, 0, [255, 255, 255], 1).unwrap();
     let half = (w / 2) as usize;
     let mut left = 0u64;
     let mut right = 0u64;
@@ -458,8 +438,8 @@ fn dry_brush_and_fresco_texture_size_and_seed_change_the_result() {
     assert_ne!(d1.data, d3.data, "dry brush texture 1 vs 3 must differ");
     let (mut ds, mut dl) = (base.clone(), base.clone());
     dry_brush(&mut ds, 1, 6, 2, 4).unwrap();
-    dry_brush(&mut dl, 50, 6, 2, 4).unwrap();
-    assert_ne!(ds.data, dl.data, "dry brush size 1 vs 50 must differ");
+    dry_brush(&mut dl, 10, 6, 2, 4).unwrap();
+    assert_ne!(ds.data, dl.data, "dry brush size 1 vs 10 must differ");
 
     let (mut f1, mut f3) = (base.clone(), base.clone());
     fresco(&mut f1, 10, 6, 1, 4).unwrap();
@@ -467,8 +447,8 @@ fn dry_brush_and_fresco_texture_size_and_seed_change_the_result() {
     assert_ne!(f1.data, f3.data, "fresco texture 1 vs 3 must differ");
     let (mut fs, mut fl) = (base.clone(), base.clone());
     fresco(&mut fs, 1, 6, 2, 4).unwrap();
-    fresco(&mut fl, 50, 6, 2, 4).unwrap();
-    assert_ne!(fs.data, fl.data, "fresco size 1 vs 50 must differ");
+    fresco(&mut fl, 10, 6, 2, 4).unwrap();
+    assert_ne!(fs.data, fl.data, "fresco size 1 vs 10 must differ");
 
     let (mut a, mut b, mut c) = (base.clone(), base.clone(), base.clone());
     dry_brush(&mut a, 10, 6, 2, 7).unwrap();
@@ -716,8 +696,6 @@ fn final_four_filters(seed: u64) -> Vec<Filter> {
             stroke_length: 8,
             stroke_detail: 6,
             texture: opts,
-            foreground: [20, 20, 20],
-            background: [235, 235, 235],
             seed,
         },
         Filter::SmudgeStick {
@@ -736,8 +714,6 @@ fn final_four_filters(seed: u64) -> Vec<Filter> {
             brush_detail: 8,
             shadow_intensity: 6,
             texture: 2,
-            foreground: [10, 10, 10],
-            background: [245, 245, 245],
             seed,
         },
     ]
@@ -780,14 +756,13 @@ fn final_four_seed_determinism() {
 fn final_four_validate_ranges_and_texture_options() {
     let base = gradient(8, 4, 3);
     let opts = TextureOptions::default();
-    let (fg, bg) = ([0, 0, 0], [255, 255, 255]);
 
-    assert!(rough_pastels(&mut base.clone(), 0, 1, opts, fg, bg, 1).is_ok());
-    assert!(rough_pastels(&mut base.clone(), 40, 20, opts, fg, bg, 1).is_ok());
+    assert!(rough_pastels(&mut base.clone(), 0, 1, opts, 1).is_ok());
+    assert!(rough_pastels(&mut base.clone(), 40, 20, opts, 1).is_ok());
     for (l, d) in [(41u8, 6u8), (8, 0), (8, 21)] {
         let mut out = base.clone();
         assert!(matches!(
-            rough_pastels(&mut out, l, d, opts, fg, bg, 1),
+            rough_pastels(&mut out, l, d, opts, 1),
             Err(FilterError::InvalidParams(_))
         ));
         assert_eq!(out, base, "rejected rough pastels modified the buffer");
@@ -809,7 +784,7 @@ fn final_four_validate_ranges_and_texture_options() {
     ] {
         let mut out = base.clone();
         assert!(matches!(
-            rough_pastels(&mut out, 8, 6, bad, fg, bg, 1),
+            rough_pastels(&mut out, 8, 6, bad, 1),
             Err(FilterError::InvalidParams(_))
         ));
         assert_eq!(out, base, "rejected rough pastels texture modified buffer");
@@ -852,8 +827,8 @@ fn final_four_validate_ranges_and_texture_options() {
     ));
     assert_eq!(out, base);
 
-    assert!(watercolor(&mut base.clone(), 1, 0, 1, fg, bg, 1).is_ok());
-    assert!(watercolor(&mut base.clone(), 14, 10, 3, fg, bg, 1).is_ok());
+    assert!(watercolor(&mut base.clone(), 1, 0, 1, 1).is_ok());
+    assert!(watercolor(&mut base.clone(), 14, 10, 3, 1).is_ok());
     for (bd, si, t) in [
         (0u8, 0u8, 1u8),
         (15, 0, 1),
@@ -863,7 +838,7 @@ fn final_four_validate_ranges_and_texture_options() {
     ] {
         let mut out = base.clone();
         assert!(matches!(
-            watercolor(&mut out, bd, si, t, fg, bg, 1),
+            watercolor(&mut out, bd, si, t, 1),
             Err(FilterError::InvalidParams(_))
         ));
         assert_eq!(out, base, "rejected watercolor modified the buffer");
@@ -886,24 +861,15 @@ fn rough_pastels_and_underpainting_texture_options_change_output() {
 
     let mut r_canvas = base.clone();
     let mut r_brick = base.clone();
-    rough_pastels(
-        &mut r_canvas,
-        10,
-        8,
-        canvas,
-        [10, 10, 10],
-        [240, 240, 240],
-        4,
-    )
-    .unwrap();
-    rough_pastels(&mut r_brick, 10, 8, brick, [10, 10, 10], [240, 240, 240], 4).unwrap();
+    rough_pastels(&mut r_canvas, 10, 8, canvas, 4).unwrap();
+    rough_pastels(&mut r_brick, 10, 8, brick, 4).unwrap();
     assert_ne!(
         r_canvas.data, r_brick.data,
         "rough pastels surface must matter"
     );
 
     let mut r_lit = base.clone();
-    rough_pastels(&mut r_lit, 10, 8, lit, [10, 10, 10], [240, 240, 240], 4).unwrap();
+    rough_pastels(&mut r_lit, 10, 8, lit, 4).unwrap();
     assert_ne!(
         r_canvas.data, r_lit.data,
         "rough pastels light direction must matter"
@@ -933,35 +899,16 @@ fn rough_pastels_and_underpainting_texture_options_change_output() {
 }
 
 #[test]
-fn final_four_equal_colours_and_tiny_buffer_are_safe() {
-    let base = gradient(8, 4, 3);
+fn final_four_tiny_buffer_is_safe() {
     let opts = TextureOptions::default();
-    assert!(
-        rough_pastels(&mut base.clone(), 8, 6, opts, [7, 7, 7], [7, 7, 7], 1).is_ok(),
-        "rough pastels equal fg/bg must not panic"
-    );
-    assert!(
-        watercolor(&mut base.clone(), 8, 5, 2, [7, 7, 7], [7, 7, 7], 1).is_ok(),
-        "watercolor equal fg/bg must not panic"
-    );
-
     let tiny = PixelBuffer {
         width: 1,
         height: 1,
         channels: 4,
         data: vec![10, 20, 30, 40].into(),
     };
-    assert!(rough_pastels(
-        &mut tiny.clone(),
-        40,
-        20,
-        opts,
-        [0, 0, 0],
-        [255, 255, 255],
-        1
-    )
-    .is_ok());
+    assert!(rough_pastels(&mut tiny.clone(), 40, 20, opts, 1).is_ok());
     assert!(smudge_stick(&mut tiny.clone(), 10, 20, 10, 1).is_ok());
     assert!(underpainting(&mut tiny.clone(), 40, 40, opts, 1).is_ok());
-    assert!(watercolor(&mut tiny.clone(), 14, 10, 3, [0, 0, 0], [255, 255, 255], 1).is_ok());
+    assert!(watercolor(&mut tiny.clone(), 14, 10, 3, 1).is_ok());
 }

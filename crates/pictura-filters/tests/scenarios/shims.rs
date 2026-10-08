@@ -303,7 +303,6 @@ pub fn colored_pencil(
     pencil_width: u8,
     stroke_pressure: u8,
     paper_brightness: u8,
-    foreground: [u8; 3],
     background: [u8; 3],
     seed: u64,
 ) -> Result<(), FilterError> {
@@ -312,7 +311,6 @@ pub fn colored_pencil(
             pencil_width,
             stroke_pressure,
             paper_brightness,
-            foreground,
             background,
             seed,
         },
@@ -361,8 +359,6 @@ pub fn rough_pastels(
     stroke_length: u8,
     stroke_detail: u8,
     texture: TextureOptions,
-    foreground: [u8; 3],
-    background: [u8; 3],
     seed: u64,
 ) -> Result<(), FilterError> {
     apply(
@@ -370,8 +366,6 @@ pub fn rough_pastels(
             stroke_length,
             stroke_detail,
             texture,
-            foreground,
-            background,
             seed,
         },
         buf,
@@ -419,8 +413,6 @@ pub fn watercolor(
     brush_detail: u8,
     shadow_intensity: u8,
     texture: u8,
-    foreground: [u8; 3],
-    background: [u8; 3],
     seed: u64,
 ) -> Result<(), FilterError> {
     apply(
@@ -428,8 +420,6 @@ pub fn watercolor(
             brush_detail,
             shadow_intensity,
             texture,
-            foreground,
-            background,
             seed,
         },
         buf,

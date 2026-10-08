@@ -683,7 +683,9 @@ pub fn mosaic(pixmap: &mut Pixmap, cell_size: u32) {
                 let n = count.max(1);
                 for c in 0..4 {
                     // Kooka: rounded to the nearest, the exact block mean the
-                    // Mosaic oracle requires (photorust truncates).
+                    // Mosaic oracle requires (photorust truncates). The oracle
+                    // only proves cells that divide the image; the cut-short
+                    // edge squares are not checked against ImageMagick.
                     tile[c] = ((total[c] + n / 2) / n) as u8;
                 }
             }

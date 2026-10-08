@@ -466,23 +466,62 @@ fn spread_of(pm: &Pixmap) -> f32 {
     (t.iter().map(|v| (v - m).powi(2)).sum::<f32>() / t.len() as f32).sqrt()
 }
 
-/// Intensity is how strong the grain is: none at 0, plenty at 100.
+/// Intensity is how strong the grain is: none at 0, plenty at 100, for the
+/// plain, the boosted, and the binarizing grain types alike.
 #[test]
 fn grain_intensity_strengthens_the_grain() {
-    let run = |intensity| {
+    let run = |intensity, kind| {
         let mut pm = Pixmap::filled(96, 96, Rgba8::new(128, 128, 128, 255));
-        grain(
-            &mut pm,
-            intensity,
-            50,
-            GrainType::Regular,
-            Rgba8::BLACK,
-            Rgba8::WHITE,
-        );
+        grain(&mut pm, intensity, 50, kind, Rgba8::BLACK, Rgba8::WHITE);
         spread_of(&pm)
     };
-    assert!(run(0) < 0.5, "grain at Intensity 0: {}", run(0));
-    assert!(run(100) > 30.0, "hardly any grain at 100: {}", run(100));
+    for kind in [
+        GrainType::Regular,
+        GrainType::Contrasty,
+        GrainType::Stippled,
+    ] {
+        assert!(
+            run(0, kind) < 0.5,
+            "{kind:?} grain at Intensity 0: {}",
+            run(0, kind)
+        );
+        assert!(
+            run(100, kind) > 30.0,
+            "hardly any {kind:?} grain at 100: {}",
+            run(100, kind)
+        );
+    }
+}
+
+/// At Intensity 0 every grain type hands the picture back untouched.
+#[test]
+fn grain_intensity_zero_is_a_noop_for_every_type() {
+    let mut ramp = Pixmap::filled(64, 64, Rgba8::BLACK);
+    for y in 0..64 {
+        for x in 0..64 {
+            let v = (x * 4) as u8;
+            ramp.set(x, y, Rgba8::new(v, 255 - v, (y * 4) as u8, 255));
+        }
+    }
+    for kind in [
+        GrainType::Regular,
+        GrainType::Soft,
+        GrainType::Sprinkles,
+        GrainType::Clumped,
+        GrainType::Contrasty,
+        GrainType::Enlarged,
+        GrainType::Stippled,
+        GrainType::Horizontal,
+        GrainType::Vertical,
+        GrainType::Speckle,
+    ] {
+        let mut pm = ramp.clone();
+        grain(&mut pm, 0, 50, kind, Rgba8::BLACK, Rgba8::WHITE);
+        assert!(
+            pm.as_bytes() == ramp.as_bytes(),
+            "{kind:?} changed the picture at Intensity 0"
+        );
+    }
 }
 
 /// Clumped grain is gathered into clumps: neighbouring pixels move

@@ -627,3 +627,47 @@ fn over_an_empty_pixmap_does_nothing() {
     let mut pm = Pixmap::new(0, 0);
     accented_edges(&mut pm, 2, 38, 5);
 }
+
+/// The spread sums sequentially, so a field normalizes to the same bits on
+/// one rayon thread as on eight.
+#[test]
+fn spread_does_not_depend_on_thread_count() {
+    let run = |threads: usize| {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build()
+            .expect("thread pool");
+        pool.install(|| {
+            let mut field: Vec<f32> = (0..200_000)
+                .map(|i| ((i * 7919) % 1000) as f32 / 997.0 - 0.5)
+                .collect();
+            unit_spread(&mut field);
+            let streaks = crate::photorust::artistic::streaked_noise(300, 200, 12.0, 3, (1.0, 0.0));
+            (
+                field.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+                streaks.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+            )
+        })
+    };
+    assert!(run(1) == run(8), "output depends on the thread count");
+}
+
+/// Edge Brightness 25 is the neutral point between ink and chalk: the edge
+/// is neither inked nor chalked, so it sits between the two.
+#[test]
+fn brightness_25_neither_inks_nor_chalks() {
+    let run = |brightness| {
+        let mut pm = step();
+        accented_edges(&mut pm, 2, brightness, 3);
+        (pm.get(31, 32).r, pm.get(32, 32).r)
+    };
+    let (ink, neutral, chalk) = (run(0), run(25), run(50));
+    assert!(
+        ink.0 < neutral.0 && neutral.0 < chalk.0,
+        "{ink:?} {neutral:?} {chalk:?}"
+    );
+    assert!(
+        ink.1 < neutral.1 && neutral.1 < chalk.1,
+        "{ink:?} {neutral:?} {chalk:?}"
+    );
+}

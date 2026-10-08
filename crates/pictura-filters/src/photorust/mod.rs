@@ -37,11 +37,18 @@ static SEED_LOCK: Mutex<()> = Mutex::new(());
 /// the lock; thread a seed parameter through the primitives if concurrent
 /// filter runs ever matter.
 pub(crate) fn with_seed<R>(seed: u64, f: impl FnOnce() -> R) -> R {
+    // Resets the seed on drop, so a panicking `f` cannot leak it into the
+    // next lock-free `seed()` read.
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            SEED.store(0, Ordering::SeqCst);
+        }
+    }
     let _guard = SEED_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     SEED.store(fold_seed(seed), Ordering::SeqCst);
-    let out = f();
-    SEED.store(0, Ordering::SeqCst);
-    out
+    let _reset = Reset;
+    f()
 }
 
 /// The seed of the running filter (0 outside [`with_seed`]).
@@ -50,10 +57,13 @@ pub(crate) fn seed() -> u32 {
     SEED.load(Ordering::Relaxed)
 }
 
-/// A nonzero 32-bit mix of a user seed, so seed 0 is not photorust's default.
+/// A 32-bit mix of a user seed: 0 for seed 0, so it keeps photorust's own
+/// pattern, and nonzero for every other seed.
 fn fold_seed(seed: u64) -> u32 {
-    let folded = hash2(seed as u32, (seed >> 32) as u32 ^ 0x5EED);
-    folded.max(1)
+    if seed == 0 {
+        return 0;
+    }
+    hash2(seed as u32, (seed >> 32) as u32 ^ 0x5EED).max(1)
 }
 
 /// Deterministic noise added to every visible pixel, `amount` a percentage
@@ -112,4 +122,24 @@ fn hash2(x: u32, y: u32) -> u32 {
     h = h.wrapping_mul(0x2545_F491);
     h ^= h >> 13;
     h
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seed_zero_keeps_photorusts_pattern() {
+        assert_eq!(fold_seed(0), 0);
+        assert_eq!(with_seed(0, seed), 0);
+        assert_ne!(with_seed(7, seed), 0);
+    }
+
+    #[test]
+    fn a_panicking_run_resets_the_seed() {
+        let caught = std::panic::catch_unwind(|| with_seed(7, || panic!("filter failed")));
+        assert!(caught.is_err());
+        let _guard = SEED_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        assert_eq!(seed(), 0);
+    }
 }

@@ -2,9 +2,7 @@
 //!
 //! CS6 keeps this family in the Filter Gallery, as it does Artistic. The
 //! Gallery is not built (docs/ROADMAP.md), so the filters live under a
-//! Filter ▸ Brush Strokes submenu instead. Accented Edges, Angled Strokes,
-//! Crosshatch, Dark Strokes, Ink Outlines and Spatter are built; the other two
-//! are listed in the menu and disabled.
+//! Filter ▸ Brush Strokes submenu instead, with all eight filters built.
 
 use crate::photorust::artistic::{blur_field, noise};
 use crate::photorust::pixmap::Pixmap;
@@ -361,7 +359,8 @@ pub(crate) fn bristle_lines_width(
 }
 
 pub(crate) fn unit_spread(field: &mut [f32]) {
-    let spread = (field.par_iter().map(|v| v * v).sum::<f32>() / field.len().max(1) as f32).sqrt();
+    // Sequential, so the sum does not depend on rayon's thread count.
+    let spread = (field.iter().map(|v| v * v).sum::<f32>() / field.len().max(1) as f32).sqrt();
     if spread > 0.0 {
         field.par_iter_mut().for_each(|v| *v /= spread);
     }
@@ -720,7 +719,7 @@ pub fn dark_strokes(pixmap: &mut Pixmap, balance: u32, black: u32, white: u32) {
 }
 
 /// CS6's ranges for Ink Outlines, which its three sliders run over.
-pub const INK_LENGTH: std::ops::RangeInclusive<u32> = 0..=50;
+pub const INK_LENGTH: std::ops::RangeInclusive<u32> = 1..=50;
 
 pub const INK_DARK: std::ops::RangeInclusive<u32> = 0..=50;
 

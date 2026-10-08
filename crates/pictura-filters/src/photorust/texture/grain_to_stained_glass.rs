@@ -27,7 +27,9 @@ pub fn grain(
     foreground: crate::photorust::pixmap::Rgba8,
     background: crate::photorust::pixmap::Rgba8,
 ) {
-    if pixmap.is_empty() {
+    // Every grain type, the boosted and binarizing ones too, is a no-op with
+    // no intensity.
+    if pixmap.is_empty() || intensity == 0 {
         return;
     }
     let intensity = intensity.clamp(*GRAIN_INTENSITY.start(), *GRAIN_INTENSITY.end()) as f32;

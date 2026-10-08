@@ -401,7 +401,6 @@ fn filter_from_kind_maps_known_and_rejects_unknown() {
             pencil_width: 4,
             stroke_pressure: 8,
             paper_brightness: 25,
-            foreground: [0, 0, 0],
             background: [255, 255, 255],
             seed: 1,
         })
@@ -491,8 +490,6 @@ fn filter_from_kind_maps_known_and_rejects_unknown() {
                 relief: 20,
                 ..TextureOptions::default()
             },
-            foreground: [0, 0, 0],
-            background: [255, 255, 255],
             seed: 1,
         })
     );
@@ -532,8 +529,6 @@ fn filter_from_kind_maps_known_and_rejects_unknown() {
             brush_detail: 9,
             shadow_intensity: 1,
             texture: 1,
-            foreground: [0, 0, 0],
-            background: [255, 255, 255],
             seed: 1,
         })
     );

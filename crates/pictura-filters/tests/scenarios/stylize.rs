@@ -75,6 +75,9 @@ fn emboss_rejects_invalid_parameters() {
         (0.0, 1.0, 0.0),
         (0.0, 1.0, -5.0),
         (0.0, 1.0, f64::NAN),
+        (0.0, 101.0, 100.0),
+        (0.0, 1e300, 100.0),
+        (0.0, 1.0, 501.0),
     ] {
         let mut out = base.clone();
         assert!(
@@ -85,6 +88,7 @@ fn emboss_rejects_invalid_parameters() {
     }
     let mut ok = base.clone();
     assert!(emboss(&mut ok, 360.0, 1.0, 100.0).is_ok());
+    assert!(emboss(&mut ok, 0.0, 100.0, 500.0).is_ok());
 }
 
 #[test]

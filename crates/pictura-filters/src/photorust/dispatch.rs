@@ -111,16 +111,8 @@ fn plan(filter: &Filter) -> Option<Result<(u64, Run), FilterError>> {
             height,
             amount,
         } => check_f("emboss angle", angle, -360.0..=360.0)
-            .and(check_f(
-                "emboss height",
-                height,
-                f64::MIN_POSITIVE..=f64::MAX,
-            ))
-            .and(check_f(
-                "emboss amount",
-                amount,
-                f64::MIN_POSITIVE..=f64::MAX,
-            ))
+            .and(check_f("emboss height", height, 1.0..=100.0))
+            .and(check_f("emboss amount", amount, 1.0..=500.0))
             .map(|()| {
                 unseeded(move |p| stylize::emboss(p, angle as f32, height as f32, amount as f32))
             }),
@@ -199,11 +191,11 @@ fn plan(filter: &Filter) -> Option<Result<(u64, Run), FilterError>> {
         Filter::Mezzotint { kind, seed } => Ok(seeded(seed, move |p| pixelate::mezzotint(p, kind))),
         Filter::ColorHalftone { max_radius, angles } => {
             check("color halftone radius", max_radius, 4..=127)
-                .and(if angles.iter().all(|a| a.is_finite()) {
-                    Ok(())
-                } else {
-                    Err(bad("color halftone angle"))
-                })
+                .and(
+                    angles
+                        .iter()
+                        .try_for_each(|a| check_f("color halftone angle", *a, -360.0..=360.0)),
+                )
                 .map(|()| {
                     let angles = angles.map(|a| a as f32);
                     unseeded(move |p| pixelate::color_halftone(p, max_radius as f32, angles))
@@ -263,13 +255,9 @@ fn check_wave(
     check_f(
         "wave wavelength max",
         wavelength.1,
-        wavelength.0 + 1.0..=f64::MAX,
+        wavelength.0 + 1.0..=999.0,
     )?;
-    check_f(
-        "wave amplitude max",
-        amplitude.1,
-        amplitude.0 + 1.0..=f64::MAX,
-    )?;
+    check_f("wave amplitude max", amplitude.1, amplitude.0 + 1.0..=999.0)?;
     check_f("wave scale", scale.0, 1.0..=100.0)?;
     check_f("wave scale", scale.1, 1.0..=100.0)
 }
@@ -292,7 +280,6 @@ fn plan_strokes(filter: &Filter) -> Option<Result<(u64, Run), FilterError>> {
             paper_brightness,
             background,
             seed,
-            ..
         } => check("colored pencil width", pencil_width, 1..=24)
             .and(check("colored pencil pressure", stroke_pressure, 0..=15))
             .and(check("colored pencil paper", paper_brightness, 0..=50))
@@ -431,7 +418,6 @@ fn plan_strokes(filter: &Filter) -> Option<Result<(u64, Run), FilterError>> {
             stroke_detail,
             texture,
             seed,
-            ..
         } => check("rough pastels length", stroke_length, 0..=40)
             .and(check("rough pastels detail", stroke_detail, 1..=20))
             .and(check_texture(&texture))
@@ -502,7 +488,6 @@ fn plan_strokes(filter: &Filter) -> Option<Result<(u64, Run), FilterError>> {
             shadow_intensity,
             texture,
             seed,
-            ..
         } => check("watercolor detail", brush_detail, 1..=14)
             .and(check("watercolor shadow", shadow_intensity, 0..=10))
             .and(check("watercolor texture", texture, 1..=3))
@@ -632,8 +617,8 @@ fn plan_strokes(filter: &Filter) -> Option<Result<(u64, Run), FilterError>> {
 }
 
 fn check_brush(size: u8, detail: u8, texture: u8) -> Result<(), FilterError> {
-    check("brush size", size, 1..=50)?;
-    check("brush detail", detail, 1..=12)?;
+    check("brush size", size, 0..=10)?;
+    check("brush detail", detail, 0..=10)?;
     check("brush texture", texture, 1..=3)
 }
 
@@ -761,6 +746,9 @@ fn plan_sketch(filter: &Filter) -> Option<Result<(u64, Run), FilterError>> {
         } => check("halftone size", size, 1..=12)
             .and(check("halftone contrast", contrast, 0..=50))
             .map(|()| {
+                // ponytail: CS6 draws with the document foreground and
+                // background; the variant carries no colours yet, so CS6's
+                // default black and white stand in.
                 unseeded(move |p| {
                     sketch::halftone_pattern(
                         p,
@@ -781,6 +769,9 @@ fn plan_sketch(filter: &Filter) -> Option<Result<(u64, Run), FilterError>> {
             .and(check("note paper graininess", graininess, 0..=20))
             .and(check("note paper relief", relief, 0..=25))
             .map(|()| {
+                // ponytail: CS6 draws with the document foreground and
+                // background; the variant carries no colours yet, so CS6's
+                // default black and white stand in.
                 seeded(seed, move |p| {
                     sketch::note_paper(
                         p,
@@ -795,6 +786,9 @@ fn plan_sketch(filter: &Filter) -> Option<Result<(u64, Run), FilterError>> {
         Filter::Photocopy { detail, darkness } => check("photocopy detail", detail, 0..=24)
             .and(check("photocopy darkness", darkness, 1..=50))
             .map(|()| {
+                // ponytail: CS6 draws with the document foreground and
+                // background; the variant carries no colours yet, so CS6's
+                // default black and white stand in.
                 unseeded(move |p| {
                     sketch::photocopy(p, u(detail), u(darkness), Rgba8::BLACK, Rgba8::WHITE)
                 })

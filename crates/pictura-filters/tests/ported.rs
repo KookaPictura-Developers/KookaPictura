@@ -298,7 +298,6 @@ fn cases() -> Vec<Case> {
                 pencil_width: 25,
                 stroke_pressure: 8,
                 paper_brightness: 25,
-                foreground: fg,
                 background: bg,
                 seed: 1,
             }),
@@ -306,7 +305,6 @@ fn cases() -> Vec<Case> {
                 pencil_width: 4,
                 stroke_pressure: 8,
                 paper_brightness: 25,
-                foreground: [20, 30, 40],
                 background: [230, 220, 210],
                 seed,
             },
@@ -327,7 +325,7 @@ fn cases() -> Vec<Case> {
         seeded(
             "DryBrush",
             Some(Filter::DryBrush {
-                brush_size: 0,
+                brush_size: 11,
                 brush_detail: 8,
                 texture: 1,
                 seed: 1,
@@ -445,16 +443,12 @@ fn cases() -> Vec<Case> {
                     scaling: 49,
                     ..tex()
                 },
-                foreground: fg,
-                background: bg,
                 seed: 1,
             }),
             |seed| Filter::RoughPastels {
                 stroke_length: 6,
                 stroke_detail: 4,
                 texture: tex(),
-                foreground: [20, 30, 40],
-                background: [230, 220, 210],
                 seed,
             },
         ),
@@ -509,16 +503,12 @@ fn cases() -> Vec<Case> {
                 brush_detail: 0,
                 shadow_intensity: 1,
                 texture: 1,
-                foreground: fg,
-                background: bg,
                 seed: 1,
             }),
             |seed| Filter::Watercolor {
                 brush_detail: 9,
                 shadow_intensity: 1,
                 texture: 1,
-                foreground: [20, 30, 40],
-                background: [230, 220, 210],
                 seed,
             },
         ),
@@ -953,6 +943,16 @@ fn every_ported_filter_runs_and_leaves_alpha_alone() {
             "{} touched alpha",
             c.name
         );
+        // Facet keeps this picture's even gradients and 4-pixel checks as they
+        // are; `facet_flattens_a_gradient_and_keeps_a_strong_edge` covers it.
+        if c.name != "Facet" {
+            assert_ne!(
+                b.data[..3 * n],
+                before.data[..3 * n],
+                "{} left the colour planes as they were",
+                c.name
+            );
+        }
         let mut rgb = picture(3);
         apply(&c.valid, &mut rgb).unwrap_or_else(|e| panic!("{} on RGB: {e}", c.name));
     }
@@ -981,6 +981,48 @@ fn out_of_range_parameters_are_rejected_untouched() {
             c.name
         );
         assert_eq!(b.data, before.data, "{} wrote before rejecting", c.name);
+    }
+}
+
+/// Values past the documented ranges are rejected, not cast to infinity or
+/// wrapped inside the filter.
+#[test]
+fn huge_parameters_are_rejected_untouched() {
+    let wave = |wavelength, amplitude| Filter::Wave {
+        generators: 5,
+        wavelength,
+        amplitude,
+        kind: WaveType::Sine,
+        scale: (100.0, 100.0),
+        seed: 1,
+        repeat_edge: false,
+    };
+    for filter in [
+        Filter::ColorHalftone {
+            max_radius: 6,
+            angles: [1e9, 0.0, 0.0, 0.0],
+        },
+        Filter::Emboss {
+            angle: 0.0,
+            height: 1e300,
+            amount: 100.0,
+        },
+        Filter::Emboss {
+            angle: 0.0,
+            height: 3.0,
+            amount: 1e300,
+        },
+        wave((10.0, 1e300), (5.0, 35.0)),
+        wave((10.0, 120.0), (5.0, 1e300)),
+    ] {
+        let before = picture(4);
+        let mut b = before.clone();
+        let result = apply(&filter, &mut b);
+        assert!(
+            matches!(result, Err(FilterError::InvalidParams(_))),
+            "{filter:?} accepted: {result:?}"
+        );
+        assert_eq!(b.data, before.data, "{filter:?} wrote before rejecting");
     }
 }
 

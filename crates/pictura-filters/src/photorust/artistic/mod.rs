@@ -59,7 +59,7 @@ pub const POSTER_THICKNESS: std::ops::RangeInclusive<u32> = 0..=10;
 
 pub const POSTER_INTENSITY: std::ops::RangeInclusive<u32> = 0..=10;
 
-pub const POSTER_LEVELS: std::ops::RangeInclusive<u32> = 0..=6;
+pub const POSTER_LEVELS: std::ops::RangeInclusive<u32> = 0..=10;
 
 /// CS6's ranges for Rough Pastels' two stroke sliders. Its texture controls
 /// are [`super::texture`]'s.
@@ -99,8 +99,6 @@ pub const WATER_TEXTURE: std::ops::RangeInclusive<u32> = 1..=3;
 pub const DAUB_SIZE: std::ops::RangeInclusive<u32> = 1..=50;
 
 pub const DAUB_SHARPNESS: std::ops::RangeInclusive<u32> = 0..=40;
-
-impl DaubBrush {}
 
 /// CS6's ranges for Neon Glow. The third control is a colour swatch rather
 /// than a slider, and the two the picture is rendered between are the

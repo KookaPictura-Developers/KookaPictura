@@ -816,7 +816,8 @@ pub(crate) fn streaked_noise(
                 *slot = total / count.max(1.0);
             }
         });
-    let spread = (streaks.par_iter().map(|v| v * v).sum::<f32>() / streaks.len() as f32).sqrt();
+    // Sequential, so the sum does not depend on rayon's thread count.
+    let spread = (streaks.iter().map(|v| v * v).sum::<f32>() / streaks.len() as f32).sqrt();
     if spread > 0.0 {
         streaks.par_iter_mut().for_each(|v| *v /= spread);
     }

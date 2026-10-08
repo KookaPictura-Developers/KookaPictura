@@ -9,12 +9,8 @@ use crate::photorust::pixmap::{Pixmap, Rgba8};
 pub(crate) use crate::{ContourEdge, DiffuseMode, ExtrudeType, TileFill, WindMethod};
 use rayon::prelude::*;
 
-impl DiffuseMode {}
-
 /// How many passes Anisotropic makes, and so how far a pixel there reaches:
 /// each pass reads one step out, and the next pass reads what that left.
-/// [`crate::filters::Filter::reach`] has to agree with this, or a preview
-/// cropped to a region comes out wrong along its edges.
 pub const ANISOTROPIC_REACH: u32 = 4;
 
 /// The eight neighbours of a pixel, in no order that matters.
@@ -312,8 +308,6 @@ pub fn find_edges(pixmap: &mut Pixmap) {
         });
 }
 
-impl ExtrudeType {}
-
 /// Everything CS6's Extrude dialog collects.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct ExtrudeOptions {
@@ -571,8 +565,6 @@ pub(crate) fn fill_convex(pixmap: &mut Pixmap, points: &[(f32, f32)], colour: Rg
     }
 }
 
-impl TileFill {}
-
 /// Everything CS6's Tiles dialog collects, plus the two swatch colours, which
 /// it does not ask for because they belong to the document.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -613,10 +605,9 @@ impl Default for TileOptions {
 ///
 /// The offsets are drawn from the tile's position in the grid rather than from
 /// a RNG, so re-running the filter during an undo/redo replay lands every tile
-/// exactly where it was. That is also why [`crate::filters::Filter::reach`]
-/// says `None` for it: the grid is laid on the layer's own corner, so a crop
-/// would start the grid somewhere else and its tiles would not line up with
-/// the ones either side.
+/// exactly where it was. That is also why it cannot be filtered on a crop:
+/// the grid is laid on the layer's own corner, so a crop would start the grid
+/// somewhere else and its tiles would not line up with the ones either side.
 ///
 /// No GPU path. Each tile is a block copy — memory movement, not arithmetic —
 /// and a shader would still have to upload the picture and read it back
@@ -675,8 +666,6 @@ pub fn tiles(pixmap: &mut Pixmap, opt: TileOptions) {
         }
     }
 }
-
-impl ContourEdge {}
 
 /// Filter ▸ Stylize ▸ Trace Contour: draw the line where each channel crosses
 /// a brightness.
