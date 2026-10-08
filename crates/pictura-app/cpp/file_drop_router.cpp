@@ -13,6 +13,7 @@
 #include <QtGui/QDragEnterEvent>
 #include <QtGui/QDragMoveEvent>
 #include <QtGui/QDropEvent>
+#include <QtWidgets/QApplication>
 #include <QtWidgets/QTabBar>
 
 namespace pictura {
@@ -38,6 +39,18 @@ QStringList FileDropRouter::localPaths(const QMimeData* mime)
         }
     }
     return paths;
+}
+
+int FileDropRouter::otherDocumentTabAt(const QPoint& globalPos)
+{
+    for (QWidget* w = QApplication::widgetAt(globalPos); w; w = w->parentWidget()) {
+        auto* bar = qobject_cast<QTabBar*>(w);
+        if (bar && bar->objectName() == QLatin1String("documentTabBar")) {
+            const int tab = bar->tabAt(bar->mapFromGlobal(globalPos));
+            return tab != bar->currentIndex() ? tab : -1;
+        }
+    }
+    return -1;
 }
 
 bool FileDropRouter::routeLayerDrag(QObject* watched, QEvent* event)

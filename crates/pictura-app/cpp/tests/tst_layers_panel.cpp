@@ -16,6 +16,7 @@
 #include <QtGui/QPalette>
 #include <QtWidgets/QTabBar>
 
+#include "file_drop_router.h"
 #include "frame.h"
 #include "image_view.h"
 #include "panels/layers_panel.h"
@@ -112,6 +113,7 @@ private slots:
     void dropAnywhereOnLayerRowReorders();
     void dropOnGroupRowEdgesPlacesSibling();
     void dragLayerOntoAnotherDocument();
+    void moveToolFindsAnotherDocumentTab();
     void dropOnDelete();
     void clippingMasks();
 
@@ -549,6 +551,33 @@ void LayersPanelTest::dragLayerOntoAnotherDocument()
              "a Grayscale document refuses an RGB layer");
     QCOMPARE(window_->activeView(), gray);
     QCOMPARE(countNamed(gray, QStringLiteral("Sky")), 0);
+}
+
+// Issue #231: a Move-tool drag hands off to the layer drag once the pointer is
+// over another document's tab; the current tab and the canvas keep the move.
+void LayersPanelTest::moveToolFindsAnotherDocumentTab()
+{
+    QVERIFY(window_->newDocument(QStringLiteral("MoveSrc"), 16, 16, QStringLiteral("rgb"), 8,
+                                 QStringLiteral("white")));
+    const int src = window_->activeDocumentIndex();
+    QVERIFY(window_->newDocument(QStringLiteral("MoveDst"), 16, 16, QStringLiteral("rgb"), 8,
+                                 QStringLiteral("white")));
+    const int dst = window_->activeDocumentIndex();
+    window_->setActiveDocumentIndex(src);
+    window_->show();
+    QVERIFY(QTest::qWaitForWindowExposed(window_.get()));
+    auto* bar = window_->findChild<QTabBar*>(QStringLiteral("documentTabBar"));
+    QVERIFY(bar != nullptr);
+
+    using pictura::FileDropRouter;
+    QCOMPARE(FileDropRouter::otherDocumentTabAt(bar->mapToGlobal(bar->tabRect(dst).center())),
+             dst);
+    QCOMPARE(FileDropRouter::otherDocumentTabAt(bar->mapToGlobal(bar->tabRect(src).center())),
+             -1);
+    QWidget* canvas = window_->canvasAt(src);
+    QCOMPARE(FileDropRouter::otherDocumentTabAt(canvas->mapToGlobal(canvas->rect().center())), -1);
+    window_->closeDocument(dst, false);
+    window_->closeDocument(src, false);
 }
 
 void LayersPanelTest::dropOnDelete()

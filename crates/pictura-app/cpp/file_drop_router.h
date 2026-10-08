@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QtCore/QObject>
+#include <QtCore/QPoint>
 #include <QtCore/QStringList>
 
 class QMimeData;
@@ -25,6 +26,9 @@ public:
     // The local regular files carried by `mime`; directories and non-file URLs
     // are discarded and a URL-less drag yields an empty list.
     static QStringList localPaths(const QMimeData* mime);
+    // The document tab under the global point `globalPos` when it is not the
+    // current document's, else -1 (also off the document tab bar).
+    static int otherDocumentTabAt(const QPoint& globalPos);
 
 private:
     // The Layers-panel drag branch; false when `event` carries no layer drag.
