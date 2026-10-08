@@ -96,7 +96,6 @@ fn unsupported_filter() -> Filter {
         pencil_width: 6,
         stroke_pressure: 8,
         paper_brightness: 50,
-        foreground: [0, 0, 0],
         background: [255, 255, 255],
         seed: 1,
     }

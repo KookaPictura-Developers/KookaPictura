@@ -17,6 +17,7 @@ class QDoubleSpinBox;
 class QLabel;
 class QPushButton;
 class QResizeEvent;
+class QShowEvent;
 class QSlider;
 
 namespace pictura {
@@ -75,6 +76,7 @@ private:
 
 protected:
     void resizeEvent(QResizeEvent* event) override;
+    void showEvent(QShowEvent* event) override;
 
 private:
     PictureView* view_ = nullptr;
@@ -86,6 +88,7 @@ private:
     QLabel* zoomLabel_ = nullptr;
     int zoom_ = 2;
     bool previewShown_ = false;
+    bool shownOnce_ = false;
     bool sliderDragging_ = false;
     QRectF previewVisible_;
     double canvasZoom_ = 1.0;

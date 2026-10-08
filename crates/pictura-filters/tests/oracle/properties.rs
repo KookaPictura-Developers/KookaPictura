@@ -39,8 +39,9 @@ fn stylize_no_equivalent_filters_properties() {
         "FindEdges must darken a step edge"
     );
 
-    // Emboss: flat field is neutral gray and the output is achromatic, even on
-    // colored input.
+    // Emboss: a flat field is neutral gray. CS6 traces edges in the original
+    // colour, so a gray picture stays gray while a coloured one keeps
+    // coloured fringes along its edges.
     let mut emb = flat.clone();
     apply(
         &Filter::Emboss {
@@ -56,29 +57,44 @@ fn stylize_no_equivalent_filters_properties() {
         "Emboss flat field must be neutral gray"
     );
     let colored = test_image_buffer();
-    let mut colored_emb = colored.clone();
-    apply(
-        &Filter::Emboss {
-            angle: 135.0,
-            height: 3.0,
-            amount: 100.0,
-        },
-        &mut colored_emb,
-    )
-    .expect("apply");
     let n = colored.pixel_count();
+    let mut gray = colored.clone();
+    for i in 0..n {
+        let v = gray.data[i];
+        gray.data[n + i] = v;
+        gray.data[2 * n + i] = v;
+    }
+    let emboss = |b: &PixelBuffer| {
+        let mut out = b.clone();
+        apply(
+            &Filter::Emboss {
+                angle: 135.0,
+                height: 3.0,
+                amount: 100.0,
+            },
+            &mut out,
+        )
+        .expect("apply");
+        out
+    };
+    let gray_emb = emboss(&gray);
     for i in 0..n {
         assert_eq!(
-            colored_emb.data[i],
-            colored_emb.data[n + i],
-            "Emboss R != G at {i}"
+            gray_emb.data[i],
+            gray_emb.data[n + i],
+            "gray Emboss R != G at {i}"
         );
         assert_eq!(
-            colored_emb.data[i],
-            colored_emb.data[2 * n + i],
-            "Emboss R != B at {i}"
+            gray_emb.data[i],
+            gray_emb.data[2 * n + i],
+            "gray Emboss R != B at {i}"
         );
     }
+    let colored_emb = emboss(&colored);
+    assert!(
+        (0..n).any(|i| colored_emb.data[i] != colored_emb.data[2 * n + i]),
+        "Emboss keeps coloured edges on a coloured picture"
+    );
 
     // Offset wrap = false: the exposed area takes `background`, the shifted
     // area copies the source.

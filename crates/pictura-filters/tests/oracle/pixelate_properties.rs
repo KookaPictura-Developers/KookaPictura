@@ -110,23 +110,26 @@ fn no_equivalent_filters_properties() {
     apply(&Filter::Fragment, &mut ramp).expect("apply");
     for y in 0..w {
         for x in 0..w {
-            let sum: u32 = [(0usize, 0usize), (1, 0), (0, 1), (1, 1)]
+            // CS6: four copies offset to the corners of a square and averaged.
+            let sum: u32 = [(-4i32, -4i32), (4, -4), (-4, 4), (4, 4)]
                 .iter()
                 .map(|&(ox, oy)| {
-                    let sx = (x + ox).min(w - 1);
-                    let sy = (y + oy).min(w - 1);
+                    let sx = (x as i32 + ox).clamp(0, w as i32 - 1) as usize;
+                    let sy = (y as i32 + oy).clamp(0, w as i32 - 1) as usize;
                     src[sy * w + sx] as u32
                 })
                 .sum();
             assert_eq!(
                 ramp.data[y * w + x],
-                ((sum + 2) / 4) as u8,
+                (sum / 4) as u8,
                 "Fragment at ({x},{y})"
             );
         }
     }
 
-    // Mezzotint: seed-deterministic, binary, and achromatic.
+    // Mezzotint: seed-deterministic and binary per channel. CS6 gives black
+    // and white on a grayscale picture and fully saturated colours on a
+    // colour one, so only a gray source stays achromatic.
     let mut mz_a = original.clone();
     let mut mz_b = original.clone();
     let mut mz_c = original.clone();
@@ -158,11 +161,25 @@ fn no_equivalent_filters_properties() {
     assert_ne!(mz_a.data, mz_c.data, "Mezzotint must vary with the kind");
     assert!(
         mz_a.data.iter().all(|&v| v == 0 || v == 255),
-        "Mezzotint must be black/white"
+        "Mezzotint must be fully on or off per channel"
     );
+    let mut gray = original.clone();
     for p in 0..n {
-        assert_eq!(mz_a.data[p], mz_a.data[n + p], "Mezzotint R != G");
-        assert_eq!(mz_a.data[p], mz_a.data[2 * n + p], "Mezzotint R != B");
+        let v = gray.data[p];
+        gray.data[n + p] = v;
+        gray.data[2 * n + p] = v;
+    }
+    apply(
+        &Filter::Mezzotint {
+            kind: MezzotintType::FineDots,
+            seed: 3,
+        },
+        &mut gray,
+    )
+    .expect("apply");
+    for p in 0..n {
+        assert_eq!(gray.data[p], gray.data[n + p], "gray Mezzotint R != G");
+        assert_eq!(gray.data[p], gray.data[2 * n + p], "gray Mezzotint R != B");
     }
 
     // Pointillize: seed-deterministic; a red source over a blue background

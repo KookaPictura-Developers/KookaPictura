@@ -20,6 +20,15 @@ below. No test is `#[ignore]`d.
 
 ## Filter → ImageMagick mapping
 
+> **Ported engine (#221).** Most filters below now run through the photorust
+> engine (`src/photorust`). The faithful rows still hold: Solarize stays on its
+> own exact implementation and Mosaic rounds to the exact block mean. In the
+> no-equivalent rows, the "observed max delta" figures and the algorithm notes
+> for the ported filters (Emboss, Fragment, Mezzotint, Crystallize, Pointillize,
+> Facet, ColorHalftone, the Distort warps, Add Noise, Dust & Scratches) describe
+> the replaced implementations. The behaviour those filters now have is in
+> `openspec/changes/port-photorust-filters`.
+
 Test image: deterministic 16×16 RGB8, two ramps (R = 16x, G = 16y) plus a 4×4
 block checker in B, so every filter sees both gradients and hard edges. All
 "measured max delta" figures are absolute 8-bit sample deltas against this image.

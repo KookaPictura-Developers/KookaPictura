@@ -398,10 +398,9 @@ fn filter_from_kind_maps_known_and_rejects_unknown() {
     assert_eq!(
         filter_from_kind("colored-pencil"),
         Some(Filter::ColoredPencil {
-            pencil_width: 6,
+            pencil_width: 4,
             stroke_pressure: 8,
-            paper_brightness: 20,
-            foreground: [0, 0, 0],
+            paper_brightness: 25,
             background: [255, 255, 255],
             seed: 1,
         })
@@ -410,50 +409,50 @@ fn filter_from_kind_maps_known_and_rejects_unknown() {
         filter_from_kind("cutout"),
         Some(Filter::Cutout {
             levels: 4,
-            edge_simplicity: 0,
-            edge_fidelity: 1,
+            edge_simplicity: 4,
+            edge_fidelity: 2,
         })
     );
     assert_eq!(
         filter_from_kind("dry-brush"),
         Some(Filter::DryBrush {
-            brush_size: 8,
-            brush_detail: 6,
-            texture: 2,
+            brush_size: 2,
+            brush_detail: 8,
+            texture: 1,
             seed: 1,
         })
     );
     assert_eq!(
         filter_from_kind("film-grain"),
         Some(Filter::FilmGrain {
-            grain: 10,
-            highlight_area: 5,
-            intensity: 5,
+            grain: 4,
+            highlight_area: 0,
+            intensity: 10,
             seed: 1,
         })
     );
     assert_eq!(
         filter_from_kind("fresco"),
         Some(Filter::Fresco {
-            brush_size: 8,
-            brush_detail: 6,
-            texture: 2,
+            brush_size: 2,
+            brush_detail: 8,
+            texture: 1,
             seed: 1,
         })
     );
     assert_eq!(
         filter_from_kind("neon-glow"),
         Some(Filter::NeonGlow {
-            glow_size: 8,
-            glow_brightness: 40,
-            glow_color: [0, 255, 255],
+            glow_size: 5,
+            glow_brightness: 15,
+            glow_color: [0, 0, 255],
         })
     );
     assert_eq!(
         filter_from_kind("paint-daubs"),
         Some(Filter::PaintDaubs {
             brush_size: 8,
-            sharpness: 20,
+            sharpness: 7,
             brush_type: BrushType::Simple,
             seed: 1,
         })
@@ -461,74 +460,75 @@ fn filter_from_kind_maps_known_and_rejects_unknown() {
     assert_eq!(
         filter_from_kind("palette-knife"),
         Some(Filter::PaletteKnife {
-            stroke_size: 12,
-            stroke_detail: 2,
-            softness: 8,
-            seed: 1,
+            stroke_size: 25,
+            stroke_detail: 3,
+            softness: 0,
         })
     );
     assert_eq!(
         filter_from_kind("plastic-wrap"),
         Some(Filter::PlasticWrap {
-            highlight_strength: 0,
-            detail: 6,
-            smoothness: 3,
+            highlight_strength: 15,
+            detail: 9,
+            smoothness: 7,
         })
     );
     assert_eq!(
         filter_from_kind("poster-edges"),
         Some(Filter::PosterEdges {
-            edge_thickness: 3,
-            edge_intensity: 10,
-            posterization: 4,
+            edge_thickness: 2,
+            edge_intensity: 1,
+            posterization: 2,
         })
     );
     assert_eq!(
         filter_from_kind("rough-pastels"),
         Some(Filter::RoughPastels {
-            stroke_length: 8,
-            stroke_detail: 6,
-            texture: TextureOptions::default(),
-            foreground: [0, 0, 0],
-            background: [255, 255, 255],
+            stroke_length: 6,
+            stroke_detail: 4,
+            texture: TextureOptions {
+                relief: 20,
+                ..TextureOptions::default()
+            },
             seed: 1,
         })
     );
     assert_eq!(
         filter_from_kind("smudge-stick"),
         Some(Filter::SmudgeStick {
-            stroke_length: 4,
-            highlight_area: 8,
-            intensity: 6,
+            stroke_length: 2,
+            highlight_area: 0,
+            intensity: 10,
             seed: 1,
         })
     );
     assert_eq!(
         filter_from_kind("sponge"),
         Some(Filter::Sponge {
-            brush_size: 6,
-            definition: 18,
-            smoothness: 4,
+            brush_size: 2,
+            definition: 12,
+            smoothness: 5,
             seed: 1,
         })
     );
     assert_eq!(
         filter_from_kind("underpainting"),
         Some(Filter::Underpainting {
-            brush_size: 10,
-            texture_coverage: 24,
-            texture: TextureOptions::default(),
+            brush_size: 6,
+            texture_coverage: 16,
+            texture: TextureOptions {
+                light_direction: 4,
+                ..TextureOptions::default()
+            },
             seed: 1,
         })
     );
     assert_eq!(
         filter_from_kind("watercolor"),
         Some(Filter::Watercolor {
-            brush_detail: 8,
-            shadow_intensity: 6,
-            texture: 2,
-            foreground: [0, 0, 0],
-            background: [255, 255, 255],
+            brush_detail: 9,
+            shadow_intensity: 1,
+            texture: 1,
             seed: 1,
         })
     );

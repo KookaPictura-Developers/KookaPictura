@@ -9,6 +9,7 @@ rust-version.workspace = true
 pictura-core = { path = "../pictura-core" }
 thiserror.workspace = true
 rand_chacha = "0.9"
+rayon = "1"
 
 [dev-dependencies]
 pictura-testkit = { path = "../pictura-testkit" }
