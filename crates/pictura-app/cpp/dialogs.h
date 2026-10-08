@@ -5,7 +5,10 @@
 #include <QtCore/QUrl>
 #include <QtCore/QList>
 
+#include <functional>
+
 class QAbstractButton;
+class QKeyEvent;
 class QComboBox;
 class QDialog;
 class QWidget;
@@ -21,6 +24,12 @@ enum class UnsavedChoice { Save, Discard, Cancel };
 // Returns the dialog's result code. With no parent (tests) this is a plain
 // exec(). Every app dialog that used to call `dialog.exec()` should use this.
 int runDialog(QDialog& dialog, QWidget* parent);
+
+// While a dialog runs under runDialog, a key press the dialog leaves unused (no
+// QShortcut of its own took it) is offered to `handler`, which returns true
+// to consume it. The frame installs its canvas zoom keys here, so Ctrl++ /
+// Ctrl+- / Ctrl+0 / Ctrl+1 zoom the canvas behind any dialog.
+void setDialogNavigationKeys(std::function<bool(QKeyEvent*)> handler);
 
 // Ctrl++ / Ctrl+- in a dialog with its own preview zoom click `zoomIn` /
 // `zoomOut`. `+` takes Shift on most layouts, so Ctrl+= and Ctrl+Shift+= zoom

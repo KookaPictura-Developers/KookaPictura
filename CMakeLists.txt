@@ -98,6 +98,10 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/filter_preview_dialog.h
     crates/pictura-app/cpp/lens_flare_dialog.cpp
     crates/pictura-app/cpp/lens_flare_dialog.h
+    crates/pictura-app/cpp/blend_modes.h
+    crates/pictura-app/cpp/layer_style_dialog.cpp
+    crates/pictura-app/cpp/layer_style_dialog.h
+    crates/pictura-app/cpp/layer_style_pages.cpp
     crates/pictura-app/cpp/color_settings_dialog.cpp
     crates/pictura-app/cpp/color_picker_dialog.cpp
     crates/pictura-app/cpp/color_range_dialog.cpp
@@ -143,6 +147,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/frame_menus_edit.cpp
     crates/pictura-app/cpp/frame_menus_filter.cpp
     crates/pictura-app/cpp/frame_menus_align.cpp
+    crates/pictura-app/cpp/frame_menus_layer_style.cpp
     crates/pictura-app/cpp/frame_menus_adjust.cpp
     crates/pictura-app/cpp/frame_menus_image.cpp
     crates/pictura-app/cpp/frame_menus_image_mode.cpp

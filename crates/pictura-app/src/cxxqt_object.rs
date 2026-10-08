@@ -30,6 +30,7 @@ mod impl_paint;
 mod impl_pictura_raw;
 mod impl_selection;
 mod impl_transform;
+mod layer_style;
 mod layers_smart_filters;
 mod magnetic;
 mod paint_tools;
@@ -448,8 +449,7 @@ pub mod qobject {
         #[qinvokable]
         fn duplicate_layers(self: Pin<&mut Self>, paths: &QStringList) -> QStringList;
 
-        /// Wrap the selection in one new group at the topmost selected
-        /// position, returning its path or empty on refusal.
+        /// Wrap the selection in one new group at the topmost selected position, returning its path or empty on refusal.
         #[qinvokable]
         fn group_layers(self: Pin<&mut Self>, paths: &QStringList) -> QString;
 

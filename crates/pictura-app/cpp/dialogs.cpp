@@ -452,6 +452,12 @@ void configureFileDialog(QFileDialog& dialog, const QStringList& filters,
 // be panned (and wheel-zoomed) to look around while a dialog previews on it.
 // ponytail: this only dodges the compositor effect; a user with "Dim Inactive"
 // enabled would still see the blocked window dimmed on focus loss.
+std::function<bool(QKeyEvent*)>& navigationKeys()
+{
+    static std::function<bool(QKeyEvent*)> handler;
+    return handler;
+}
+
 class DialogInputBlocker : public QObject
 {
 public:
@@ -492,6 +498,11 @@ protected:
         if (!widget || !blocked_) {
             return QObject::eventFilter(watched, event);
         }
+        // A key the dialog's own shortcuts did not take may be a canvas zoom.
+        if (event->type() == QEvent::KeyPress && widget->window() != blocked_
+            && navigationKeys() && navigationKeys()(static_cast<QKeyEvent*>(event))) {
+            return true;
+        }
         if (widget->window() != blocked_ || isCanvasNavigation(widget, event)) {
             return QObject::eventFilter(watched, event);
         }
@@ -531,6 +542,11 @@ int runFileDialog(QFileDialog& dialog, QWidget* parent)
 }
 
 } // namespace
+
+void setDialogNavigationKeys(std::function<bool(QKeyEvent*)> handler)
+{
+    navigationKeys() = std::move(handler);
+}
 
 int runDialog(QDialog& dialog, QWidget* parent)
 {

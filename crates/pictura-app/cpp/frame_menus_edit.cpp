@@ -69,6 +69,34 @@ void PicturaMainWindow::importSystemClipboard()
 // command records one state in the bridge, and a refusal records nothing.
 void PicturaMainWindow::registerEditHandlers()
 {
+    // The canvas zoom keys keep working behind a running dialog.
+    setDialogNavigationKeys([window = QPointer<PicturaMainWindow>(this)](QKeyEvent* event) {
+        const Qt::KeyboardModifiers mods = event->modifiers() & ~Qt::KeypadModifier;
+        if (!window || !(mods & Qt::ControlModifier) || (mods & Qt::AltModifier)) {
+            return false;
+        }
+        const char* id = nullptr;
+        switch (event->key()) {
+        case Qt::Key_Plus:
+        case Qt::Key_Equal:
+            id = command_ids::ViewZoomIn;
+            break;
+        case Qt::Key_Minus:
+        case Qt::Key_Underscore:
+            id = command_ids::ViewZoomOut;
+            break;
+        case Qt::Key_0:
+            id = command_ids::ViewFitOnScreen;
+            break;
+        case Qt::Key_1:
+            id = command_ids::ViewActualPixels;
+            break;
+        default:
+            return false;
+        }
+        window->registry()->dispatch(QLatin1String(id));
+        return true;
+    });
     // ponytail: a platform that reports our own write asynchronously drops the
     // mirror, so the next paste re-imports our export and Paste in Place loses
     // the source position (it lands at the origin).
