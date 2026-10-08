@@ -282,4 +282,28 @@ bool PicturaMainWindow::dispatchCommandKey(QKeyEvent* event)
     return false;
 }
 
+bool PicturaMainWindow::copyLayerFromDocument(const void* source, const QString& path)
+{
+    PictureView* target = activeView();
+    PictureView* from = nullptr;
+    for (const DocEntry& entry : docs_) {
+        if (entry.view == source) {
+            from = entry.view;
+        }
+    }
+    // The bridge holds the source shared and the target exclusive, so the two
+    // must be different documents.
+    if (!target || !from || from == target || path.isEmpty()) {
+        return false;
+    }
+    const QString selection = layersPanel_ ? layersPanel_->currentPath() : QString();
+    const QString created = copy_layer_from_document(*target, *from, path, selection);
+    if (created.isEmpty()) {
+        return false;
+    }
+    refresh();
+    selectLayerPath(created);
+    return true;
+}
+
 } // namespace pictura

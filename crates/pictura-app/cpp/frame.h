@@ -228,6 +228,11 @@ public:
     // Make `path` the active Layers-panel row (refresh first so a just-created
     // layer is present in the model). No-op without the panel or an empty path.
     void selectLayerPath(const QString& path);
+    // Copy the layer node at `path` of the open document whose address is
+    // `source` into the active document, above its current layer, as one
+    // "Duplicate Layer" state. False when `source` is not another open document
+    // or the bridge refuses the copy.
+    bool copyLayerFromDocument(const void* source, const QString& path);
     bool saveActive();
     bool saveActiveAs(const QString& path);
     // Prompt for a Save As path with the format-aware filters (preselecting the

@@ -11,8 +11,9 @@ class PicturaMainWindow;
 
 // Routes an OS file drag over the frame's drop targets: a document ImageView
 // places each file into the active document, every other watched target opens
-// each file as a new tab. A drag with no local regular file is never consumed,
-// so the Layers-panel internal drag and tab reordering keep their own handlers.
+// each file as a new tab. A Layers-panel drag from another document copies the
+// layer into the active one (hovering a tab activates it). Any other drag is
+// never consumed, so the in-panel drag and tab reordering keep their handlers.
 class FileDropRouter : public QObject {
     Q_OBJECT
 
@@ -26,6 +27,9 @@ public:
     static QStringList localPaths(const QMimeData* mime);
 
 private:
+    // The Layers-panel drag branch; false when `event` carries no layer drag.
+    bool routeLayerDrag(QObject* watched, QEvent* event);
+
     PicturaMainWindow* frame_ = nullptr;
 };
 

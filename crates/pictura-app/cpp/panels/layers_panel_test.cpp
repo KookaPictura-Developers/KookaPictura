@@ -493,6 +493,7 @@ bool LayersPanel::dropOnStripButtonForTest(const QString& buttonName, const QStr
     }
     QMimeData mime;
     mime.setData(kLayerMimeType, paths.join(QLatin1Char('\n')).toUtf8());
+    mime.setData(kLayerSourceMimeType, QByteArray::number(reinterpret_cast<quintptr>(view_)));
     const QPointF local(5, 5);
     QDragEnterEvent enter(local.toPoint(), Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
     QCoreApplication::sendEvent(button, &enter);
@@ -618,6 +619,7 @@ int LayersPanel::dragMoveModeAtForTest(const QString& source, const QString& hov
     const QPoint pos(vr.left() + 4, above ? vr.top() + 1 : vr.bottom() - 1);
     QMimeData mime;
     mime.setData(kLayerMimeType, source.toUtf8());
+    mime.setData(kLayerSourceMimeType, QByteArray::number(reinterpret_cast<quintptr>(view_)));
     QDragEnterEvent enter(pos, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
     QCoreApplication::sendEvent(tree_->viewport(), &enter);
     QDragMoveEvent move(pos, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
@@ -638,6 +640,7 @@ bool LayersPanel::dropAtForTest(const QString& source, const QString& hover, boo
     const QPoint pos(vr.left() + 4, above ? vr.top() + 1 : vr.bottom() - 1);
     QMimeData mime;
     mime.setData(kLayerMimeType, source.toUtf8());
+    mime.setData(kLayerSourceMimeType, QByteArray::number(reinterpret_cast<quintptr>(view_)));
     QDragEnterEvent enter(pos, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
     QCoreApplication::sendEvent(tree_->viewport(), &enter);
     QDragMoveEvent move(pos, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
@@ -659,6 +662,7 @@ bool LayersPanel::dropIntoForTest(const QString& source, const QString& hover)
     const QPoint pos = tree_->visualRect(index).center();
     QMimeData mime;
     mime.setData(kLayerMimeType, source.toUtf8());
+    mime.setData(kLayerSourceMimeType, QByteArray::number(reinterpret_cast<quintptr>(view_)));
     QDragEnterEvent enter(pos, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
     QCoreApplication::sendEvent(tree_->viewport(), &enter);
     QDragMoveEvent move(pos, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
@@ -893,6 +897,7 @@ int LayersPanel::dropIndicatorForTest(const QString& source, const QString& hove
     const QPoint pos(vr.left() + 4, y);
     QMimeData mime;
     mime.setData(kLayerMimeType, source.toUtf8());
+    mime.setData(kLayerSourceMimeType, QByteArray::number(reinterpret_cast<quintptr>(view_)));
     QDragEnterEvent enter(pos, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
     QCoreApplication::sendEvent(tree_->viewport(), &enter);
     QDragMoveEvent move(pos, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);

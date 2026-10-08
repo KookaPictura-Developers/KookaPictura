@@ -25,7 +25,10 @@ mod tests_clipboard;
 #[cfg(test)]
 mod tests_perspective_crop;
 #[cfg(test)]
+mod tests_transfer;
+#[cfg(test)]
 mod tests_via;
+mod transfer;
 mod transform;
 mod transform_native;
 #[cfg(test)]
@@ -81,6 +84,7 @@ pub use smart_object::{
     open_as_smart_object, place_smart_object, rasterize_smart_object,
     replace_smart_object_contents, smart_object_source_bytes,
 };
+pub use transfer::copy_path_to_document;
 pub use transform::{transform_layer, transform_layer_quad, LayerTransform};
 pub use via::{layer_via_copy, layer_via_cut};
 pub use warp::{identity_mesh, transform_layer_warp, WarpMesh, WarpParams};

@@ -414,6 +414,7 @@ void LayersPanel::setView(PictureView* view)
     }
     view_ = view;
     model_->setView(view);
+    tree_->setDragSource(view);
     if (view_) {
         viewConnection_ = connect(view_, &PictureView::changed, this, [this] {
             QTimer::singleShot(0, this, [this] { refresh(); });
@@ -636,13 +637,13 @@ bool LayersPanel::eventFilter(QObject* watched, QEvent* event)
         if (!dropAction.isEmpty()) {
             if (event->type() == QEvent::DragEnter) {
                 auto* drag = static_cast<QDragEnterEvent*>(event);
-                if (drag->mimeData()->hasFormat(kLayerMimeType)) {
+                if (tree_->isOwnLayerDrag(drag->mimeData())) {
                     drag->acceptProposedAction();
                     return true;
                 }
             } else if (event->type() == QEvent::Drop) {
                 auto* drop = static_cast<QDropEvent*>(event);
-                if (drop->mimeData()->hasFormat(kLayerMimeType)) {
+                if (tree_->isOwnLayerDrag(drop->mimeData())) {
                     const QStringList paths =
                         QString::fromUtf8(drop->mimeData()->data(kLayerMimeType))
                             .split(QLatin1Char('\n'), Qt::SkipEmptyParts);
