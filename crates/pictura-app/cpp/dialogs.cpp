@@ -19,6 +19,8 @@
 #include <QtCore/QXmlStreamReader>
 #include <QtGui/QKeyEvent>
 #include <QtGui/QMouseEvent>
+#include <QtGui/QShortcut>
+#include <QtWidgets/QAbstractButton>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QDialog>
@@ -463,8 +465,13 @@ protected:
     bool eventFilter(QObject* watched, QEvent* event) override
     {
         switch (event->type()) {
-        case QEvent::Shortcut:
-            return true;
+        case QEvent::Shortcut: {
+            // The frame's menu shortcuts stay blocked; a QShortcut the dialog
+            // itself owns (its preview zoom keys) still fires.
+            auto* shortcut = qobject_cast<QShortcut*>(watched);
+            auto* owner = shortcut ? qobject_cast<QWidget*>(shortcut->parent()) : nullptr;
+            return !owner || !blocked_ || owner->window() == blocked_;
+        }
         case QEvent::KeyPress:
         case QEvent::KeyRelease:
         case QEvent::ShortcutOverride:
@@ -540,6 +547,19 @@ int runDialog(QDialog& dialog, QWidget* parent)
     loop.exec();
     qApp->removeEventFilter(&blocker);
     return dialog.result();
+}
+
+void addZoomShortcuts(QWidget* dialog, QAbstractButton* zoomIn, QAbstractButton* zoomOut)
+{
+    auto* in = new QShortcut(dialog);
+    in->setKeys({QKeySequence(QStringLiteral("Ctrl++")), QKeySequence(QStringLiteral("Ctrl+=")),
+                 QKeySequence(QStringLiteral("Ctrl+Shift+=")),
+                 QKeySequence(QStringLiteral("Ctrl+Shift++"))});
+    QObject::connect(in, &QShortcut::activated, zoomIn, &QAbstractButton::click);
+    // The keymap can offer one press as several of these keys; all are ours.
+    QObject::connect(in, &QShortcut::activatedAmbiguously, zoomIn, &QAbstractButton::click);
+    auto* out = new QShortcut(QKeySequence(QStringLiteral("Ctrl+-")), dialog);
+    QObject::connect(out, &QShortcut::activated, zoomOut, &QAbstractButton::click);
 }
 
 QString dialogDirectoryFromStored(const QString& stored)

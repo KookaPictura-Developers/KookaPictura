@@ -3,7 +3,10 @@
 #include <QtCore/QTimer>
 #include <QtGui/QImage>
 #include <QtWidgets/QApplication>
+#include <QtWidgets/QLabel>
 #include <QtWidgets/QListWidget>
+#include <QtWidgets/QScrollArea>
+#include <QtWidgets/QScrollBar>
 #include <QtWidgets/QToolButton>
 
 #include "commands.h"
@@ -46,6 +49,7 @@ private slots:
     void thumbnailsRender();
     void clickingTheEyeHidesTheEffect();
     void spaceTogglesTheEye();
+    void keyboardZoomAndDragPan();
 
 private:
     pictura::test::ScopedStateHome stateHome_;
@@ -227,6 +231,66 @@ void FilterGalleryTest::spaceTogglesTheEye()
     QTest::keyClick(list, Qt::Key_Space);
     QVERIFY(dialog.effects().at(0).visible);
     dialog.reject();
+}
+
+// The preview zooms on Ctrl++ / Ctrl+- and pans on a left drag (#243), with
+// the dialog run from the menu so the frame's input blocker is live.
+void FilterGalleryTest::keyboardZoomAndDragPan()
+{
+    QVERIFY(window_->newDocument(QStringLiteral("Pan"), 400, 400, QStringLiteral("rgb"), 8,
+                                 QStringLiteral("white")));
+    double fit = 0.0;
+    double in = 0.0;
+    double out = 0.0;
+    QString max;
+    QPoint panned(-1, -1);
+    QTimer::singleShot(0, [&] {
+        pictura::FilterGalleryDialog* dialog = nullptr;
+        for (QWidget* widget : QApplication::topLevelWidgets()) {
+            if (auto* found = qobject_cast<pictura::FilterGalleryDialog*>(widget)) {
+                dialog = found;
+            }
+        }
+        if (!dialog) {
+            return;
+        }
+        dialog->activateWindow();
+        auto* label = dialog->findChild<QLabel*>(QStringLiteral("galleryZoomLabel"));
+        auto* area = dialog->findChild<QScrollArea*>(QStringLiteral("galleryPreview"));
+        if (!QTest::qWaitForWindowActive(dialog) || !label || !area) {
+            dialog->reject();
+            return;
+        }
+        const auto percent = [label] { return label->text().chopped(1).toDouble(); };
+        fit = percent();
+        QTest::keyClick(dialog, Qt::Key_Equal, Qt::ControlModifier);
+        in = percent();
+        QTest::keyClick(dialog, Qt::Key_Minus, Qt::ControlModifier);
+        out = percent();
+        for (int i = 0; i < 10; ++i) {
+            QTest::keyClick(dialog, Qt::Key_Plus, Qt::ControlModifier | Qt::ShiftModifier);
+        }
+        max = label->text();
+        QCoreApplication::processEvents();
+
+        // 400 px at 400 % overflows the pane: dragging left/up scrolls right/down.
+        QScrollBar* h = area->horizontalScrollBar();
+        QScrollBar* v = area->verticalScrollBar();
+        h->setValue(0);
+        v->setValue(0);
+        QWidget* viewport = area->viewport();
+        const QPoint start(viewport->width() / 2, viewport->height() / 2);
+        QTest::mousePress(viewport, Qt::LeftButton, {}, start);
+        QTest::mouseMove(viewport, start - QPoint(30, 20));
+        QTest::mouseRelease(viewport, Qt::LeftButton, {}, start - QPoint(30, 20));
+        panned = QPoint(h->value(), v->value());
+        dialog->reject();
+    });
+    QVERIFY(window_->registry()->dispatch(galleryId()));
+    QVERIFY(in > fit);
+    QVERIFY(out < in);
+    QCOMPARE(max, QStringLiteral("400%"));
+    QCOMPARE(panned, QPoint(30, 20));
 }
 
 QTEST_MAIN(FilterGalleryTest)

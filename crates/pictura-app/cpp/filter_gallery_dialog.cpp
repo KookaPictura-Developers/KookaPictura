@@ -1,4 +1,5 @@
 #include "filter_gallery_dialog.h"
+#include "dialogs.h"
 #include "filter_param_controls.h"
 #include "icons.h"
 
@@ -257,7 +258,11 @@ QWidget* FilterGalleryDialog::buildPreview()
     previewArea_->setAlignment(Qt::AlignCenter);
     previewArea_->setBackgroundRole(QPalette::Dark);
     previewLabel_ = new QLabel;
+    // Drags pan the viewport, so the label lets presses through to it.
+    previewLabel_->setAttribute(Qt::WA_TransparentForMouseEvents);
     previewArea_->setWidget(previewLabel_);
+    previewArea_->viewport()->installEventFilter(this);
+    previewArea_->viewport()->setCursor(Qt::OpenHandCursor);
     for (QScrollBar* bar :
          {previewArea_->horizontalScrollBar(), previewArea_->verticalScrollBar()}) {
         connect(bar, &QScrollBar::valueChanged, this, &FilterGalleryDialog::schedulePreview);
@@ -289,6 +294,7 @@ QWidget* FilterGalleryDialog::buildPreview()
             }
         }
     });
+    addZoomShortcuts(this, zoomIn, zoomOut);
     zoomRow->addWidget(zoomOut);
     zoomRow->addWidget(zoomIn);
     zoomRow->addWidget(zoomLabel_);
@@ -548,8 +554,45 @@ void FilterGalleryDialog::showEvent(QShowEvent* event)
 
 bool FilterGalleryDialog::eventFilter(QObject* watched, QEvent* event)
 {
+    // The hand: a left drag on the preview scrolls it, as on the canvas.
+    if (previewArea_ && watched == previewArea_->viewport()) {
+        QWidget* viewport = previewArea_->viewport();
+        QScrollBar* h = previewArea_->horizontalScrollBar();
+        QScrollBar* v = previewArea_->verticalScrollBar();
+        switch (event->type()) {
+        case QEvent::MouseButtonPress: {
+            auto* mouse = static_cast<QMouseEvent*>(event);
+            if (mouse->button() == Qt::LeftButton) {
+                panAnchor_ = mouse->position().toPoint();
+                panStart_ = QPoint(h->value(), v->value());
+                panning_ = true;
+                viewport->setCursor(Qt::ClosedHandCursor);
+                return true;
+            }
+            break;
+        }
+        case QEvent::MouseMove:
+            if (panning_) {
+                const QPoint delta =
+                    static_cast<QMouseEvent*>(event)->position().toPoint() - panAnchor_;
+                h->setValue(panStart_.x() - delta.x());
+                v->setValue(panStart_.y() - delta.y());
+                return true;
+            }
+            break;
+        case QEvent::MouseButtonRelease:
+            if (panning_ && static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton) {
+                panning_ = false;
+                viewport->setCursor(Qt::OpenHandCursor);
+                return true;
+            }
+            break;
+        default:
+            break;
+        }
+    }
     // The eye: a press on a row's icon shows or hides that effect.
-    if (watched == list_->viewport() && event->type() == QEvent::MouseButtonPress) {
+    if (list_ && watched == list_->viewport() && event->type() == QEvent::MouseButtonPress) {
         const QPoint pos = static_cast<QMouseEvent*>(event)->position().toPoint();
         const QListWidgetItem* item = list_->itemAt(pos);
         if (item && pos.x() < list_->visualItemRect(item).left() + list_->iconSize().width() + 8) {
