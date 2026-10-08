@@ -80,7 +80,7 @@ block checker in B, so every filter sees both gradients and hard edges. All
 | `Tiles` | — | **no** | — | No IM tiled-offset-with-fill operator; `-roll` and `-spread` neither offset a fixed grid nor fill the gaps with the foreground/background choice. Guarded by the determinism unit test. |
 | `TraceContour` | — | **no** | — | No IM per-channel level-crossing contour operator; `-edge`, `-morphology` and `-threshold` are different detectors. Guarded by the contour unit tests. |
 | `Wind` | — | **no** | — | No IM horizontal-streak operator; `-motion-blur`, `-spread` and `-wave` displace pixels differently. Guarded by the determinism unit test. |
-| `SmartSharpen` | — | **no** | — | Its `GaussianBlur` remove path is byte-identical to Unsharp Mask (IM `-unsharp`, tolerance 6), but `LensBlur` and `MotionBlur` have no faithful IM operator, so the variant is classified no-equivalent as a whole. Guarded by the remove-path and determinism unit tests. |
+| `SmartSharpen` | — | **no** | — | A deconvolution of a sharp-core + halo blur model; IM's `-unsharp` is a plain blur difference and has no deconvolution operator, so the variant is no-equivalent. Guarded by the core-inverse, halo-convergence, remove-path and determinism unit tests. |
 
 ### Why `MotionBlur` is not diffed
 

@@ -38,25 +38,6 @@ pub fn r#box(buf: &mut PixelBuffer, radius: u32) -> Result<(), FilterError> {
 }
 
 pub fn motion(buf: &mut PixelBuffer, angle_deg: f64, distance: u32) -> Result<(), FilterError> {
-    motion_impl(buf, angle_deg, distance, false)
-}
-
-/// Sub-pixel (bilinear) tap variant of [`motion`], reached only by Smart
-/// Sharpen's "More Accurate" path. The default path is byte-unchanged.
-pub(crate) fn motion_accurate(
-    buf: &mut PixelBuffer,
-    angle_deg: f64,
-    distance: u32,
-) -> Result<(), FilterError> {
-    motion_impl(buf, angle_deg, distance, true)
-}
-
-fn motion_impl(
-    buf: &mut PixelBuffer,
-    angle_deg: f64,
-    distance: u32,
-    accurate: bool,
-) -> Result<(), FilterError> {
     validate(buf)?;
     if !angle_deg.is_finite() || !(-360.0..=360.0).contains(&angle_deg) {
         return Err(FilterError::InvalidParams(format!(
@@ -90,13 +71,9 @@ fn motion_impl(
                 let mut acc = 0f64;
                 for k in 0..taps {
                     let f = k as f64 - half;
-                    if accurate {
-                        acc += bilinear(&src, w, h, x as f64 + f * dx, y as f64 + f * dy);
-                    } else {
-                        let sx = clamp_index(x as isize + (f * dx).round() as isize, w);
-                        let sy = clamp_index(y as isize + (f * dy).round() as isize, h);
-                        acc += src[sy * w + sx] as f64;
-                    }
+                    let sx = clamp_index(x as isize + (f * dx).round() as isize, w);
+                    let sy = clamp_index(y as isize + (f * dy).round() as isize, h);
+                    acc += src[sy * w + sx] as f64;
                 }
                 buf.data[base + y * w + x] = (acc / divisor).round().clamp(0.0, 255.0) as u8;
             }

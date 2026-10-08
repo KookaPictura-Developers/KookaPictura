@@ -261,8 +261,10 @@ pub fn preview_apron(filter: &Filter) -> i32 {
     let radius = match filter {
         Filter::GaussianBlur { radius }
         | Filter::UnsharpMask { radius, .. }
-        | Filter::HighPass { radius }
-        | Filter::SmartSharpen { radius, .. } => radius.ceil(),
+        | Filter::HighPass { radius } => radius.ceil(),
+        // Smart Sharpen iterates a halo reaching 2.4·radius (3σ at
+        // σ = 0.8·radius); later iterations reach further but weigh less.
+        Filter::SmartSharpen { radius, .. } => (3.0 * radius).ceil(),
         Filter::HdrToning(p) => (3.0 * p.radius).ceil(),
         Filter::BoxBlur { radius }
         | Filter::SurfaceBlur { radius, .. }

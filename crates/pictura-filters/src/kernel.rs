@@ -21,17 +21,10 @@ pub fn sigma_from_radius(radius: f64) -> f64 {
 
 /// Normalized 1-D FIR kernel, support `⌈3σ⌉` each side.
 pub fn gaussian_kernel(sigma: f64) -> Vec<f64> {
-    gaussian_kernel_with_support(sigma, 3.0)
-}
-
-/// Normalized 1-D FIR kernel with a caller-chosen support in σ units.
-/// [`gaussian_kernel`] keeps the 3σ `FILT-010` convention; Smart Sharpen's
-/// "More Accurate" path asks for a wider 4σ support.
-pub fn gaussian_kernel_with_support(sigma: f64, support_sigma: f64) -> Vec<f64> {
     if sigma <= 0.0 {
         return vec![1.0];
     }
-    let support = (support_sigma * sigma).ceil() as isize;
+    let support = (3.0 * sigma).ceil() as isize;
     let size = (2 * support + 1) as usize;
     let two_sigma_sq = 2.0 * sigma * sigma;
     let mut weights = Vec::with_capacity(size);
@@ -96,19 +89,13 @@ pub(crate) fn invalid(msg: String) -> FilterError {
 /// Separable Gaussian blur of the color planes of a 3/4-channel planar buffer
 /// (alpha untouched), clamp-to-edge. Shared by Gaussian Blur and Unsharp Mask.
 pub fn gaussian_blur_planes(buf: &mut PixelBuffer, sigma: f64) {
-    gaussian_blur_planes_with_support(buf, sigma, 3.0);
-}
-
-/// Same as [`gaussian_blur_planes`] with a caller-chosen support in σ units;
-/// Smart Sharpen's "More Accurate" path uses 4σ for a wider blur estimate.
-pub fn gaussian_blur_planes_with_support(buf: &mut PixelBuffer, sigma: f64, support_sigma: f64) {
     let w = buf.width as usize;
     let h = buf.height as usize;
     let n = w * h;
     if sigma <= 0.0 || n == 0 {
         return;
     }
-    let kernel = gaussian_kernel_with_support(sigma, support_sigma);
+    let kernel = gaussian_kernel(sigma);
     let support = (kernel.len() / 2) as isize;
     let planes = (buf.channels as usize).min(3);
     // Rows are independent and each pixel's sum runs in kernel order, so the

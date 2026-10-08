@@ -352,9 +352,9 @@ const MAPPING: &[Mapping] = &[
         filter: "SmartSharpen",
         im: None,
         tolerance: 0,
-        note: "Its `GaussianBlur` remove path is byte-identical to Unsharp Mask (IM `-unsharp`, \
-               tolerance 6), but `LensBlur` and `MotionBlur` have no faithful IM operator, so the \
-               variant is classified no-equivalent as a whole. Guarded by the remove-path and \
+        note: "A deconvolution of a sharp-core + halo blur model; IM's `-unsharp` is a plain \
+               blur difference and has no deconvolution operator, so the variant is \
+               no-equivalent. Guarded by the core-inverse, halo-convergence, remove-path and \
                determinism unit tests",
     },
 ];
