@@ -1,7 +1,13 @@
+use pictura_filters::blur::{BLUR_MORE_RADIUS, BLUR_RADIUS};
 use pictura_filters::kernel::{gaussian_kernel, sigma_from_radius};
+use pictura_filters::sharpen::{SHARPEN_AMOUNT, SHARPEN_MORE_AMOUNT, SHARPEN_RADIUS};
 use pictura_filters::Filter;
 
-use super::{BLUR_KERNEL, MAX_WEIGHTS, SHARPEN_KERNEL, SHARPEN_MORE_KERNEL};
+use super::MAX_WEIGHTS;
+
+/// Largest Surface Blur radius the GPU runs; measured on a 1024² buffer, the
+/// CPU overtakes the shader between radius 16 and 30.
+const SURFACE_GPU_MAX_RADIUS: u32 = 16;
 
 /// One GPU execution plan for a filter, mirroring the CPU kernel construction.
 pub(super) enum Plan {
@@ -10,7 +16,6 @@ pub(super) enum Plan {
         k: u32,
         norm: f32,
         offset: f32,
-        repeat: u32,
     },
     Separable(SepPlan),
     Motion {
@@ -19,8 +24,7 @@ pub(super) enum Plan {
     },
     Surface {
         radius: u32,
-        two_sig_sq: f32,
-        two_thr_sq: f32,
+        threshold: u32,
     },
     Morph {
         radius: u32,
@@ -60,10 +64,16 @@ pub(super) struct SepPlan {
 /// to the CPU so the oracle still decides the bytes.
 pub(super) fn plan(filter: &Filter) -> Option<Plan> {
     match filter {
-        Filter::Blur => Some(kernel3(&BLUR_KERNEL, 16.0, 1)),
-        Filter::BlurMore => Some(kernel3(&BLUR_KERNEL, 16.0, 3)),
-        Filter::Sharpen => Some(kernel3(&SHARPEN_KERNEL, 1.0, 1)),
-        Filter::SharpenMore => Some(kernel3(&SHARPEN_MORE_KERNEL, 1.0, 1)),
+        // Blur and the two Sharpens are a Gaussian and an Unsharp Mask at fixed
+        // settings on the CPU, so they take those filters' plans.
+        Filter::Blur => plan(&Filter::GaussianBlur {
+            radius: BLUR_RADIUS,
+        }),
+        Filter::BlurMore => plan(&Filter::GaussianBlur {
+            radius: BLUR_MORE_RADIUS,
+        }),
+        Filter::Sharpen => plan(&unsharp(SHARPEN_AMOUNT)),
+        Filter::SharpenMore => plan(&unsharp(SHARPEN_MORE_AMOUNT)),
         Filter::GaussianBlur { radius } => {
             if !radius.is_finite() || *radius < 0.0 || *radius == 0.0 {
                 return None;
@@ -126,11 +136,14 @@ pub(super) fn plan(filter: &Filter) -> Option<Plan> {
             if !(1..=100).contains(radius) || *threshold == 0 {
                 return None;
             }
-            let sigma = sigma_from_radius(*radius as f64);
+            // The CPU slides a histogram (O(r) per pixel) where the shader
+            // scans the window (O(r²)); past this radius the CPU is faster.
+            if *radius > SURFACE_GPU_MAX_RADIUS {
+                return None;
+            }
             Some(Plan::Surface {
                 radius: *radius,
-                two_sig_sq: (2.0 * sigma * sigma) as f32,
-                two_thr_sq: (2.0 * f64::from(*threshold).powi(2)) as f32,
+                threshold: u32::from(*threshold),
             })
         }
         Filter::Maximum { radius } => {
@@ -180,7 +193,6 @@ pub(super) fn plan(filter: &Filter) -> Option<Plan> {
                 k: 5,
                 norm: scale32,
                 offset: offset32,
-                repeat: 1,
             })
         }
         Filter::OilPaint {
@@ -234,13 +246,11 @@ fn normalize3(v: (f64, f64, f64)) -> (f64, f64, f64) {
     }
 }
 
-fn kernel3(kernel: &[[i32; 3]; 3], norm: f32, repeat: u32) -> Plan {
-    Plan::Kernel {
-        weights: kernel.iter().flatten().map(|&v| v as f32).collect(),
-        k: 3,
-        norm,
-        offset: 0.0,
-        repeat,
+fn unsharp(amount: f64) -> Filter {
+    Filter::UnsharpMask {
+        amount,
+        radius: SHARPEN_RADIUS,
+        threshold: 0,
     }
 }
 

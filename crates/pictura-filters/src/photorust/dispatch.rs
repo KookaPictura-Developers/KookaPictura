@@ -9,8 +9,8 @@ use pictura_core::PixelBuffer;
 
 use super::pixmap::{Pixmap, Rgba8};
 use super::{
-    add_noise, artistic, brush_strokes, convolve, distort, pixelate, sketch, stylize, texture,
-    with_seed,
+    add_noise, artistic, brush_strokes, convolve, distort, pixelate, sharpen, sketch, stylize,
+    texture, with_seed,
 };
 use crate::{Filter, FilterError, LightDirection, NoiseDistribution, PolarKind, TextureOptions};
 
@@ -105,6 +105,11 @@ fn plan(filter: &Filter) -> Option<Result<(u64, Run), FilterError>> {
             .and(check("dust threshold", threshold, 0..=255))
             .map(|()| unseeded(move |p| convolve::dust_and_scratches(p, radius, threshold))),
         Filter::Average => Ok(unseeded(convolve::average)),
+        // --- Blur / Sharpen -----------------------------------------------
+        Filter::SurfaceBlur { radius, threshold } => check("surface radius", radius, 1..=100)
+            .and(check("surface threshold", threshold, 1..=255))
+            .map(|()| unseeded(move |p| convolve::surface_blur(p, radius, u32::from(threshold)))),
+        Filter::SharpenEdges => Ok(unseeded(sharpen::sharpen_edges)),
         // --- Stylize ------------------------------------------------------
         Filter::Emboss {
             angle,

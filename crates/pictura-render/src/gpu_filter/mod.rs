@@ -11,14 +11,15 @@
 //! One WGSL compute shader carries every kernel behind a mode selector and a
 //! normalized weight buffer:
 //!
-//! - `KERNEL` — a KxK convolution (Sharpen family; Blur, repeated for Blur
-//!   More) with one rounded 8-bit write per pass;
+//! - `KERNEL` — a KxK convolution (Custom) with one rounded 8-bit write;
 //! - `SEP_H`/`SEP_V` — a separable 1-D convolution keeping an unrounded `f32`
 //!   intermediate between the row and column passes, exactly like
-//!   `pictura_filters::kernel::gaussian_blur_planes` (Gaussian, Box);
+//!   `pictura_filters::kernel::gaussian_blur_planes` (Gaussian, Box, and Blur
+//!   and Blur More at their fixed radii);
 //! - `MOTION` — the directional 1-D sum (Motion Blur);
 //! - `COMBINE` — a pointwise mix of the original and a blurred copy (Unsharp
-//!   Mask, High Pass);
+//!   Mask, Sharpen and Sharpen More at their fixed amounts, High Pass);
+//! - `SURFACE` — the per-channel thresholded window mean (Surface Blur);
 //! - `MEDIAN` — an exact per-channel order statistic over the clamped
 //!   `(2r+1)²` window, selected by binary search on the byte value (the window
 //!   count is always odd, so the middle element is unique and matches the CPU
@@ -66,10 +67,6 @@ const COMBINE_UNSHARP: u32 = 1;
 /// Largest 1-D support the weight buffer accepts; anything larger falls back to
 /// the CPU rather than allocating an unbounded kernel.
 const MAX_WEIGHTS: usize = 512;
-
-const BLUR_KERNEL: [[i32; 3]; 3] = [[1, 2, 1], [2, 4, 2], [1, 2, 1]];
-const SHARPEN_KERNEL: [[i32; 3]; 3] = [[0, -1, 0], [-1, 5, -1], [0, -1, 0]];
-const SHARPEN_MORE_KERNEL: [[i32; 3]; 3] = [[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]];
 
 /// Whether a usable adapter exists for the GPU filter kernels.
 ///

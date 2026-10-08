@@ -78,19 +78,14 @@ pub(super) fn run(
             k,
             norm,
             offset,
-            repeat,
         } => {
             let mut p = Params::new(MODE_KERNEL, w, h);
             p.ksize = *k;
             p.support = (*k / 2) as i32;
             p.norm = *norm;
             p.offset = *offset;
-            let (mut src, mut dst) = (&a, &b);
-            for _ in 0..*repeat {
-                dispatch(device, queue, &p, src, dst, &mid, &weights, &params, count);
-                std::mem::swap(&mut src, &mut dst);
-            }
-            src
+            dispatch(device, queue, &p, &a, &b, &mid, &weights, &params, count);
+            &b
         }
         Plan::Separable(sp) => {
             let mut p = Params::new(MODE_SEP_H, w, h);
@@ -120,15 +115,10 @@ pub(super) fn run(
             dispatch(device, queue, &p, &a, &b, &mid, &weights, &params, count);
             &b
         }
-        Plan::Surface {
-            radius,
-            two_sig_sq,
-            two_thr_sq,
-        } => {
+        Plan::Surface { radius, threshold } => {
             let mut p = Params::new(MODE_SURFACE, w, h);
             p.support = *radius as i32;
-            p.norm = *two_sig_sq;
-            p.thr = *two_thr_sq;
+            p.taps = *threshold;
             dispatch(device, queue, &p, &a, &b, &mid, &weights, &params, count);
             &b
         }
@@ -518,14 +508,6 @@ fn src_val(idx: u32) -> u32 {
     return (w >> ((idx % 4u) * 8u)) & 0xFFu;
 }
 
-// Rec.601 luma; `ci` is a pixel index within plane 0.
-fn luma3(ci: u32) -> f32 {
-    let n = p.w * p.h;
-    return 0.299 * f32(src_val(ci))
-        + 0.587 * f32(src_val(n + ci))
-        + 0.114 * f32(src_val(2u * n + ci));
-}
-
 fn morph_best(a: u32, b: u32) -> u32 {
     if (p.taps != 0u) { return max(a, b); }
     return min(a, b);
@@ -617,36 +599,37 @@ fn motion_val(idx: u32) -> f32 {
     return acc / f32(p.taps);
 }
 
-// Direct bilateral: spatial Gaussian × range Gaussian on neighbour luma,
-// mirroring `pictura_filters::blur::surface` (there is no hard threshold cut).
-// ponytail: O(pixels·radius²) direct scan, same ceiling as the CPU oracle;
-// swap for a guided/box-range approximation only if radius 100 ever gets hot.
+// Mean of the neighbours within `p.taps` levels of the centre, per channel,
+// over the window clipped to the image, mirroring the photorust engine's
+// `surface_blur`. Integer sums and a truncating divide, so it is exact.
+// ponytail: O(pixels·radius²) direct scan where the CPU slides a histogram;
+// fine at the dialog's radii, slide a shared-memory tally if 100 ever gets hot.
 fn surface_val(idx: u32) -> f32 {
     let n = p.w * p.h;
     let plane = idx / n;
     let rem = idx % n;
-    let x = rem % p.w;
-    let y = rem / p.w;
+    let x = i32(rem % p.w);
+    let y = i32(rem / p.w);
     let base = plane * n;
     let r = p.support;
-    let center_luma = luma3(rem);
-    var sum = 0.0;
-    var acc = 0.0;
-    for (var ky: i32 = 0; ky <= 2 * r; ky = ky + 1) {
-        let dy = ky - r;
-        let sy = clampi(i32(y) + dy, p.h);
-        for (var kx: i32 = 0; kx <= 2 * r; kx = kx + 1) {
-            let dx = kx - r;
-            let sx = clampi(i32(x) + dx, p.w);
-            let si = sy * p.w + sx;
-            let dl = abs(luma3(si) - center_luma);
-            var wgt = exp(-f32(dx * dx + dy * dy) / p.norm);
-            wgt = wgt * exp(-(dl * dl) / p.thr);
-            sum = sum + wgt;
-            acc = acc + wgt * src_byte(base + si);
+    let centre = i32(src_val(idx));
+    let limit = i32(p.taps);
+    let x0 = max(x - r, 0);
+    let x1 = min(x + r, i32(p.w) - 1);
+    let y0 = max(y - r, 0);
+    let y1 = min(y + r, i32(p.h) - 1);
+    var total = 0u;
+    var count = 0u;
+    for (var sy = y0; sy <= y1; sy = sy + 1) {
+        for (var sx = x0; sx <= x1; sx = sx + 1) {
+            let v = src_val(base + u32(sy) * p.w + u32(sx));
+            if (abs(i32(v) - centre) <= limit) {
+                total = total + v;
+                count = count + 1u;
+            }
         }
     }
-    return acc / sum;
+    return f32(total / max(count, 1u));
 }
 
 fn morph_h_word(base_idx: u32, total: u32) {

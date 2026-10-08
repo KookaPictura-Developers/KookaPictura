@@ -280,6 +280,21 @@ fn unsupported_filter_falls_back_byte_identical() {
     assert_eq!(got.data, want.data, "fallback must be byte-identical");
 }
 
+/// Past the GPU's Surface Blur radius cap the CPU histogram runs instead.
+#[test]
+fn wide_surface_blur_runs_on_the_cpu() {
+    let filter = Filter::SurfaceBlur {
+        radius: 30,
+        threshold: 40,
+    };
+    let base = gradient_rgba();
+    let want = oracle(&filter, &base);
+    let mut got = base.clone();
+    let backend = apply_filter_active(&filter, &mut got, true).expect("valid parameters");
+    assert_eq!(backend, Backend::Cpu);
+    assert_eq!(got.data, want.data, "fallback must be byte-identical");
+}
+
 #[test]
 fn disabled_gpu_is_byte_identical() {
     let mut filters = accelerated_filters();
@@ -295,8 +310,8 @@ fn disabled_gpu_is_byte_identical() {
     }
 }
 
-/// Print-only performance evidence for the heaviest accelerated kernel. The CPU
-/// baseline (~7.1 s at radius 10 per `profile.rs`) dwarfs the GPU path.
+/// Surface Blur's GPU speedup at a small radius. The CPU slides a histogram
+/// (~40 ms at 1024², radius 4), so only small radii still pay for the GPU.
 #[test]
 fn surface_blur_1024_gpu_beats_cpu() {
     if !bench_enabled() {
@@ -318,8 +333,9 @@ fn surface_blur_1024_gpu_beats_cpu() {
             base.data[2 * n + i] = ((x + y) % 256) as u8;
         }
     }
+    // A small radius: past 16 the GPU plan defers to the faster CPU histogram.
     let filter = Filter::SurfaceBlur {
-        radius: 10,
+        radius: 4,
         threshold: 20,
     };
 
@@ -336,7 +352,7 @@ fn surface_blur_1024_gpu_beats_cpu() {
     assert_eq!(backend, Backend::Gpu);
     assert_parity(&gpu, &cpu, "surface-1024");
     println!(
-        "SurfaceBlur 1024x1024 r=10 t=20: cpu {cpu_ms:.1} ms, gpu {gpu_ms:.1} ms, {:.1}x speedup",
+        "SurfaceBlur 1024x1024 r=4 t=20: cpu {cpu_ms:.1} ms, gpu {gpu_ms:.1} ms, {:.1}x speedup",
         cpu_ms / gpu_ms
     );
     assert!(gpu_ms < cpu_ms, "GPU should beat CPU for Surface Blur");

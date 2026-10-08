@@ -1,5 +1,5 @@
 //! The shared filter contract for every variant `apply` routes to the ported
-//! photorust engine (#221): it runs on RGB and RGBA, never touches alpha, is
+//! photorust engine (#221, #222): it runs on RGB and RGBA, never touches alpha, is
 //! deterministic, rejects an out-of-range parameter without writing a sample,
 //! survives tiny images, and re-rolls with its seed where it takes one.
 
@@ -90,6 +90,18 @@ fn cases() -> Vec<Case> {
             }),
         ),
         case("Average", Filter::Average, None),
+        case(
+            "SurfaceBlur",
+            Filter::SurfaceBlur {
+                radius: 3,
+                threshold: 30,
+            },
+            Some(Filter::SurfaceBlur {
+                radius: 101,
+                threshold: 30,
+            }),
+        ),
+        case("SharpenEdges", Filter::SharpenEdges, None),
         case(
             "Emboss",
             Filter::Emboss {

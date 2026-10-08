@@ -12,8 +12,9 @@ flags, the tolerances and the known divergences are below.
 - Verified against: ImageMagick **7.1.2-29 Q16-HDRI** (2026-07-27).
 
 Only filters with a faithful ImageMagick operator are diffed (`GaussianBlur`,
-`BoxBlur`, `Median`, `UnsharpMask`, `Maximum`, `Minimum`, `Offset` with
-`wrap = true`, `Custom`, `Solarize`, `Mosaic`). The rest are covered by
+`BoxBlur`, `Blur`, `BlurMore`, `Median`, `UnsharpMask`, `Sharpen`,
+`SharpenMore`, `Maximum`, `Minimum`, `Offset` with `wrap = true`, `Custom`,
+`Solarize`, `Mosaic`). The rest are covered by
 ImageMagick-independent property/known-value tests (here and in the module unit
 tests); the measured divergences that ruled out a differential test are recorded
 below. No test is `#[ignore]`d.
@@ -42,12 +43,12 @@ block checker in B, so every filter sees both gradients and hard edges. All
 | `MotionBlur` | — | **no** | — | IM `-motion-blur` builds a **one-sided Gaussian line** kernel; Pictura averages symmetric uniform taps. Observed max delta 86 (`-motion-blur 0x5+0`). |
 | `RadialBlur` | — | **no** | — | ImageMagick 7 has **no** `-radial-blur` (IM 6 only); `-rotational-blur` weights a different angle profile. Observed max delta 58 (Spin 20 vs `-rotational-blur 20`). |
 | `Average` | — | **no** | — | Trivial global region mean; no IM operator shares the window/border semantics. Observed max delta 92 (`-statistic mean 16x16`). |
-| `Blur` | — | **no** | — | PS fixed `[1 2 1]` separable kernel; IM `-blur` is a Gaussian. Observed max delta 23 (`-blur 0x1`). |
-| `BlurMore` | — | **no** | — | Three passes of the PS `[1 2 1]` kernel; observed max delta 14 (`-blur 0x1`). |
-| `SurfaceBlur` | — | **no** | — | Bilateral range/space weights are closed; IM has no bilateral operator. Observed max delta 32 (`-gaussian-blur 0x1`). |
-| `Sharpen` | — | **no** | — | Fixed 3×3 high-pass kernel; IM `-sharpen` is a Gaussian unsharp. Observed max delta 17 (`-sharpen 0x1`). |
-| `SharpenMore` | — | **no** | — | Fixed stronger 3×3 high-pass kernel; observed max delta 17 (`-sharpen 0x1`). |
-| `SharpenEdges` | — | **no** | — | Edge-gated high-pass with a fixed gate; observed max delta 17 (`-sharpen 0x1`). |
+| `Blur` | `-gaussian-blur 0x0.7` | yes | 0 | A Gaussian at the fixed σ 0.7 (radius 2.1); measured max delta 0. |
+| `BlurMore` | `-gaussian-blur 0x2` | yes | 1 | A Gaussian at the fixed σ 2.0 (radius 6); IM's kernel at this σ differs by rounding; measured max delta 1. |
+| `SurfaceBlur` | — | **no** | — | Per-channel mean of the neighbours within the threshold; IM has no thresholded-mean operator. Observed max delta 71 (radius 3 / threshold 20 vs `-gaussian-blur 0x1`). |
+| `Sharpen` | `-unsharp 0x1+0.5+0` | yes | 2 | Unsharp Mask at the fixed 50 % / σ 1; IM's internal blur differs slightly; measured max delta 2. |
+| `SharpenMore` | `-unsharp 0x1+1+0` | yes | 3 | Unsharp Mask at the fixed 100 % / σ 1; IM's internal blur differs slightly; measured max delta 3. |
+| `SharpenEdges` | — | **no** | — | Unsharp gated by a smoothstep of the Sobel edge strength; IM has no edge-gated sharpen. Observed max delta 44 (`-sharpen 0x1`). |
 | `AddNoise` | — | **no** | — | RNG streams differ; the contract is same-seed determinism. Observed max delta 79 (`-attenuate 0.1 +noise Gaussian`). |
 | `Despeckle` | — | **no** | — | IM `-despeckle` uses a different rank detector. Observed max delta 13 (`-despeckle`). |
 | `Maximum` | `-morphology Dilate Square:{radius}` | yes | 0 | Same separable `(2r+1)²` square grayscale dilate, clamp-to-edge; measured max delta 0 (radius 2). **`Square:N` takes a radius** (kernel diameter `2N+1`), so pass `Square:{radius}`; the M7 plan's `N = 2·radius+1` would dilate over a `(4r+3)²` footprint. |
