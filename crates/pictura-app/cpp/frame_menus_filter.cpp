@@ -6,6 +6,7 @@
 #include "filter_commands.h"
 #include "filter_gallery_dialog.h"
 #include "filter_preview_dialog.h"
+#include "lens_flare_dialog.h"
 
 #include "pictura_app/src/cxxqt_object/filter_tools.cxxqt.h"
 
@@ -22,6 +23,18 @@ FilterPreviewView previewViewFor(ImageView* canvas)
         view.canvasZoom = canvas->zoom();
     }
     return view;
+}
+
+// Lens Flare's parameters are one struct edited on its own dialog; every other
+// filter edits independent slots on the shared one.
+bool runFilterDialog(PictureView* view, const FilterCommandSpec& spec,
+                     const FilterPreviewView& previewView, const QList<double>& initial,
+                     QList<double>* out, QWidget* parent)
+{
+    if (spec.kind == QStringLiteral("lens-flare")) {
+        return LensFlareDialog::get(view, spec, initial, out, parent);
+    }
+    return FilterPreviewDialog::get(view, spec, previewView, initial, out, parent);
 }
 
 } // namespace
@@ -53,8 +66,7 @@ void PicturaMainWindow::applyFilterCommand(const FilterCommandSpec& spec)
     QList<double> values;
     // The dialog previews on the canvas as controls change; OK commits one
     // state, Cancel discards the preview bit-identically.
-    if (FilterPreviewDialog::get(view, spec, previewViewFor(imageView()), QList<double>(), &values,
-                                 this)) {
+    if (runFilterDialog(view, spec, previewViewFor(imageView()), QList<double>(), &values, this)) {
         if (apply_filter_params(*view, spec.kind, values)) {
             refresh();
         } else {
@@ -149,8 +161,8 @@ void PicturaMainWindow::wireFilterMenu()
             return;
         }
         QList<double> values;
-        if (FilterPreviewDialog::get(view, *spec, previewViewFor(imageView()),
-                                     filter_last_params(*view), &values, this)) {
+        if (runFilterDialog(view, *spec, previewViewFor(imageView()), filter_last_params(*view),
+                            &values, this)) {
             if (apply_filter_params(*view, spec->kind, values)) {
                 refresh();
             } else {

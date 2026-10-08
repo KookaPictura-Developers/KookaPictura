@@ -511,7 +511,11 @@ mod tests {
             bottom: 232,
             right: 232,
         };
-        for (kind, params) in [("diffuse", vec![0.0f64]), ("lighting-effects", Vec::new())] {
+        for (kind, params) in [
+            ("diffuse", vec![0.0f64]),
+            ("lighting-effects", Vec::new()),
+            ("lens-flare", vec![100.0, 0.5, 0.5, 0.0]),
+        ] {
             assert!(filter_preview_needs_whole_layer(kind), "{kind}");
 
             // A cropped section preview does not match the commit...
