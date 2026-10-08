@@ -642,8 +642,19 @@ void PicturaMainWindow::registerHandlers()
         });
     }
 
-    // Delete Hidden Layers needs only a document (it records nothing when
-    // nothing is hidden); Hide Layers needs a selection.
+    // Delete Layer removes the Layers-panel selection, as the panel's own
+    // delete does. Delete Hidden Layers needs only a document (it records
+    // nothing when nothing is hidden); Hide Layers needs a selection.
+    registry_->setHandler(command_ids::LayerDeleteLayer, [this]() {
+        if (layersPanel_) {
+            layersPanel_->deleteSelection();
+            refresh();
+        }
+    });
+    registry_->setEnabledProvider(command_ids::LayerDeleteLayer, [this]() {
+        return activeView() && activeView()->has_document() && layersPanel_
+            && !layersPanel_->selectedPaths().isEmpty();
+    });
     registry_->setHandler(command_ids::LayerDeleteHiddenLayers, [this]() {
         PictureView* view = activeView();
         if (view && view->delete_hidden_layers() > 0) {

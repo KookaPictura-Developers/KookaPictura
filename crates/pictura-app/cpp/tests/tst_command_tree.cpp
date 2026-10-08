@@ -45,6 +45,7 @@ private slots:
     void panelGroupChrome();
     void selfAnchorDock();
     void layerAdjustmentMenu();
+    void layerMenuGroupsAndDelete();
     void railModeResizeGrip();
     void menuMoves();
     void preferencesPages();
@@ -547,6 +548,53 @@ void CommandTreeTest::layerAdjustmentMenu()
         QStringLiteral("Gradient Map"),        QStringLiteral("Selective Color"),
         QStringLiteral("Add Mask by Default"), QStringLiteral("Clip to Layer")};
     QCOMPARE(column->widgetMenuTextsForTest(QStringLiteral("adjustmentsPanel")), expectedPanel);
+}
+
+// Layer: separators split the top level into CS6's groups (#246), and Delete
+// Layer is live, removing the Layers-panel selection.
+void CommandTreeTest::layerMenuGroupsAndDelete()
+{
+    QMenu* layer = nullptr;
+    for (QAction* top : window_->menuBar()->actions()) {
+        if (top->text().remove(QLatin1Char('&')) == QStringLiteral("Layer")) {
+            layer = top->menu();
+        }
+    }
+    QVERIFY(layer != nullptr);
+    QStringList groupEnds;
+    const QList<QAction*> actions = layer->actions();
+    for (int i = 1; i < actions.size(); ++i) {
+        if (actions.at(i)->isSeparator()) {
+            groupEnds.append(actions.at(i - 1)->text());
+        }
+    }
+    const QStringList expectedEnds = {
+        QStringLiteral("New"),                       QStringLiteral("Delete Hidden Layers"),
+        QStringLiteral("Smart Filter"),              QStringLiteral("Layer Content Options…"),
+        QStringLiteral("Release Clipping Mask"),     QStringLiteral("Rasterize"),
+        QStringLiteral("New Layer-based Slice"),     QStringLiteral("Lock All Layers In Group…"),
+        QStringLiteral("Merge Clipping Mask")};
+    QCOMPARE(groupEnds, expectedEnds);
+
+    pictura::PictureView* view = window_->activeView();
+    QVERIFY(view != nullptr);
+    auto* panel = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    QVERIFY(panel != nullptr);
+    pictura::CommandRegistry* registry = window_->registry();
+    QAction* del = registry->action(QString::fromLatin1(pictura::command_ids::LayerDeleteLayer));
+    QVERIFY(del != nullptr);
+    QCOMPARE(del->text(), QStringLiteral("Delete Layer"));
+    const QString doomed = view->add_layer_in(QString());
+    panel->refresh();
+    QVERIFY(panel->selectRowForTest(doomed));
+    registry->refresh();
+    QVERIFY(del->isEnabled());
+    const int before = view->layer_row_count();
+    del->trigger();
+    QCOMPARE(view->layer_row_count(), before - 1);
+    for (int i = 0; i < view->layer_row_count(); ++i) {
+        QVERIFY(view->layer_row_path(i) != doomed);
+    }
 }
 
 // An iconic rail column is resizable from its workspace-facing edge whether it

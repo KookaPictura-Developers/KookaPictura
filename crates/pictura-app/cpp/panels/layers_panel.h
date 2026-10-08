@@ -190,6 +190,8 @@ public:
     /// keyboard path matches the panel and menu paths.
     void groupSelection();
     void ungroupSelection();
+    // Delete the selected layers; Layer > Delete Layer routes here too.
+    void deleteSelection();
 
 signals:
     void selectionChanged();
@@ -218,7 +220,6 @@ private:
     void addLayerAt(const QString& path);
     void addGroupAt(const QString& path);
     void duplicateSelection();
-    void deleteSelection();
     void moveCurrent(int delta);
 
     void toggleSolo(const QString& path);
