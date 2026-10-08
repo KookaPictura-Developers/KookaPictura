@@ -7,6 +7,7 @@ mod align;
 mod clipboard;
 mod clipping;
 mod create;
+mod layer_style;
 mod merge;
 #[cfg(test)]
 mod merge_tests;
@@ -53,6 +54,12 @@ pub use create::{
     add_layer_in, add_raster_layer_from_rgba, add_solid_fill, background_from_layer,
     duplicate_layer, group_layer, layer_from_background, neutral_color, next_layer_name,
     ungroup_layer, NewLayerSpec,
+};
+pub use layer_style::{
+    any_effects_visible, clear_layer_style, copy_layer_style, has_layer_style,
+    layer_style_effect_names, layer_style_pattern_names, layer_style_value, paste_layer_style,
+    scale_layer_effects, set_all_effects_visible, set_document_layer_style_value,
+    set_layer_style_value, LayerStyle,
 };
 pub use merge::{
     can_merge_scope, can_merge_target, flatten, is_visible_in_panel, merge_scope, MergeError,

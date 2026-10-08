@@ -679,7 +679,7 @@ fn bevel_is_bounded_to_the_content_rect() {
 }
 
 #[test]
-fn absent_disabled_or_deferred_bevel_is_a_no_op() {
+fn absent_disabled_or_stroke_emboss_bevel_is_a_no_op() {
     let plain = compose(bevel_layer(None));
     assert_eq!(plain, compose(bevel_layer(None)), "absent bevel");
     assert_eq!(
@@ -705,27 +705,81 @@ fn absent_disabled_or_deferred_bevel_is_a_no_op() {
         })),
         "both opacities 0"
     );
-    let styles: [&[u8]; 4] = [b"OtrB", b"Embs", b"PlEb", b"strokeEmboss"];
-    for style in styles {
-        assert_eq!(
-            plain,
-            compose(spec_bevel(&BevelSpec {
-                style: style.to_vec(),
+    assert_eq!(
+        plain,
+        compose(spec_bevel(&BevelSpec {
+            style: b"strokeEmboss".to_vec(),
+            ..Default::default()
+        })),
+        "Stroke Emboss without a stroke band is a no-op"
+    );
+}
+
+/// How many pixels inside / outside the 6x6 content square differ from `plain`.
+fn changed_inside_outside(out: &PixelBuffer, plain: &PixelBuffer) -> (usize, usize) {
+    let (mut inside, mut outside) = (0, 0);
+    for y in 0..12 {
+        for x in 0..12 {
+            if px(out, x, y) != px(plain, x, y) {
+                if (3..9).contains(&x) && (3..9).contains(&y) {
+                    inside += 1;
+                } else {
+                    outside += 1;
+                }
+            }
+        }
+    }
+    (inside, outside)
+}
+
+#[test]
+fn each_bevel_style_lights_its_side_of_the_edge() {
+    let plain = compose(bevel_layer(None));
+    let style = |code: &[u8]| {
+        changed_inside_outside(
+            &compose(spec_bevel(&BevelSpec {
+                style: code.to_vec(),
                 ..Default::default()
             })),
-            "style {style:?} is a no-op"
-        );
+            &plain,
+        )
+    };
+    let (inner_in, inner_out) = style(b"InrB");
+    assert!(
+        inner_in > 0 && inner_out == 0,
+        "Inner lights only the content"
+    );
+    let (outer_in, outer_out) = style(b"OtrB");
+    assert!(outer_in == 0 && outer_out > 0, "Outer lights only outside");
+    for code in [b"Embs".as_slice(), b"PlEb"] {
+        let (inside, outside) = style(code);
+        assert!(inside > 0 && outside > 0, "{code:?} straddles the edge");
     }
-    for technique in [b"PrBL", b"Slmt"] {
-        assert_eq!(
-            plain,
-            compose(spec_bevel(&BevelSpec {
-                technique: technique.to_vec(),
-                ..Default::default()
-            })),
-            "technique {technique:?} is a no-op"
-        );
-    }
+    // Pillow sinks the outside: the outer ring is the inverse of an Emboss's.
+    let emboss = compose(spec_bevel(&BevelSpec {
+        style: b"Embs".to_vec(),
+        ..Default::default()
+    }));
+    let pillow = compose(spec_bevel(&BevelSpec {
+        style: b"PlEb".to_vec(),
+        ..Default::default()
+    }));
+    assert_ne!(px(&emboss, 1, 6), px(&pillow, 1, 6));
+}
+
+#[test]
+fn each_technique_rounds_the_chamfer_differently() {
+    let render = |technique: &[u8]| {
+        compose(spec_bevel(&BevelSpec {
+            technique: technique.to_vec(),
+            size: 4.0,
+            ..Default::default()
+        }))
+    };
+    let (smooth, hard, soft) = (render(b"SfBL"), render(b"PrBL"), render(b"Slmt"));
+    assert_ne!(smooth, hard);
+    assert_ne!(smooth, soft);
+    assert_ne!(hard, soft);
 }
 
 #[test]
@@ -805,7 +859,7 @@ fn gpu_rejects_a_bevel_layer_and_falls_back() {
 }
 
 #[test]
-fn gpu_does_not_reject_a_disabled_or_deferred_bevel() {
+fn gpu_does_not_reject_a_disabled_or_stroke_emboss_bevel() {
     for spec in [
         BevelSpec {
             enabled: false,
@@ -816,18 +870,14 @@ fn gpu_does_not_reject_a_disabled_or_deferred_bevel() {
             ..Default::default()
         },
         BevelSpec {
-            style: b"OtrB".to_vec(),
-            ..Default::default()
-        },
-        BevelSpec {
-            technique: b"PrBL".to_vec(),
+            style: b"strokeEmboss".to_vec(),
             ..Default::default()
         },
     ] {
         let d = doc(12, 12, vec![spec_bevel(&spec)]);
         assert!(
             !matches!(composite_gpu(&d), Err(GpuError::UnsupportedLayerEffect)),
-            "an inert or deferred bevel must not reject the GPU"
+            "an inert bevel must not reject the GPU"
         );
     }
     let malformed = bevel_layer(Some(lfx2_effect(

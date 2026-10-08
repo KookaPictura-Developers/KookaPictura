@@ -6,6 +6,9 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+# The built-in pattern set a Pattern Overlay offers; also the CPU stroke
+# engine the GPU stroke parity test checks against.
+pictura-paint = { path = "../pictura-paint" }
 pictura-core = { path = "../pictura-core" }
 # M4-B: decode adjustment-layer payloads into destructive Adjustment ops.
 pictura-adjust = { path = "../pictura-adjust" }
@@ -27,5 +30,3 @@ rayon = "1"
 
 [dev-dependencies]
 pictura-testkit = { path = "../pictura-testkit" }
-# Oracle for the GPU stroke parity test: the CPU stroke engine is the reference.
-pictura-paint = { path = "../pictura-paint" }

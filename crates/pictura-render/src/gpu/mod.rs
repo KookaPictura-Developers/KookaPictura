@@ -282,12 +282,11 @@ fn check_supported(doc: &Document) -> Result<(), GpuError> {
         let effects = crate::layer_effects::decode_layer_effects(layer);
         let on = |enabled: bool, present: bool| enabled && present;
         let bevel = effects.bevel.as_ref().is_some_and(|bevel| {
-            // Only a bevel that would render (Inner + Smooth) rejects: a
-            // deferred style/technique is a CPU no-op, so the GPU can run.
+            // Only a bevel that would render rejects: Stroke Emboss is a CPU
+            // no-op, so the GPU can run.
             bevel.enabled
                 && bevel.present
-                && bevel.style == crate::layer_effects::BevelStyle::Inner
-                && bevel.technique == crate::layer_effects::BevelTechnique::Smooth
+                && bevel.style != crate::layer_effects::BevelStyle::Stroke
         });
         if effects
             .drop_shadow

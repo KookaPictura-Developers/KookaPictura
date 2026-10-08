@@ -20,8 +20,8 @@ use crate::composite_native::{mask_alpha_unit, native_unit};
 #[cfg(test)]
 pub(crate) static FORCE_SERIAL: AtomicBool = AtomicBool::new(false);
 
-/// splitmix64 noise for Dissolve; pure in `(x, y)`.
-fn dissolve_noise(x: usize, y: usize) -> f32 {
+/// splitmix64 noise for Dissolve and the effects' Noise; pure in `(x, y)`.
+pub(crate) fn dissolve_noise(x: usize, y: usize) -> f32 {
     let mut z = (x as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
         ^ (y as u64).wrapping_mul(0xBF58_476D_1CE4_E5B9)
         ^ 0xD1B5_4A32_D192_ED03;

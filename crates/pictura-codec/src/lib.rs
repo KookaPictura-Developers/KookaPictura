@@ -35,6 +35,7 @@ mod iptc;
 mod live_shape;
 mod metadata;
 mod patterns;
+mod patterns_write;
 mod pictura_raw;
 mod probe;
 mod read;
@@ -81,6 +82,7 @@ pub use metadata::{
     set_xmp_fields, set_xmp_values, xmp_properties, DocumentMetadata, MergeMode,
 };
 pub use patterns::{decode_patterns, PatternPixels};
+pub use patterns_write::{add_document_pattern, encode_rgb_pattern};
 pub use pictura_raw::{
     attach_pictura_raw_filter, attach_smart_filter, decode_pictura_raw_settings,
     encode_pictura_raw_fltr, CAMERA_RAW_FILTER_ID, CAMERA_RAW_FILTER_NAME,

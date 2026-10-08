@@ -191,6 +191,7 @@ fn shadow_record(r: &mut Reader, default: BlendMode) -> Option<ShadowRecord> {
 fn decode_drop_shadow_record(r: &mut Reader) -> Option<DropShadow> {
     let s = shadow_record(r, BlendMode::Normal)?;
     Some(DropShadow {
+        noise: 0.0,
         enabled: s.enabled,
         present: true,
         blend_mode: s.blend_mode,
@@ -208,6 +209,7 @@ fn decode_drop_shadow_record(r: &mut Reader) -> Option<DropShadow> {
 fn decode_inner_shadow_record(r: &mut Reader) -> Option<InnerShadow> {
     let s = shadow_record(r, BlendMode::Multiply)?;
     Some(InnerShadow {
+        noise: 0.0,
         enabled: s.enabled,
         present: true,
         blend_mode: s.blend_mode,
@@ -261,6 +263,7 @@ fn glow_record(r: &mut Reader, inner: bool) -> Option<GlowRecord> {
 fn decode_glow_record(r: &mut Reader, inner: bool) -> Option<OuterGlow> {
     let g = glow_record(r, inner)?;
     Some(OuterGlow {
+        noise: 0.0,
         enabled: g.enabled,
         present: true,
         blend_mode: g.blend_mode,
@@ -275,6 +278,7 @@ fn decode_glow_record(r: &mut Reader, inner: bool) -> Option<OuterGlow> {
 fn decode_inner_glow_record(r: &mut Reader) -> Option<InnerGlow> {
     let g = glow_record(r, true)?;
     Some(InnerGlow {
+        noise: 0.0,
         enabled: g.enabled,
         present: true,
         blend_mode: g.blend_mode,

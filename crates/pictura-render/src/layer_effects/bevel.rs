@@ -1,20 +1,23 @@
 //! The object-based Bevel & Emboss layer effect (`ebbl`).
 //!
-//! Only the `Inner` style with the `Smooth` technique renders: the masked
-//! content matte `M` is blurred by `size` into a height field, a surface normal
-//! is derived from its central-difference gradient scaled by `size · depth/100`,
-//! and the Lambertian deviation of that normal from flat (`Angle`/`Altitude`)
-//! tints the interior highlight (positive) and shadow (negative), softened by
-//! `soften`, above the content.
+//! The masked content matte `M`'s signed Euclidean distance to its edge gives a
+//! chamfer height rising over `size` pixels (inside the edge for `Inner`,
+//! outside it for `Outer`, straddling it for `Emboss` and `Pillow`), rounded by
+//! the technique (`Smooth` by a third of the size, `Chisel Soft` a pixel, `Chisel Hard` not at
+//! all). A surface normal is derived from its central-difference gradient
+//! scaled by `size · depth/100`, and the Lambertian deviation of that normal from flat
+//! (`Angle`/`Altitude`) gives a signed highlight (positive) / shadow (negative)
+//! shading, softened by `soften`. The style picks where it shows: `Inner` over
+//! `M`, `Outer` over `1 - M` (outside the content), `Emboss` over both, and
+//! `Pillow` over `M` with the outside (`1 - M`) shading inverted.
 //!
-//! ponytail: only `Inner` + `Smooth` renders — the chisel techniques, the
-//! `Outer`/`Emboss`/`Pillow`/`Stroke` styles, edge contour (`MpgS`), gloss
+//! ponytail: the technique roundings are model choices, not Adobe's; the `Stroke` style
+//! (which needs the Stroke effect's band) renders nothing; edge contour (`MpgS`), gloss
 //! contour (`TrnS`), contour range (`Inpr`), anti-alias (`AntA`,
 //! `antialiasGloss`), texture (`useTexture`, `InvT`, `Algn`, `Scl `, `Ptrn`),
 //! `useShape` and `showInDialog` are decoded/ignored; the effective
 //! angle/altitude is the stored `lagl`/`Lald`, not the global-light resource
-//! (1037); the height profile is a Gaussian blur of `M` rather than the reference's
-//! distance transform; `scale = size · depth/100` and the `dot(N,L) - sin(alt)`
+//! (1037); `scale = size · depth/100` and the `dot(N,L) - sin(alt)`
 //! flat-offset are ungrounded model choices; the build region pads by the blur
 //! supports only; `Scale Effects`, the exact inter-effect order and the
 //! highlight/shadow order are not modelled.
@@ -25,8 +28,8 @@ use pictura_core::{BlendMode, Document, Layer};
 use crate::composite::{blend_parts, desc_item, mask_alpha, Canvas};
 
 use super::{
-    blur_matte, bool_or, clamp_finite, clip_rect, content_matte, decode_color, effect_blend_mode,
-    num_clamped, num_or, pad_rect, rect_empty, MAX_ALTITUDE, MAX_DEPTH, MAX_OPACITY, MAX_SIZE,
+    bool_or, clamp_finite, clip_rect, content_matte, decode_color, effect_blend_mode, num_clamped,
+    num_or, pad_rect, rect_empty, MAX_ALTITUDE, MAX_DEPTH, MAX_OPACITY, MAX_SIZE,
 };
 
 /// Bevel style (`bvlS`, typeID `BESl`).
@@ -186,13 +189,25 @@ fn blur_support(size: f64) -> i64 {
     }
 }
 
-/// Build the masked content matte `M` over the padded source region, form the
-/// height field `blur(M, size)`, light its central-difference normal from
-/// `angle`/`altitude`, soften the signed shading, and composite the positive
-/// (highlight) and negative (shadow) parts above the content over `source` only.
+/// How much the technique rounds the chamfer: Smooth rounds it by a third of
+/// the size, Chisel Soft just takes the edge off, Chisel Hard keeps it exact.
+fn rounding(technique: BevelTechnique, size: f64) -> f64 {
+    match technique {
+        BevelTechnique::Smooth => (size / 3.0).max(1.5),
+        BevelTechnique::ChiselSoft => 1.0,
+        BevelTechnique::ChiselHard => 0.0,
+    }
+}
+
+/// Build the masked content matte `M` over the padded region, turn its signed
+/// distance to the content edge into the style's chamfer height (rounded by the
+/// technique), light the height field's normal from `angle`/`altitude`, soften
+/// the signed shading, and composite its positive (highlight) and negative
+/// (shadow) parts above the content over the style's coverage. Everything stays
+/// in `f32`, so a steep bevel shades in smooth gradients rather than steps.
 ///
 /// ponytail: a canvas-filling layer with the maximum `size`/`soften` still costs
-/// `O(canvas · size)` because the blur is a naive separable kernel; the common
+/// `O(canvas · size)` because the blurs are naive separable kernels; the common
 /// small-layer and crafted off-canvas cases are bounded.
 pub(super) fn composite_bevel_emboss(
     canvas: &mut Canvas,
@@ -200,7 +215,8 @@ pub(super) fn composite_bevel_emboss(
     doc: &Document,
     bevel: &BevelEmboss,
 ) {
-    if bevel.style != BevelStyle::Inner || bevel.technique != BevelTechnique::Smooth {
+    // Stroke Emboss lights only a Stroke effect's band, which is not modelled.
+    if bevel.style == BevelStyle::Stroke {
         return;
     }
     let (w, h) = (canvas.w as i32, canvas.h as i32);
@@ -223,12 +239,19 @@ pub(super) fn composite_bevel_emboss(
     };
     let hi_opacity = clamp_finite(bevel.highlight.opacity, MAX_OPACITY) / 100.0;
     let sh_opacity = clamp_finite(bevel.shadow.opacity, MAX_OPACITY) / 100.0;
-    if hi_opacity <= 0.0 && sh_opacity <= 0.0 {
+    if (hi_opacity <= 0.0 && sh_opacity <= 0.0) || depth <= 0.0 {
         return;
     }
-    // Content can only be non-zero inside `source`; the blur spreads it by the
-    // blur supports, so the matte is built and processed over `padded` only.
-    let padded = pad_rect(source, blur_support(size) + blur_support(soften) + 1, w, h);
+    let size = size.max(1.0);
+    let round = rounding(bevel.technique, size);
+    // The chamfer reaches `size` past the edge (half for the straddling styles);
+    // the rounding and soften blurs reach a little further.
+    let padded = pad_rect(
+        source,
+        size.ceil() as i64 + blur_support(round) + blur_support(soften) + 2,
+        w,
+        h,
+    );
     if rect_empty(padded) {
         return;
     }
@@ -245,85 +268,256 @@ pub(super) fn composite_bevel_emboss(
     if matte.iter().all(|&v| v <= 0.0) {
         return;
     }
-    let height = blur_matte(&matte, pw, ph, size);
-    let sample = |x: i64, y: i64| -> f64 {
-        let sx = x - px0 as i64;
-        let sy = y - py0 as i64;
-        if sx >= 0 && sy >= 0 && sx < pw as i64 && sy < ph as i64 {
-            height[sy as usize * pw + sx as usize] as f64
-        } else {
-            0.0
-        }
+    // Height 0..1 along the chamfer, from the signed distance (inside positive).
+    let start = match bevel.style {
+        BevelStyle::Inner => 0.0,
+        BevelStyle::Outer => -size,
+        _ => -size / 2.0,
+    };
+    let mut height: Vec<f32> = signed_distance(&matte, pw, ph)
+        .into_iter()
+        .map(|d| ((d as f64 - start) / size).clamp(0.0, 1.0) as f32)
+        .collect();
+    if round > 0.0 {
+        height = blur_f32(&height, pw, ph, round);
+    }
+    let at = |x: i32, y: i32| -> f64 {
+        let sx = (x - px0).clamp(0, pw as i32 - 1) as usize;
+        let sy = (y - py0).clamp(0, ph as i32 - 1) as usize;
+        height[sy * pw + sx] as f64
     };
     let theta = angle.to_radians();
     let phi = altitude.to_radians();
     let (lx, ly, lz) = (phi.cos() * theta.cos(), -phi.cos() * theta.sin(), phi.sin());
-    let scale = size.max(1.0) * depth / 100.0;
+    // A full chamfer rises `size · depth/100` over `size` pixels.
+    let scale = size * depth / 100.0;
     let down = matches!(bevel.direction, BevelDirection::Down);
-    let sw = (source.2 - source.0) as usize;
-    let sh = (source.3 - source.1) as usize;
-    let mut shading = vec![0.0f32; sw * sh];
-    for y in source.1..source.3 {
-        for x in source.0..source.2 {
-            let gx = (sample(x as i64 + 1, y as i64) - sample(x as i64 - 1, y as i64)) / 2.0;
-            let gy = (sample(x as i64, y as i64 + 1) - sample(x as i64, y as i64 - 1)) / 2.0;
+    // An Inner Bevel lights only the content, an Outer Bevel only what lies
+    // outside it, an Emboss both; a Pillow Emboss lights the outside sunken.
+    let lit = |m: f32| -> [(f32, f32); 2] {
+        match bevel.style {
+            BevelStyle::Inner => [(m, 1.0), (0.0, 1.0)],
+            BevelStyle::Outer => [(1.0 - m, 1.0), (0.0, 1.0)],
+            BevelStyle::Emboss => [(1.0, 1.0), (0.0, 1.0)],
+            _ => [(m, 1.0), (1.0 - m, -1.0)],
+        }
+    };
+    // Inner shades only the content rect; the other styles reach past it.
+    let region = if bevel.style == BevelStyle::Inner {
+        source
+    } else {
+        padded
+    };
+    let rw = (region.2 - region.0) as usize;
+    let rh = (region.3 - region.1) as usize;
+    let mut shading = vec![0.0f32; rw * rh];
+    for y in region.1..region.3 {
+        for x in region.0..region.2 {
+            let gx = (at(x + 1, y) - at(x - 1, y)) / 2.0;
+            let gy = (at(x, y + 1) - at(x, y - 1)) / 2.0;
             let (nx, ny) = (-gx * scale, -gy * scale);
             let inv = 1.0 / (nx * nx + ny * ny + 1.0).sqrt();
             let mut s = (nx * lx + ny * ly + lz) * inv - phi.sin();
             if down {
                 s = -s;
             }
-            shading[(y - source.1) as usize * sw + (x - source.0) as usize] = s as f32;
+            shading[(y - region.1) as usize * rw + (x - region.0) as usize] = s as f32;
         }
     }
+    // The highlight and shadow soften apart, so where they meet they spread
+    // into each other instead of cancelling out.
+    let (mut lights, mut darks): (Vec<f32>, Vec<f32>) =
+        shading.iter().map(|&s| (s.max(0.0), (-s).max(0.0))).unzip();
     if soften > 0.0 {
-        let mapped: Vec<f32> = shading
-            .iter()
-            .map(|&s| (((s as f64 + 1.0) / 2.0).clamp(0.0, 1.0)) as f32)
-            .collect();
-        for (dst, &b) in shading
-            .iter_mut()
-            .zip(blur_matte(&mapped, sw, sh, soften).iter())
-        {
-            *dst = b * 2.0 - 1.0;
+        lights = blur_f32(&lights, rw, rh, soften);
+        darks = blur_f32(&darks, rw, rh, soften);
+    }
+    let unit = |c: [u8; 3]| c.map(|v| v as f32 / 255.0);
+    let shadow_color = unit(bevel.shadow.color);
+    let highlight_color = unit(bevel.highlight.color);
+    for y in region.1..region.3 {
+        for x in region.0..region.2 {
+            let m = matte[(y - py0) as usize * pw + (x - px0) as usize];
+            let i = (y - region.1) as usize * rw + (x - region.0) as usize;
+            for (coverage, sign) in lit(m) {
+                if coverage <= 0.0 {
+                    continue;
+                }
+                // A sunken side swaps which part is the highlight.
+                let (light, dark) = if sign > 0.0 {
+                    (lights[i], darks[i])
+                } else {
+                    (darks[i], lights[i])
+                };
+                let sh_alpha = coverage * dark.clamp(0.0, 1.0) * sh_opacity;
+                if sh_alpha > 0.0 {
+                    blend_parts(
+                        canvas,
+                        x as usize,
+                        y as usize,
+                        shadow_color,
+                        sh_alpha,
+                        bevel.shadow.mode,
+                    );
+                }
+                let hi_alpha = coverage * light.clamp(0.0, 1.0) * hi_opacity;
+                if hi_alpha > 0.0 {
+                    blend_parts(
+                        canvas,
+                        x as usize,
+                        y as usize,
+                        highlight_color,
+                        hi_alpha,
+                        bevel.highlight.mode,
+                    );
+                }
+            }
         }
     }
-    let shadow_color = [
-        bevel.shadow.color[0] as f32 / 255.0,
-        bevel.shadow.color[1] as f32 / 255.0,
-        bevel.shadow.color[2] as f32 / 255.0,
-    ];
-    let highlight_color = [
-        bevel.highlight.color[0] as f32 / 255.0,
-        bevel.highlight.color[1] as f32 / 255.0,
-        bevel.highlight.color[2] as f32 / 255.0,
-    ];
-    for y in source.1..source.3 {
-        for x in source.0..source.2 {
-            let m = matte[(y - py0) as usize * pw + (x - px0) as usize];
-            let s = shading[(y - source.1) as usize * sw + (x - source.0) as usize];
-            let sh_alpha = m * (-s).max(0.0) * sh_opacity;
-            if sh_alpha > 0.0 {
-                blend_parts(
-                    canvas,
-                    x as usize,
-                    y as usize,
-                    shadow_color,
-                    sh_alpha,
-                    bevel.shadow.mode,
-                );
+}
+
+/// The signed Euclidean distance of every pixel to the matte's edge (the 0.5
+/// level), positive inside. Pixels on the edge take the matte's own fraction,
+/// so an anti-aliased outline gives a sub-pixel distance rather than a step.
+fn signed_distance(matte: &[f32], w: usize, h: usize) -> Vec<f32> {
+    let full: Vec<bool> = matte.iter().map(|&m| m >= 0.999).collect();
+    let empty: Vec<bool> = matte.iter().map(|&m| m <= 0.001).collect();
+    let to_not_full = distance_transform(&full.iter().map(|&f| !f).collect::<Vec<_>>(), w, h);
+    let to_not_empty = distance_transform(&empty.iter().map(|&e| !e).collect::<Vec<_>>(), w, h);
+    (0..w * h)
+        .map(|i| {
+            if full[i] {
+                to_not_full[i] - 0.5
+            } else if empty[i] {
+                0.5 - to_not_empty[i]
+            } else {
+                matte[i] - 0.5
             }
-            let hi_alpha = m * s.max(0.0) * hi_opacity;
-            if hi_alpha > 0.0 {
-                blend_parts(
-                    canvas,
-                    x as usize,
-                    y as usize,
-                    highlight_color,
-                    hi_alpha,
-                    bevel.highlight.mode,
-                );
+        })
+        .collect()
+}
+
+/// The exact Euclidean distance from every pixel to the nearest `seed` pixel
+/// (Felzenszwalb–Huttenlocher, two separable passes). No seed is "far".
+fn distance_transform(seed: &[bool], w: usize, h: usize) -> Vec<f32> {
+    const FAR: f64 = 1.0e12;
+    let mut grid: Vec<f64> = seed.iter().map(|&s| if s { 0.0 } else { FAR }).collect();
+    let mut line = Vec::new();
+    for x in 0..w {
+        line.clear();
+        line.extend((0..h).map(|y| grid[y * w + x]));
+        for (y, v) in squared_distance_1d(&line).into_iter().enumerate() {
+            grid[y * w + x] = v;
+        }
+    }
+    for y in 0..h {
+        let row = squared_distance_1d(&grid[y * w..(y + 1) * w]);
+        grid[y * w..(y + 1) * w].copy_from_slice(&row);
+    }
+    grid.into_iter().map(|d| d.sqrt() as f32).collect()
+}
+
+/// The 1-D squared-distance transform of `f` under the lower envelope of
+/// parabolas.
+fn squared_distance_1d(f: &[f64]) -> Vec<f64> {
+    let n = f.len();
+    let mut out = vec![0.0; n];
+    if n == 0 {
+        return out;
+    }
+    let mut v = vec![0usize; n];
+    let mut z = vec![0.0f64; n + 1];
+    let mut k = 0usize;
+    z[0] = f64::NEG_INFINITY;
+    z[1] = f64::INFINITY;
+    let cross = |q: usize, p: usize| {
+        ((f[q] + (q * q) as f64) - (f[p] + (p * p) as f64)) / (2.0 * q as f64 - 2.0 * p as f64)
+    };
+    for q in 1..n {
+        // `z[0]` is −∞, so the scan stops at the first parabola at the latest.
+        let mut s = cross(q, v[k]);
+        while s <= z[k] {
+            k -= 1;
+            s = cross(q, v[k]);
+        }
+        k += 1;
+        v[k] = q;
+        z[k] = s;
+        z[k + 1] = f64::INFINITY;
+    }
+    k = 0;
+    for (q, slot) in out.iter_mut().enumerate() {
+        while z[k + 1] < q as f64 {
+            k += 1;
+        }
+        let d = q as f64 - v[k] as f64;
+        *slot = d * d + f[v[k]];
+    }
+    out
+}
+
+/// A separable Gaussian blur of an `f32` field with clamped edges; `radius`
+/// maps to sigma as the crate blur does.
+fn blur_f32(src: &[f32], w: usize, h: usize, radius: f64) -> Vec<f32> {
+    let kernel = pictura_filters::kernel::gaussian_kernel(
+        pictura_filters::kernel::sigma_from_radius(radius),
+    );
+    let r = (kernel.len() / 2) as isize;
+    let pass = |src: &[f32], horizontal: bool| -> Vec<f32> {
+        let mut out = vec![0.0f32; src.len()];
+        for y in 0..h {
+            for x in 0..w {
+                let mut acc = 0.0f64;
+                for (i, k) in kernel.iter().enumerate() {
+                    let o = i as isize - r;
+                    let (sx, sy) = if horizontal {
+                        ((x as isize + o).clamp(0, w as isize - 1) as usize, y)
+                    } else {
+                        (x, (y as isize + o).clamp(0, h as isize - 1) as usize)
+                    };
+                    acc += k * src[sy * w + sx] as f64;
+                }
+                out[y * w + x] = acc as f32;
             }
         }
+        out
+    };
+    pass(&pass(src, true), false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn distance_transform_matches_brute_force() {
+        let (w, h) = (9, 7);
+        let seed: Vec<bool> = (0..w * h).map(|i| i == 10 || i == 50 || i == 33).collect();
+        let fast = distance_transform(&seed, w, h);
+        for y in 0..h {
+            for x in 0..w {
+                let brute = (0..w * h)
+                    .filter(|&i| seed[i])
+                    .map(|i| {
+                        let (sx, sy) = ((i % w) as f32, (i / w) as f32);
+                        ((x as f32 - sx).powi(2) + (y as f32 - sy).powi(2)).sqrt()
+                    })
+                    .fold(f32::INFINITY, f32::min);
+                assert!((fast[y * w + x] - brute).abs() < 1e-4, "({x},{y})");
+            }
+        }
+    }
+
+    #[test]
+    fn signed_distance_is_positive_inside_and_sub_pixel_on_the_edge() {
+        // A 3-pixel-wide bar with an anti-aliased (0.25) right edge.
+        let w = 6;
+        let matte = [1.0, 1.0, 1.0, 0.25, 0.0, 0.0];
+        let d = signed_distance(&matte, w, 1);
+        assert_eq!(d[0], 2.5);
+        assert_eq!(d[2], 0.5);
+        assert_eq!(d[3], -0.25);
+        assert_eq!(d[4], -0.5);
+        assert_eq!(d[5], -1.5);
     }
 }

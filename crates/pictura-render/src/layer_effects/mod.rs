@@ -230,7 +230,9 @@ pub(crate) fn with_gradient_defaults(obj: &DescValue) -> DescValue {
 /// The `BlnM` descriptor vocabulary is **capitalized** (`Nrml`/`Mltp`/`Scrn`)
 /// and is *not* the layer blend key (`norm`/`mul `/`scrn`), so
 /// [`BlendMode::from_psd_key`] must not be used for effect modes. The extended
-/// codes below are accepted best-effort (ag-psd / libpsd write them).
+/// codes below are accepted best-effort (ag-psd / libpsd write them), as are
+/// the string ids Photoshop writes for the newer modes (`linearBurn`,
+/// `blendSubtraction`, …).
 pub(crate) fn effect_blend_mode(value: &[u8], default: BlendMode) -> BlendMode {
     match value {
         b"Nrml" => BlendMode::Normal,
@@ -261,6 +263,16 @@ pub(crate) fn effect_blend_mode(value: &[u8], default: BlendMode) -> BlendMode {
         b"fdiv" => BlendMode::Divide,
         b"dkCl" => BlendMode::DarkerColor,
         b"lgCl" => BlendMode::LighterColor,
+        b"linearBurn" => BlendMode::LinearBurn,
+        b"linearDodge" => BlendMode::LinearDodge,
+        b"darkerColor" => BlendMode::DarkerColor,
+        b"lighterColor" => BlendMode::LighterColor,
+        b"vividLight" => BlendMode::VividLight,
+        b"linearLight" => BlendMode::LinearLight,
+        b"pinLight" => BlendMode::PinLight,
+        b"hardMix" => BlendMode::HardMix,
+        b"blendSubtraction" => BlendMode::Subtract,
+        b"blendDivide" => BlendMode::Divide,
         _ => default,
     }
 }
@@ -317,15 +329,33 @@ impl LayerEffects {
 
 /// Resolve a layer's effects once. A present `lfx2` block is authoritative and
 /// ignores the legacy block entirely; otherwise the mapped legacy `lrFX` set is
-/// used. Both are never combined.
+/// used. Both are never combined. An `lfx2` whose `masterFXSwitch` is off
+/// (Hide All Effects) draws nothing.
 pub(crate) fn decode_layer_effects(layer: &Layer) -> LayerEffects {
-    if layer.extra_block(b"lfx2").is_some() {
+    if let Some(block) = layer.extra_block(b"lfx2") {
+        if !master_switch_on(&block.data) {
+            return LayerEffects::default();
+        }
         LayerEffects::from_lfx2(layer)
     } else {
         decode_legacy_effects(layer)
             .map(LayerEffects::from_legacy)
             .unwrap_or_default()
     }
+}
+
+/// The `lfx2` master switch; absent or unreadable counts as on.
+fn master_switch_on(data: &[u8]) -> bool {
+    let Some(obj) = data
+        .get(4..)
+        .and_then(|body| pictura_codec::read_descriptor(body).ok())
+    else {
+        return true;
+    };
+    !matches!(
+        crate::composite::desc_item(&obj, b"masterFXSwitch"),
+        Some(DescValue::Bool(false))
+    )
 }
 
 /// The document-space box `(left, top, right, bottom)` a non-group layer's
@@ -414,55 +444,43 @@ pub(crate) fn composite_layer_effects(canvas: &mut Canvas, layer: &Layer, doc: &
     }
 }
 
-/// Composite a layer's enabled, present inner shadow and inner glow into the
-/// running canvas **after** the layer's own content. Groups and destructive
-/// adjustment layers are skipped, matching the below-content pass. Inner Shadow
-/// is composited before Inner Glow when both are present, and a Stroke is drawn
-/// after both.
+/// Composite a layer's enabled, present interior effects into the running
+/// canvas **after** the layer's own content, in CS6's stacking order — the
+/// Layer Style list read bottom-up: Pattern, Gradient and Color Overlay, Satin,
+/// Inner Glow, Inner Shadow, Stroke, then Bevel & Emboss on top. Groups and
+/// destructive adjustment layers are skipped, matching the below-content pass.
 pub(crate) fn composite_layer_effects_above(canvas: &mut Canvas, layer: &Layer, doc: &Document) {
     if canvas.skip_effects || layer.is_group || is_destructive_adjustment(layer) {
         return;
     }
     let effects = decode_layer_effects(layer);
-    if let Some(shadow) = effects.inner_shadow {
-        if shadow.enabled && shadow.present {
-            shadows::composite_inner_shadow(canvas, layer, doc, &shadow);
-        }
+    let on = |enabled: bool, present: bool| enabled && present;
+    if let Some(overlay) = effects.pattern_overlay.filter(|e| on(e.enabled, e.present)) {
+        overlays::composite_pattern_overlay(canvas, layer, doc, &overlay);
     }
-    if let Some(glow) = effects.inner_glow {
-        if glow.enabled && glow.present {
-            glows::composite_inner_glow(canvas, layer, doc, &glow);
-        }
+    if let Some(overlay) = effects
+        .gradient_overlay
+        .filter(|e| on(e.enabled, e.present))
+    {
+        overlays::composite_gradient_overlay(canvas, layer, doc, &overlay);
     }
-    if let Some(bevel) = effects.bevel {
-        if bevel.enabled && bevel.present {
-            bevel::composite_bevel_emboss(canvas, layer, doc, &bevel);
-        }
+    if let Some(overlay) = effects.color_overlay.filter(|e| on(e.enabled, e.present)) {
+        overlays::composite_color_overlay(canvas, layer, doc, &overlay);
     }
-    if let Some(satin) = effects.satin {
-        if satin.enabled && satin.present {
-            satin::composite_satin(canvas, layer, doc, &satin);
-        }
+    if let Some(satin) = effects.satin.filter(|e| on(e.enabled, e.present)) {
+        satin::composite_satin(canvas, layer, doc, &satin);
     }
-    if let Some(overlay) = effects.color_overlay {
-        if overlay.enabled && overlay.present {
-            overlays::composite_color_overlay(canvas, layer, doc, &overlay);
-        }
+    if let Some(glow) = effects.inner_glow.filter(|e| on(e.enabled, e.present)) {
+        glows::composite_inner_glow(canvas, layer, doc, &glow);
     }
-    if let Some(overlay) = effects.gradient_overlay {
-        if overlay.enabled && overlay.present {
-            overlays::composite_gradient_overlay(canvas, layer, doc, &overlay);
-        }
+    if let Some(shadow) = effects.inner_shadow.filter(|e| on(e.enabled, e.present)) {
+        shadows::composite_inner_shadow(canvas, layer, doc, &shadow);
     }
-    if let Some(overlay) = effects.pattern_overlay {
-        if overlay.enabled && overlay.present {
-            overlays::composite_pattern_overlay(canvas, layer, doc, &overlay);
-        }
+    if let Some(stroke) = effects.stroke.filter(|e| on(e.enabled, e.present)) {
+        strokes::composite_stroke(canvas, layer, doc, &stroke);
     }
-    if let Some(stroke) = effects.stroke {
-        if stroke.enabled && stroke.present {
-            strokes::composite_stroke(canvas, layer, doc, &stroke);
-        }
+    if let Some(bevel) = effects.bevel.filter(|e| on(e.enabled, e.present)) {
+        bevel::composite_bevel_emboss(canvas, layer, doc, &bevel);
     }
 }
 
@@ -502,6 +520,20 @@ fn is_destructive_adjustment(layer: &Layer) -> bool {
         Some(_) => true,
         None => false,
     }
+}
+
+/// The effect `Noise` grain at canvas `(x, y)`: a factor on the effect's alpha
+/// that is 1 at 0 % and breaks the effect into a fixed speckle as it rises.
+///
+/// ponytail: Adobe's noise model is unpublished; this is a seeded per-pixel
+/// dither, `clamp(1 + 2·n·(2r − 1), 0, 1)` for `r` uniform in `[0, 1)`.
+fn noise_factor(noise: f32, x: i32, y: i32) -> f32 {
+    let n = clamp_finite(noise, 100.0) / 100.0;
+    if n <= 0.0 || x < 0 || y < 0 {
+        return 1.0;
+    }
+    let r = crate::composite_rows::dissolve_noise(x as usize, y as usize);
+    (1.0 + 2.0 * n * (2.0 * r - 1.0)).clamp(0.0, 1.0)
 }
 
 /// A non-negative, finite value no greater than `max` (`0.0` when non-finite).
