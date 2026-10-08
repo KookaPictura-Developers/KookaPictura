@@ -108,9 +108,10 @@ Adobe kernels are not published; the following are standard algorithm families t
 - **Zoom:** take a 1-D moving average along the radial direction (scale smear), then resample back. Amount 1–100 maps to the smear length.
 - Both center on **Blur Center**; sample with interpolation.
 
-### Surface Blur — bilateral filter
-- Per-pixel weighted average where the weight is the product of a **spatial** Gaussian and a **range** (intensity-difference) kernel; the range term suppresses averaging across edges. The UI **Radius** maps to the spatial σ, **Threshold** to the range σ (or a hard intensity gate). Photoshop's Surface Blur is documented as a bilateral filter.
-- Extensions/limitations: staircase and gradient-reversal artifacts of the direct form; a **guided filter** is a known faster alternative.
+### Surface Blur — thresholded window mean (bilateral family)
+- Per channel, the mean of the neighbours in the `(2·Radius+1)²` window (clipped to the image) whose value is within **Threshold** of the centre's: a bilateral filter with a box spatial kernel and a hard range gate. The gate stops averaging across edges, and each channel decides independently which neighbours count. Photoshop's Surface Blur is documented as a bilateral filter; this model is photorust's CS6-tuned approximation (#222), not a verified parity.
+- Computed with a sliding per-row histogram, `O(r)` per pixel rather than the direct form's `O(r²)`.
+- Extensions/limitations: a Gaussian spatial or soft range kernel is the textbook bilateral; a **guided filter** is a known faster alternative for those.
 - Reference: Wikipedia *Bilateral filter* (definition, σd/σr, artifact list, explicit "Photoshop surface blur" note).
 
 ### Average — region mean
@@ -131,7 +132,7 @@ Adobe kernels are not published; the following are standard algorithm families t
 - Convolve with a binary/antialiased **custom shape** kernel (scaled by radius) instead of a disc/Gaussian. Family: arbitrary-kernel convolution, usually via summed-area table across a downsampled rotated/scaled shape.
 
 ### Blur / Blur More
-- Fixed small **Gaussian-like 3×3 convolution**; Blur More is ~3–4× the strength of Blur (sourced). No controls.
+- A Gaussian at a fixed σ: **0.7** for Blur and **2.0** for Blur More (radius 2.1 and 6 under `FILT-010`'s 3σ convention), so Blur More's blur reaches about three times as far, in line with the Help's three-to-four-times-stronger description (sourced). The σ values are photorust's CS6-tuned approximation (#222); Adobe's kernel is closed. No controls.
 
 ### Shared pipeline
 Apply through the `FILT-001` pipeline: target resolution → depth/mode gate → **apron** (blur kernels need `radius` of source outside the selection) → backend dispatch (GPU compute if ported, else `rayon` CPU) → tile iteration with progress/cancel → selection/mask composite → single undo commit. Color-managed docs convolve in the document working space; 32-bit float stays float.
@@ -144,12 +145,12 @@ Proposed under `pictura-filters::blur` (`ARCH-002`, `ARCH-006`):
 - `pictura-filters::blur::box` — `BoxBlur { radius }`; running-sum separable implementation.
 - `pictura-filters::blur::motion` — `MotionBlur { angle, distance }`; line kernel + supersampling.
 - `pictura-filters::blur::radial` — `RadialBlur { method: Spin|Zoom, amount, quality, center }`; polar resampler + 1-D smear.
-- `pictura-filters::blur::surface` — `SurfaceBlur { radius, threshold }`; bilateral filter.
+- `pictura-filters::photorust::convolve::surface_blur` — `SurfaceBlur { radius, threshold }`; thresholded window mean on a sliding histogram.
 - `pictura-filters::blur::average` — `Average`; region mean.
 - `pictura-filters::blur::lens` — `LensBlur { source: DepthSource, focal, invert, iris: Iris, radius, specular, noise }`; disc/iris convolution, specular add, grain injection.
 - `pictura-filters::blur::smart` — `SmartBlur { radius, threshold, quality, mode }`; edge-gated averaging.
 - `pictura-filters::blur::shape` — `ShapeBlur { kernel: ShapeRef, radius }`.
-- `pictura-filters::blur::simple` — fixed 3×3 Blur / Blur More.
+- `pictura-filters::blur::simple` — Blur / Blur More as Gaussian Blur at the fixed `BLUR_RADIUS` / `BLUR_MORE_RADIUS`.
 - Shared: `pictura-filters::kernel::separability`, `Sampler` (bilinear), `apron`.
 
 Types: `Radius(f32)`, `Angle(f32)`, `Iris`, `DepthSource`, `Quality`. Crossing `TileView` ROIs; no Qt types.
