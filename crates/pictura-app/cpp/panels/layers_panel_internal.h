@@ -611,24 +611,28 @@ private:
         return index.isValid() ? pathForIndex_(index) : QString();
     }
 
-    // Mirror Qt's 2 px AboveItem/BelowItem margin rule ourselves: the stock
-    // indicator is disabled, and Qt leaves `dropIndicatorPosition` stale then.
+    // The stock indicator is disabled, and Qt leaves `dropIndicatorPosition`
+    // stale then, so the bands are resolved here. Only a group accepts a drop
+    // into, so it keeps a centre band between quarter-height edges; any other
+    // row splits at its midpoint so the whole row is a sibling target.
     int dropPositionFor(const QPoint& pos, const QModelIndex& index) const
     {
         if (!index.isValid()) {
             return 1;
         }
         const QRect rect = visualRect(index);
-        if (pos.y() - rect.top() < 2) {
+        const int offset = pos.y() - rect.top();
+        if (index.data(KindRole).toString() != QLatin1String("group")) {
+            return offset < rect.height() / 2 ? 0 : 1;
+        }
+        const int edge = qMax(2, rect.height() / 4);
+        if (offset < edge) {
             return 0;
         }
-        if (rect.bottom() - pos.y() < 2) {
+        if (rect.bottom() - pos.y() < edge) {
             return 1;
         }
-        if (rect.contains(pos, true)) {
-            return 2;
-        }
-        return 1;
+        return 2;
     }
 
     void clearDropIndicator()
