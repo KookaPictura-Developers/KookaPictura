@@ -74,6 +74,7 @@ private slots:
     void gutterClickTogglesWithoutSelecting();
     void dragReorder();
     void dropAnywhereOnLayerRowReorders();
+    void dropOnGroupRowEdgesPlacesSibling();
     void dropOnDelete();
     void clippingMasks();
 
@@ -382,6 +383,50 @@ void LayersPanelTest::dropAnywhereOnLayerRowReorders()
              "lower-half drop accepted");
     QCOMPARE(view_->layer_row_name(rowOf(QStringLiteral("1"))), QStringLiteral("A"));
     QCOMPARE(view_->layer_row_name(rowOf(QStringLiteral("2"))), QStringLiteral("B"));
+    window_->closeDocument(doc, false);
+}
+
+// A group row keeps its centre for drop-into; its upper and lower quarters are
+// sibling targets. Drops well inside those quarters (past the old 2 px edge)
+// must place the layer above or below the group, never inside it.
+void LayersPanelTest::dropOnGroupRowEdgesPlacesSibling()
+{
+    const bool created = window_->newDocument(QStringLiteral("DropGroup"), 16, 16,
+                                              QStringLiteral("rgb"), 8, QStringLiteral("white"));
+    view_ = window_->activeView();
+    panel_ = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    QVERIFY2(created && view_ && panel_, "drop group fixture");
+    const int doc = window_->activeDocumentIndex();
+    const QString layer = view_->add_layer_in(QString());
+    const QString group = view_->add_group_in(QString());
+    view_->set_layer_name_path(layer, QStringLiteral("L"));
+    view_->set_layer_name_path(group, QStringLiteral("G"));
+    panel_->setView(view_);
+    panel_->refresh();
+    window_->show();
+    QTest::qWait(50);
+    QTreeView* tree = panel_->findChild<QTreeView*>();
+    QVERIFY(tree != nullptr);
+
+    QRect row = panel_->rowViewportRectForTest(QStringLiteral("2"));
+    QVERIFY2(row.height() >= 16, "group row is laid out");
+    const int base = view_->history_count();
+    QVERIFY2(dropOnViewport(tree->viewport(), QStringLiteral("1"),
+                            QPoint(row.center().x(), row.top() + row.height() / 8)),
+             "upper-quarter drop accepted");
+    QCOMPARE(view_->layer_row_name(rowOf(QStringLiteral("2"))), QStringLiteral("L"));
+    QCOMPARE(view_->layer_row_name(rowOf(QStringLiteral("1"))), QStringLiteral("G"));
+    QCOMPARE(view_->history_count(), base + 1);
+
+    panel_->refresh();
+    QCoreApplication::processEvents();
+    row = panel_->rowViewportRectForTest(QStringLiteral("1"));
+    QVERIFY2(dropOnViewport(tree->viewport(), QStringLiteral("2"),
+                            QPoint(row.center().x(), row.bottom() - row.height() / 8)),
+             "lower-quarter drop accepted");
+    QCOMPARE(view_->layer_row_name(rowOf(QStringLiteral("1"))), QStringLiteral("L"));
+    QCOMPARE(view_->layer_row_name(rowOf(QStringLiteral("2"))), QStringLiteral("G"));
+    QCOMPARE(view_->history_count(), base + 2);
     window_->closeDocument(doc, false);
 }
 
