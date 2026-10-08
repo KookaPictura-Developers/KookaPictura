@@ -12,7 +12,7 @@
 
 **Artistic filters.** Per the CS6 Help, they give painterly and artistic results for fine-arts or commercial work by imitating natural or traditional media. All of them can be applied through the Filter Gallery.
 
-The family has **15** filters. Each redraws the image to imitate a physical medium; several use the **foreground and background colors** as their "paint" and "paper" and depend on the document's color mode (RGB/Grayscale/Multichannel — see Edge cases).
+The family has **15** filters. Each redraws the image to imitate a physical medium; in CS6 several use the **foreground and background colors** as their "paint" and "paper" and depend on the document's color mode (RGB/Grayscale/Multichannel — see Edge cases). Pictura's dialogs show no foreground or background color controls for these filters (see Algorithms & pipeline, Color-source dependency).
 
 | Filter | CS6 Help behavior (sourced unless marked) |
 |---|---|
@@ -61,6 +61,8 @@ Every Artistic filter runs in **8-bit** only (`FILT-001`). Parameter names marke
 | Pencil Width | slider int | 4 *(inferred)* | 1–24 *(sourced)* | Pencil stroke width |
 | Stroke Pressure | slider int | 8 *(inferred)* | 0–15 *(sourced)* | Stroke darkness/force |
 | Paper Brightness | slider int | 25 *(inferred)* | 0–50 *(sourced)* | Background brightness showing through |
+
+Pictura shows no foreground or background color control: the paper is white until the pipeline passes the document background color.
 
 ### Cutout
 | Control | Type | Default | Range / options | Notes |
@@ -175,7 +177,7 @@ Every Artistic filter runs in **8-bit** only (`FILT-001`). Parameter names marke
 The Artistic kernels are closed; all of the following is **behavioral parity only, algorithm TBD**. The shared gallery/application pipeline (target resolution → depth/mode gate → apron → backend dispatch → tile iteration → selection composite → single undo commit) is in `FILT-001`.
 
 - **Gallery stack.** Each Artistic filter is an independent stage in `pictura-filters::gallery`; the stack is evaluated in list order on the 8-bit image; drag-reorder/hide/delete mutate the stage list.
-- **Color-source dependency (sourced):** several filters read the **foreground/background colors** as ink/paper — Colored Pencil, Rough Pastels, Underpainting, Watercolor, and the Neon Glow color box. The pipeline must pass the current `Foreground`/`Background` colors and the chosen glow color into the kernel.
+- **Color-source dependency:** in CS6 several filters read the **foreground/background colors** as ink/paper — Colored Pencil, Rough Pastels, Underpainting, Watercolor, and the Neon Glow color box *(sourced)*. Pictura removes the foreground/background color options from these filters: their dialogs show no color swatches, and the kernels take no foreground color. Colored Pencil keeps a background (paper) color, filled with white in place of the document background until the pipeline passes the document colors. Rough Pastels, Underpainting, and Watercolor take no colors. Neon Glow keeps its glow color box.
 - **Texture options (Rough Pastels, Underpainting):** a surface preset (Brick/Burlap/Canvas/Sandstone) or a loaded file is tiled under the effect, with Scaling/Relief/Light-Direction/Invert controlling a height-to-light emboss of that surface. Modeling the texture as a loadable grayscale height map, lit by the chosen direction, reproduces the documented behavior.
 - **Poster Edges** is qualitatively posterization + edge detection + black edge composite: a behavioral model is `posterize(src, levels=N)` combined with a gradient/edge magnitude (Sobel-like) thresholded to draw black lines; the exact Adobe edge kernel is closed.
 - **Cutout** is a posterize/quantization step with an edge-simplification and fidelity bias; the "levels/simplicity/fidelity" triad suggests a region-quantization plus contour smoothing, but this is a behavioral model.
@@ -229,14 +231,14 @@ Controls are model-driven from `FilterRegistry::params_schema()`; the pane is ge
 - **Destructive apply:** no persistent document field; one `HistoryRecord::FilterOp { filter_id, roi, params_blob, seed, before_tiles, after_hash }` per committed apply (`ARCH-009`). Randomness stores the `seed`.
 - **Smart Object:** each Artistic filter (or a whole Filter Gallery stack) becomes a Smart Filter entry `{ filter_id, params, blend, opacity, enabled }`; the gallery stack serializes as one grouped entry (`LAY-021`). No new document-model nodes.
 - **Serialization:** the filter descriptor (filter id + typed params + seed) must be written through the Smart Filter/Filter Effects path (`LAY-021`); the mapping from each Artistic parameter to a PSD `FXid`/`FEid` key is **unsourced** (open question in `LAY-021`).
-- **Color state:** foreground/background/glow colors are read from the document color state (`ARCH-008`); the filter stores them if they can change between sessions and the result must stay reproducible.
+- **Color state:** the glow color is chosen in the dialog; Colored Pencil's paper color stands in for the document background (`ARCH-008`). The filter stores any color it uses, so the result stays reproducible.
 - Undo granularity is one gallery-stack apply (destructive) or one Smart Filter entry mutation (non-destructive).
 
 ## Edge cases
 
 - **Mode:** Artistic filters act on RGB, Grayscale, and Multichannel 8-bit images (`computerhope` per-filter pages); CMYK/Lab support is per filter and must be gated by a capability mask. On unsupported mode, disable with a reason (never convert).
 - **Depth:** 16-bit/32-bit are not in Adobe's 16-/32-bit filter lists, so all Artistic filters are 8-bit only; at higher depth show the Smart Filter warning icon / disable the menu item.
-- **Foreground/background identity:** if fg == bg, Colored Pencil/Rough Pastels/Underpainting/Watercolor can collapse to a flat or near-flat result; do not crash or divide by zero in the paper/ink logic.
+- **Paper identity:** if Colored Pencil's paper color matches the image tones, the result can collapse to a flat or near-flat field; do not crash or divide by zero in the paper logic.
 - **No selection:** apply to whole layer. **1×1 / 1-px** documents: brush- and texture-based kernels must not panic on zero-extent neighborhoods.
 - **Huge PSB:** tile-local only; texture surfaces and brush stamps must be generated procedurally or tiled, not materialized full-canvas.
 - **Randomness:** seeded for reproducible redo; two identical applies must match bit-for-bit.
@@ -254,7 +256,7 @@ Controls are model-driven from `FilterRegistry::params_schema()`; the pane is ge
 6. Given `Paint Daubs`, each of the six Brush Types produces a visually distinct result; changing Brush Size 1→50 increases stroke scale monotonically.
 7. Given `Poster Edges`, the output contains posterized flat areas bounded by black lines whose thickness grows with Edge Thickness.
 8. Given `Neon Glow`, the glow color appears in the output and the glow's spatial extent grows with Glow Size; a negative Glow Size confines the glow to shadows.
-9. Given `Colored Pencil`, changing the background color changes the paper color visible through smooth areas, and changing Paper Brightness lightens/darkens it.
+9. Given `Colored Pencil`, a different paper (background) color passed to the kernel changes the paper color visible through smooth areas, and changing Paper Brightness lightens/darkens it. The dialog shows no foreground or background color control.
 10. Given a Smart Object, applying an Artistic filter adds a Smart Filters entry, leaves the underlying pixels unchanged, and reopening the entry restores the saved parameters.
 
 ## Sources
@@ -277,7 +279,7 @@ Not used: `helpx.adobe.com` live pages return HTTP 403; archived copies were use
 - **Poster Edges posterization maximum.** PCWorld says **0–6**; older sources say **0–10**. Confirm the CS6 maximum.
 - **All defaults.** Adobe does not publish Filter Gallery defaults; every "Default" above is *(inferred)*. Resolve by a scripted read of each CS6 dialog (or reference screenshots).
 - **Unlisted ranges.** Smudge Stick, Sponge, Underpainting, Watercolor, Rough Pastels ranges are *(inferred)*. Same resolution.
-- **Foreground/background semantics per filter.** Which of the 15 read fg/bg and in which role (ink vs paper) is only partly documented. Resolve empirically with distinct fg/bg swatches.
+- **Foreground/background semantics per filter.** Which of the 15 read fg/bg and in which role (ink vs paper) is only partly documented. Resolve empirically with distinct fg/bg swatches. Until then Pictura exposes no fg/bg controls for these filters.
 - **Texture surface format.** Whether the Rough Pastels/Underpainting presets are fixed grayscale height maps and how Scaling/Relief/Light Direction combine is undocumented. Resolve by matching a reference render with a known loaded texture.
 - **Randomness control.** Whether the Gallery exposes any seed/re-randomize control for Film Grain/sponge-daubs (Photoshop does not visibly expose one) is unconfirmed; our design choice is a hidden seeded RNG.
 - **`FXid`/`FEid` parameter mapping.** See `LAY-021`; the per-filter parameter descriptor keys are unsourced, so lossless PSD round-trip of a Smart-Object-gallery is unproven.
