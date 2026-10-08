@@ -30,14 +30,45 @@ expose a Seed. The five hash primitives (`artistic::noise`, `pixelate::jitter`,
 - **Why a global:** a thread-local would not reach rayon's workers, and
   threading a parameter through every call chain would touch over 100 call
   sites.
-- **Seed 0:** reproduces photorust's own patterns, so its tests stay valid.
+- **Seed 0:** folds to 0, so it reproduces photorust's own patterns and its
+  tests stay valid. Every other seed folds to a nonzero salt.
+- **Reset:** a drop guard puts the seed back to 0 even if the filter panics.
 - **Ceiling:** seeded runs are serialized (ponytail).
 
 ## Determinism
 
-Two `par_iter().sum::<f32>()` reductions become sequential sums, so the output
-does not depend on how rayon splits the work. Everything else is per-pixel or
+Every `par_iter().sum::<f32>()` reduction becomes a sequential sum, so the
+output does not depend on how rayon splits the work. That covers four in all,
+including `brush_strokes::unit_spread` and `artistic::streaked_noise`, which a
+test pins by comparing one thread with eight. Everything else is per-pixel or
 per-row and order-independent.
+
+## Ranges
+
+Each parameter has one range, shared by the dispatch check, the photorust
+function's clamp, and the dialog's slider, so the clamp never moves a value
+the check accepts:
+
+- **Dry Brush and Fresco:** Brush Size and Brush Detail run 0–10, the dialog's
+  and photorust's CS6-tuned range; the spec's 1–50 / 1–12 is modified.
+- **Poster Edges:** Posterization runs 0–10 in photorust too.
+- **Ink Outlines:** Stroke Length starts at 1 in photorust, as in the spec.
+- **Photocopy and Plaster:** Detail and Smoothness start at 0 in photorust, as
+  in the spec. The model is a blur whose reach grows from a floor, so 0 is
+  well defined.
+- **Dialogs:** Cutout's Edge Fidelity runs 1–3, Colored Pencil's Pencil Width
+  1–24, and Mosaic Tiles' Grout Width 1–15.
+- **Bounded floats:** Emboss Height and Amount (1–100, 1–500), the Color
+  Halftone angles (−360 to 360), and the Wave maxima (up to 999) are bounded,
+  so no value reaches the filter as infinity.
+
+## Colours
+
+Colored Pencil, Rough Pastels, and Watercolor no longer show foreground or
+background swatches. Their variants keep only the colours the engine uses.
+Colored Pencil keeps `background`, its paper, which the app fills with white
+in place of the document background (ponytail). Rough Pastels and Watercolor
+take no colours, and Colored Pencil no foreground.
 
 ## Behaviour reconciled with the specs
 
