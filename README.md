@@ -3,7 +3,7 @@
 A layered photo editor for Linux, built to edit photos well and to read and
 write Photoshop (PSD/PSB) files faithfully.
 
-[![CI](https://github.com/KookaPictura-Developers/KookaPictura/actions/workflows/ci.yml/badge.svg)](https://github.com/KookaPictura-Developers/KookaPictura/actions/workflows/ci.yml)
+[![CI](https://github.com/KookaStudio/KookaPictura/actions/workflows/ci.yml/badge.svg)](https://github.com/KookaStudio/KookaPictura/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 ![Platform: Linux](https://img.shields.io/badge/platform-linux-lightgrey)
 
@@ -102,7 +102,7 @@ The agent tooling and the required spec workflow are in
 ## Get help
 
 Open an issue at
-[github.com/KookaPictura-Developers/KookaPictura/issues](https://github.com/KookaPictura-Developers/KookaPictura/issues).
+[github.com/KookaStudio/KookaPictura/issues](https://github.com/KookaStudio/KookaPictura/issues).
 
 ## For developers
 
