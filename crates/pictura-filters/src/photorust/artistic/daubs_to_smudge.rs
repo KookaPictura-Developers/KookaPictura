@@ -59,7 +59,8 @@ pub fn paint_daubs(pixmap: &mut Pixmap, size: u32, sharpness: u32, brush: DaubBr
         DaubBrush::DarkRough => rough_edge(pixmap, halo, Halo::Dark),
         DaubBrush::Sparkle => sparkle(pixmap, sharpness),
     }
-    if rough {
+    // Not on Sparkle either: grit would bury its lines.
+    if rough && brush != DaubBrush::Sparkle {
         lay_tooth(pixmap, DAUB_GRIT, DAUB_GRIT_SCALE, 3);
     }
 }
@@ -135,79 +136,107 @@ pub(crate) fn lay_tooth(pixmap: &mut Pixmap, levels: f32, scale: f32, salt: usiz
         });
 }
 
-/// Sparkle's contour lines: how many levels of brightness apart they are
-/// drawn, how far and how broadly the wobble pushes them about, how thin they
-/// are, and how bright they are per step of Sharpness. The dark lines are
-/// drawn at a fraction of the light ones'.
-pub(crate) const CONTOUR_STEP: f32 = 8.0;
+/// Sparkle's lines of light: how many levels of brightness apart they are
+/// drawn, how far the picture is softened first, and how far and how broadly
+/// the wobble pushes them about.
+pub(crate) const CONTOUR_STEP: f32 = 6.0;
 
-pub(crate) const CONTOUR_SOFTEN: f32 = 2.0;
+pub(crate) const CONTOUR_SOFTEN: f32 = 0.7;
 
-pub(crate) const CONTOUR_WOBBLE: f32 = 12.0;
+pub(crate) const CONTOUR_WOBBLE: f32 = 1.0;
 
 pub(crate) const CONTOUR_WOBBLE_SCALE: f32 = 12.0;
 
-pub(crate) const CONTOUR_THIN: f32 = 8.0;
+/// How much light a line carries at Sharpness 0 and how much more each step
+/// adds, as a share of the way to white.
+pub(crate) const LINE_LIGHT: f32 = 0.65;
 
-pub(crate) const CONTOUR_PER_STEP: f32 = 3.0;
+pub(crate) const LINE_PER_STEP: f32 = 0.05;
 
-pub(crate) const CONTOUR_DARK: f32 = 0.5;
+/// The glow round the lines: how far it spreads in pixels, how bright it is
+/// against a line, and how much of it the darks keep.
+pub(crate) const GLOW_SPREAD: f32 = 2.0;
+
+pub(crate) const GLOW_LIGHT: f32 = 0.6;
+
+pub(crate) const GLOW_IN_DARK: f32 = 0.3;
 
 /// Sparkle's sharpening: scale in pixels and strength per step.
 pub(crate) const SPARKLE_SCALE: f32 = 1.5;
 
 pub(crate) const SPARKLE_PER_STEP: f32 = 0.1;
 
-/// Sparkle's brilliance: an overall lift (gain after a gamma), then a push
+/// Sparkle's brilliance: an overall lift (a gamma), then a push
 /// towards white that starts at [`BRILLIANCE_FROM`] and leaves the darks alone.
 pub(crate) const BRILLIANCE_GAMMA: f32 = 0.85;
 
-pub(crate) const BRILLIANCE_GAIN: f32 = 1.1;
-
 pub(crate) const BRILLIANCE_FROM: f32 = 0.3;
 
-pub(crate) const BRILLIANCE_PUSH: f32 = 0.5;
+pub(crate) const BRILLIANCE_PUSH: f32 = 0.1;
 
-/// Sparkle: the daubs with contour lines drawn through them, sharpened, and
+/// Sparkle: the daubs with lines of light drawn through them, sharpened, and
 /// lit up.
 ///
-/// The swirling lines all over CS6's Sparkle, which are densest in the
-/// out-of-focus background, are iso-lines of brightness: where the picture
-/// shades slowly they are far apart and follow the shading, and a slow random
-/// wobble added to the brightness first keeps them from reading as a
-/// topographic map. Light lines are drawn stronger than dark ones, which is
-/// half of the brilliance; the other half is a tone curve that sends the light
-/// parts towards white channel by channel, so the petals go pale rather than
-/// merely brighter while the background stays dark.
+/// The thin electric lines all over CS6's Sparkle are the boundaries between
+/// bands of brightness [`CONTOUR_STEP`] levels wide, drawn one pixel thick and
+/// left stepped, which is what gives them their circuit-board look. Where the
+/// picture shades slowly they are far apart and follow the shading; at a hard
+/// edge they crowd into one bright outline. A slow random wobble added to the
+/// brightness first keeps them from reading as a topographic map, and a blur
+/// of the lines lays the glow round them. Both fade in the darks — the line
+/// with the square of brightness, the glow more gently — so a dark coat keeps
+/// its depth and only its highlights catch the light. The other half of the
+/// brilliance is a tone curve that sends the light parts towards white
+/// channel by channel.
 pub(crate) fn sparkle(pixmap: &mut Pixmap, sharpness: f32) {
-    use std::f32::consts::TAU;
-
+    let (w, h) = (pixmap.width() as usize, pixmap.height() as usize);
     let mut field = pixmap.clone();
     crate::photorust::convolve::gaussian_blur_accelerated(&mut field, CONTOUR_SOFTEN);
     let wobble = blurred_specks(pixmap.width(), pixmap.height(), CONTOUR_WOBBLE_SCALE, 7);
     let wobble_gain = CONTOUR_WOBBLE * speck_gain(CONTOUR_WOBBLE_SCALE);
-    let amp = sharpness * CONTOUR_PER_STEP;
+    let band: Vec<f32> = field
+        .as_bytes()
+        .chunks_exact(4)
+        .zip(wobble.as_bytes().chunks_exact(4))
+        .map(|(f, wb)| {
+            let lum = 0.299 * f[0] as f32 + 0.587 * f[1] as f32 + 0.114 * f[2] as f32;
+            ((lum + (wb[0] as f32 - 127.5) * wobble_gain) / CONTOUR_STEP).floor()
+        })
+        .collect();
 
-    let stride = pixmap.stride();
+    // The lines, as a grey picture so the glow can be blurred out of them.
+    let mut lines = Pixmap::new(pixmap.width(), pixmap.height());
+    lines
+        .as_bytes_mut()
+        .par_chunks_exact_mut(w * 4)
+        .enumerate()
+        .for_each(|(y, row)| {
+            let at = |x: usize, y: usize| band[y * w + x];
+            for (x, px) in row.chunks_exact_mut(4).enumerate() {
+                let here = at(x, y);
+                let edge = here != at((x + 1).min(w - 1), y) || here != at(x, (y + 1).min(h - 1));
+                px[..3].fill(if edge { 255 } else { 0 });
+                px[3] = 255;
+            }
+        });
+    let mut glow = lines.clone();
+    crate::photorust::convolve::gaussian_blur_accelerated(&mut glow, GLOW_SPREAD);
+
+    let light = LINE_LIGHT + sharpness * LINE_PER_STEP;
     pixmap
         .as_bytes_mut()
-        .par_chunks_exact_mut(stride)
-        .zip(field.as_bytes().par_chunks_exact(stride))
-        .zip(wobble.as_bytes().par_chunks_exact(stride))
-        .for_each(|((out, field), wobble)| {
-            for ((out, f), wb) in out
-                .chunks_exact_mut(4)
-                .zip(field.chunks_exact(4))
-                .zip(wobble.chunks_exact(4))
-            {
-                let lum = 0.299 * f[0] as f32 + 0.587 * f[1] as f32 + 0.114 * f[2] as f32;
-                let level = lum + (wb[0] as f32 - 127.5) * wobble_gain;
-                let wave = (level / CONTOUR_STEP * TAU).cos();
-                let line = wave.max(0.0).powf(CONTOUR_THIN)
-                    - CONTOUR_DARK * (-wave).max(0.0).powf(CONTOUR_THIN);
-                for c in 0..3 {
-                    out[c] = (out[c] as f32 + line * amp).clamp(0.0, 255.0).round() as u8;
-                }
+        .par_chunks_exact_mut(4)
+        .zip(lines.as_bytes().par_chunks_exact(4))
+        .zip(glow.as_bytes().par_chunks_exact(4))
+        .for_each(|((out, line), glow)| {
+            let lum =
+                (0.299 * out[0] as f32 + 0.587 * out[1] as f32 + 0.114 * out[2] as f32) / 255.0;
+            let line = line[0] as f32 / 255.0 * lum * lum;
+            let glow =
+                glow[0] as f32 / 255.0 * GLOW_LIGHT * (GLOW_IN_DARK + (1.0 - GLOW_IN_DARK) * lum);
+            let k = ((line + glow) * light).min(1.0);
+            for c in 0..3 {
+                out[c] = (out[c] as f32 + (255.0 - out[c] as f32) * k).round() as u8;
             }
         });
 
@@ -217,7 +246,7 @@ pub(crate) fn sparkle(pixmap: &mut Pixmap, sharpness: f32) {
     put_back(pixmap, &sharp, &soft, sharpness * SPARKLE_PER_STEP);
 
     let brilliant: [u8; 256] = std::array::from_fn(|v| {
-        let x = ((v as f32 / 255.0).powf(BRILLIANCE_GAMMA) * BRILLIANCE_GAIN).min(1.0);
+        let x = ((v as f32 / 255.0).powf(BRILLIANCE_GAMMA)).min(1.0);
         let k = ((x - BRILLIANCE_FROM) / (1.0 - BRILLIANCE_FROM)).clamp(0.0, 1.0);
         let k = k * k * (3.0 - 2.0 * k);
         let x = x + BRILLIANCE_PUSH * k * (1.0 - x);

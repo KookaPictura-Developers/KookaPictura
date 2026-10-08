@@ -3,32 +3,25 @@
 #[allow(unused_imports)]
 use super::*;
 
+/// How many Kuwahara passes Palette Knife lays. photocraft lays one; a second
+/// grows the patches into the broader blobs CS6's reference shows.
+pub(crate) const KNIFE_PASSES: usize = 2;
+
 /// Filter ▸ Artistic ▸ Palette Knife: the picture spread with a knife.
 ///
-/// The picture is settled, cut into contiguous areas of like colour, and each
-/// area filled with its own average rounded onto a coarse palette. Both halves
-/// are needed and neither is enough: the cut is what makes the areas follow
-/// what is in the picture, and the palette is what fuses them into a few flat
-/// masses with the hard ragged edges between them that a knife leaves.
+/// Ported from photocraft's Filter Gallery (Brandon Thomas, MIT OR
+/// Apache-2.0). Kuwahara passes lay the picture down in flat patches with hard
+/// edges between them, half of each channel is then rounded onto a coarse
+/// palette so neighbouring patches of like colour fuse, and Softness blurs the
+/// joins.
 ///
-/// * **Stroke Size** is how big a mass of colour the knife works in. It sets
-///   both the spacing of the cut ([`KNIFE_WIDTH`]) and how far the picture is
-///   settled first ([`KNIFE_SETTLE`]), which is what makes a wide stroke lose
-///   the small things entirely rather than merely enlarging them.
-/// * **Stroke Detail** is how sensitive the knife is to the smaller colour
-///   breaks inside a mass — the number of rungs on the palette, see
-///   [`KNIFE_PALETTE`]. Wound down, a whole flower goes over to two or three
-///   pinks.
-/// * **Softness** is the blade's edge, which eases the joins between one mass
-///   and the next. At 0 they are left hard, as the reference has them.
+/// * **Stroke Size** is the Kuwahara reach, a third of the slider in pixels.
+/// * **Stroke Detail** is the palette: `2 + 3·detail` levels per channel.
+/// * **Softness** is a Gaussian of half the slider in pixels; 0 leaves the
+///   joins hard.
 ///
 /// Alpha is left alone: spreading the picture does not change the layer's
 /// shape.
-///
-/// No GPU path, and there will not be one: the cut is a sequential walk over
-/// the joins between pixels in order, each step depending on every step before
-/// it — the same argument as flood fill. See
-/// [`segment`](super::segment).
 pub fn palette_knife(pixmap: &mut Pixmap, size: u32, detail: u32, softness: u32) {
     if pixmap.is_empty() {
         return;
@@ -37,106 +30,78 @@ pub fn palette_knife(pixmap: &mut Pixmap, size: u32, detail: u32, softness: u32)
     let detail = detail.clamp(*KNIFE_DETAIL.start(), *KNIFE_DETAIL.end());
     let softness = softness.clamp(*KNIFE_SOFTNESS.start(), *KNIFE_SOFTNESS.end());
 
-    // Settle the picture before deciding what belongs with what — and paint
-    // back from the settled picture too, not from the original. The band of
-    // in-between colours this lays along every strong edge is not an artefact
-    // to be tolerated; it is where the ring comes from. See KNIFE_SETTLE.
-    crate::photorust::convolve::median_filter(
-        pixmap,
-        ((size as f32 * KNIFE_SIMPLIFY).round() as u32).max(1),
-    );
-    crate::photorust::convolve::gaussian_blur_accelerated(
-        pixmap,
-        KNIFE_SETTLE_FLOOR + size as f32 * KNIFE_SETTLE,
-    );
+    for _ in 0..KNIFE_PASSES {
+        kuwahara(pixmap, (size / 3).max(1) as usize);
+    }
+    let steps = (1 + detail * 3) as f32;
+    let palette: [u8; 256] = std::array::from_fn(|v| {
+        let v = v as f32 / 255.0;
+        let rounded = (v * steps).round() / steps;
+        ((rounded * 0.5 + v * 0.5) * 255.0).round() as u8
+    });
+    for px in pixmap.as_bytes_mut().chunks_exact_mut(4) {
+        for c in 0..3 {
+            px[c] = palette[px[c] as usize];
+        }
+    }
+    crate::photorust::convolve::gaussian_blur_accelerated(pixmap, softness as f32 * 0.5);
+}
 
-    let rungs = (KNIFE_PALETTE as f32
-        / (1.0 + (*KNIFE_DETAIL.end() - detail) as f32 * KNIFE_DETAIL_PER_STEP))
-        .round()
-        .max(2.0) as u32;
-    let width = pixmap.width() as usize;
-    let height = pixmap.height() as usize;
-
-    // What is being painted *from* stays as it was settled. Every coat is cut
-    // from it and coloured from it, so a coat laid over another is a fresh
-    // reading of the picture rather than a reading of the paint already down —
-    // which is what a painter does, and is also the only way the second coat
-    // can put back what the first one lost.
-    let subject = pixmap.clone();
-    let mut depth = vec![0f32; width * height];
-    let broad = size as f32 * KNIFE_WIDTH;
-
-    for coat in 0..COATS {
-        let stroke = broad * KNIFE_FINER.powi(coat as i32);
-        let (labels, count) =
-            crate::photorust::segment::regions(&subject, stroke, KNIFE_HOLD, KNIFE_STROKE);
-
-        let mut wet = subject.clone();
-        crate::photorust::segment::flatten(
-            &mut wet,
-            &labels,
-            count,
-            rungs,
-            stroke * KNIFE_RAGGED / KNIFE_WIDTH,
-        );
-
-        // The first coat covers the canvas; every one after it goes on only
-        // where the one before missed.
-        let worked = if coat == 0 {
-            vec![1.0f32; width * height]
-        } else {
-            where_it_matters(&subject, pixmap, stroke)
-        };
-
-        let fresh = wet.as_bytes().to_vec();
-        pixmap
-            .as_bytes_mut()
-            .par_chunks_exact_mut(width * 4)
-            .enumerate()
-            .for_each(|(y, line)| {
-                for (x, chunk) in line.chunks_exact_mut(4).enumerate() {
-                    let p = y * width + x;
-                    let over = worked[p];
-                    for c in 0..3 {
-                        let under = chunk[c] as f32;
-                        chunk[c] = (under + (fresh[p * 4 + c] as f32 - under) * over) as u8;
+/// Kuwahara smoothing: each pixel takes the mean colour of whichever of the
+/// four `(2h+1)²` boxes with it at a corner has the least brightness variance,
+/// `h = ⌈reach/2⌉`. Summed-area tables make the cost independent of `reach`.
+pub(crate) fn kuwahara(pixmap: &mut Pixmap, reach: usize) {
+    let (w, h) = (pixmap.width() as usize, pixmap.height() as usize);
+    let half = reach.div_ceil(2).max(1) as isize;
+    // Five planes per pixel — r, g, b, brightness, brightness² — summed over
+    // the rectangle above and left of it, with a zero row and column in front.
+    let (sw, sh) = (w + 1, h + 1);
+    let mut sums = vec![[0f64; 5]; sw * sh];
+    let bytes = pixmap.as_bytes();
+    for y in 0..h {
+        let mut run = [0f64; 5];
+        for x in 0..w {
+            let p = &bytes[(y * w + x) * 4..];
+            let (r, g, b) = (p[0] as f64, p[1] as f64, p[2] as f64);
+            let l = 0.299 * r + 0.587 * g + 0.114 * b;
+            for (acc, v) in run.iter_mut().zip([r, g, b, l, l * l]) {
+                *acc += v;
+            }
+            let above = sums[y * sw + x + 1];
+            sums[(y + 1) * sw + x + 1] = std::array::from_fn(|k| above[k] + run[k]);
+        }
+    }
+    // Mean of the box centred on (cx, cy), clipped to the picture.
+    let mean = |cx: isize, cy: isize| -> [f64; 5] {
+        let x0 = (cx - half).clamp(0, w as isize) as usize;
+        let x1 = (cx + half + 1).clamp(0, w as isize) as usize;
+        let y0 = (cy - half).clamp(0, h as isize) as usize;
+        let y1 = (cy + half + 1).clamp(0, h as isize) as usize;
+        let n = ((x1 - x0) * (y1 - y0)).max(1) as f64;
+        let s = |x: usize, y: usize| sums[y * sw + x];
+        let (a, b, c, d) = (s(x1, y1), s(x0, y1), s(x1, y0), s(x0, y0));
+        std::array::from_fn(|k| (a[k] - b[k] - c[k] + d[k]) / n)
+    };
+    pixmap
+        .as_bytes_mut()
+        .par_chunks_exact_mut(w * 4)
+        .enumerate()
+        .for_each(|(y, row)| {
+            for (x, px) in row.chunks_exact_mut(4).enumerate() {
+                let (x, y) = (x as isize, y as isize);
+                let mut best = (f64::MAX, [0f64; 5]);
+                for (dx, dy) in [(-half, -half), (half, -half), (-half, half), (half, half)] {
+                    let q = mean(x + dx, y + dy);
+                    let spread = q[4] - q[3] * q[3];
+                    if spread < best.0 {
+                        best = (spread, q);
                     }
                 }
-            });
-
-        // And the paint stacks up where it went on. A finer stroke carries
-        // less paint than a broad one, so it stands proportionally less proud
-        // — otherwise the accents shout over the coat they were laid on.
-        let slab = slab_of_paint(&labels, count, width, height, stroke);
-        let carried = stroke / broad;
-        depth
-            .par_iter_mut()
-            .zip(slab.par_iter().zip(worked.par_iter()))
-            .for_each(|(total, (&this, &over))| *total += this * over * carried);
-    }
-
-    // Take the stairs off the edges. Displacing where a pixel reads its colour
-    // from is done in whole pixels, so a torn boundary comes back climbing in
-    // single-pixel steps — ragged at arm's length and *pixelated* up close,
-    // which is the note this was added on. Under a pixel of blur reads as a
-    // torn edge rather than as a stepped one and costs nothing else: there is
-    // nothing this small anywhere else in the picture by now.
-    crate::photorust::convolve::gaussian_blur(pixmap, KNIFE_NO_STAIRS);
-
-    if softness > 0 {
-        crate::photorust::convolve::gaussian_blur_accelerated(
-            pixmap,
-            size as f32 * softness as f32 * KNIFE_SOFTNESS_SCALE,
-        );
-    }
-
-    // Last, because it is the only pass that is about the paint rather than
-    // about the picture. Softness thins the paint as well as easing the joins:
-    // a stroke laid on thin has no edge to catch the light.
-    let left = 1.0 - softness as f32 / *KNIFE_SOFTNESS.end() as f32;
-    light_the_paint(pixmap, &depth, left * PAINT_THICK * broad);
-    // Alpha stands throughout: spreading the picture does not change the
-    // layer's shape. Every pass above leaves it alone.
+                for c in 0..3 {
+                    px[c] = best.1[c].round().clamp(0.0, 255.0) as u8;
+                }
+            }
+        });
 }
 
 /// Where on the Glow Brightness slider the lamp's light exactly reaches white.

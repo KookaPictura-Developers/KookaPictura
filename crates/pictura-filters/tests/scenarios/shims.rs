@@ -253,14 +253,12 @@ pub fn palette_knife(
     stroke_size: u8,
     stroke_detail: u8,
     softness: u8,
-    seed: u64,
 ) -> Result<(), FilterError> {
     apply(
         &Filter::PaletteKnife {
             stroke_size,
             stroke_detail,
             softness,
-            seed,
         },
         buf,
     )

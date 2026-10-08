@@ -389,12 +389,11 @@ fn plan_strokes(filter: &Filter) -> Option<Result<(u64, Run), FilterError>> {
             stroke_size,
             stroke_detail,
             softness,
-            seed,
         } => check("palette knife size", stroke_size, 1..=50)
             .and(check("palette knife detail", stroke_detail, 1..=3))
             .and(check("palette knife softness", softness, 0..=10))
             .map(|()| {
-                seeded(seed, move |p| {
+                unseeded(move |p| {
                     artistic::palette_knife(p, u(stroke_size), u(stroke_detail), u(softness))
                 })
             }),

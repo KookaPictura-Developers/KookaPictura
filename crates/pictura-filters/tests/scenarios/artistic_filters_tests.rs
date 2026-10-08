@@ -97,7 +97,6 @@ fn each_filter_changes_the_colour_planes() {
             stroke_size: 12,
             stroke_detail: 2,
             softness: 8,
-            seed: 3,
         },
         Filter::PlasticWrap {
             highlight_strength: 12,
@@ -182,7 +181,6 @@ fn every_artistic_filter_preserves_alpha_via_apply() {
             stroke_size: 20,
             stroke_detail: 3,
             softness: 10,
-            seed: 9,
         },
         Filter::PlasticWrap {
             highlight_strength: 20,
@@ -287,8 +285,8 @@ fn new_artistic_boundaries_accept_and_out_of_range_rejects() {
         assert_eq!(out, base, "rejected paint daubs modified the buffer");
     }
 
-    assert!(palette_knife(&mut base.clone(), 1, 1, 0, 1).is_ok());
-    assert!(palette_knife(&mut base.clone(), 50, 3, 10, 1).is_ok());
+    assert!(palette_knife(&mut base.clone(), 1, 1, 0).is_ok());
+    assert!(palette_knife(&mut base.clone(), 50, 3, 10).is_ok());
     for (sz, d, so) in [
         (0u8, 1u8, 0u8),
         (51, 1, 0),
@@ -298,7 +296,7 @@ fn new_artistic_boundaries_accept_and_out_of_range_rejects() {
     ] {
         let mut out = base.clone();
         assert!(matches!(
-            palette_knife(&mut out, sz, d, so, 1),
+            palette_knife(&mut out, sz, d, so),
             Err(FilterError::InvalidParams(_))
         ));
         assert_eq!(out, base, "rejected palette knife modified the buffer");
@@ -542,18 +540,8 @@ fn paint_daubs_types_seed_and_size() {
 }
 
 #[test]
-fn palette_knife_and_sponge_are_seeded() {
+fn sponge_is_seeded() {
     let base = gradient(32, 8, 3);
-    let (mut a, mut b, mut c) = (base.clone(), base.clone(), base.clone());
-    palette_knife(&mut a, 12, 2, 6, 11).unwrap();
-    palette_knife(&mut b, 12, 2, 6, 11).unwrap();
-    palette_knife(&mut c, 12, 2, 6, 12).unwrap();
-    assert_eq!(
-        a.data, b.data,
-        "palette knife same seed must be bit-identical"
-    );
-    assert_ne!(a.data, c.data, "palette knife different seed must differ");
-
     let (mut d, mut e, mut f) = (base.clone(), base.clone(), base.clone());
     sponge(&mut d, 6, 20, 4, 21).unwrap();
     sponge(&mut e, 6, 20, 4, 21).unwrap();
@@ -706,7 +694,7 @@ fn tiny_and_three_channel_buffers_do_not_panic() {
     assert!(neon_glow(&mut tiny.clone(), 24, 50, [1, 2, 3]).is_ok());
     assert!(poster_edges(&mut tiny.clone(), 10, 10, 10).is_ok());
     assert!(paint_daubs(&mut tiny.clone(), 50, 40, BrushType::Sparkle, 3).is_ok());
-    assert!(palette_knife(&mut tiny.clone(), 50, 3, 10, 3).is_ok());
+    assert!(palette_knife(&mut tiny.clone(), 50, 3, 10).is_ok());
     assert!(plastic_wrap(&mut tiny.clone(), 20, 15, 15).is_ok());
     assert!(sponge(&mut tiny.clone(), 10, 25, 15, 3).is_ok());
 
@@ -716,7 +704,7 @@ fn tiny_and_three_channel_buffers_do_not_panic() {
     assert!(neon_glow(&mut rgb.clone(), -24, 10, [9, 9, 9]).is_ok());
     assert!(poster_edges(&mut rgb.clone(), 1, 1, 1).is_ok());
     assert!(paint_daubs(&mut rgb.clone(), 50, 40, BrushType::WideSharp, 1).is_ok());
-    assert!(palette_knife(&mut rgb.clone(), 50, 3, 10, 1).is_ok());
+    assert!(palette_knife(&mut rgb.clone(), 50, 3, 10).is_ok());
     assert!(plastic_wrap(&mut rgb.clone(), 20, 15, 15).is_ok());
     assert!(sponge(&mut rgb.clone(), 10, 25, 15, 1).is_ok());
 }

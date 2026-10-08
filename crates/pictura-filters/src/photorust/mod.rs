@@ -16,7 +16,6 @@ pub(crate) mod dispatch;
 pub(crate) mod distort;
 pub(crate) mod pixelate;
 pub(crate) mod pixmap;
-pub(crate) mod segment;
 pub(crate) mod sketch;
 pub(crate) mod stylize;
 pub(crate) mod texture;

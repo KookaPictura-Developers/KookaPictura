@@ -9,6 +9,7 @@
 #include <QtWidgets/QDialog>
 #include <QtWidgets/QDoubleSpinBox>
 #include <QtWidgets/QLabel>
+#include <QtWidgets/QPushButton>
 #include <QtWidgets/QSlider>
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QWidget>
@@ -64,10 +65,14 @@ private slots:
     void addedRowsAreImplemented();
     void grayscaleDocumentAppliesThroughDialog();
     void previewToggleShowsAndRevertsPixels();
+    void previewShowsWhenDialogOpens();
     void zoomChangesOnlyThumbnailAndLabel();
     void sliderDragDefersPreviewUntilRelease();
     void numericFieldIsCompactAndSliderAlignsLeft();
     void dialogEntriesEndWithEllipsis();
+    void colorParameterIsASwatch();
+    void artisticDialogDefaults();
+    void underpaintingStaysInOneColumn();
 
 private:
     pictura::test::ScopedStateHome stateHome_;
@@ -376,6 +381,30 @@ void FilterMenuTest::previewToggleShowsAndRevertsPixels()
     QVERIFY(changedOnRecheck);
 }
 
+void FilterMenuTest::previewShowsWhenDialogOpens()
+{
+    QVERIFY(window_->newDocument(QStringLiteral("OpenPreview"), 64, 64, QStringLiteral("rgb"), 8,
+                                 QStringLiteral("white")));
+    pictura::PictureView* view = window_->activeView();
+    QVERIFY(view != nullptr);
+    const QImage before = view->image();
+    bool shownUntouched = false;
+    QTimer::singleShot(0, [&] {
+        auto* dialog = activeFilterDialog();
+        if (!dialog) {
+            return;
+        }
+        // No control is touched: opening alone must preview.
+        QTRY_VERIFY_WITH_TIMEOUT(view->image() != before, 2000);
+        shownUntouched = true;
+        dialog->reject();
+    });
+    QVERIFY(window_->registry()->dispatch(
+        filterId(QStringLiteral("Noise"), QStringLiteral("Add Noise"))));
+    QVERIFY(shownUntouched);
+    QCOMPARE(view->image(), before);
+}
+
 void FilterMenuTest::zoomChangesOnlyThumbnailAndLabel()
 {
     QVERIFY(window_->newDocument(QStringLiteral("Zoom"), 64, 64, QStringLiteral("rgb"), 8,
@@ -490,6 +519,60 @@ void FilterMenuTest::dialogEntriesEndWithEllipsis()
             QVERIFY2(action->text().endsWith(QStringLiteral("…")), qPrintable(spec.kind));
         }
     }
+}
+
+void FilterMenuTest::colorParameterIsASwatch()
+{
+    const pictura::FilterCommandSpec* spec = pictura::filterCommandForPath(
+        {QStringLiteral("Filter"), QStringLiteral("Artistic"), QStringLiteral("Neon Glow")});
+    QVERIFY(spec != nullptr);
+    pictura::FilterPreviewDialog dialog(window_->activeView(), *spec);
+    auto* swatch = dialog.findChild<QPushButton*>(QStringLiteral("filterColorSwatch"));
+    QVERIFY(swatch != nullptr);
+    // A box filled with the colour, as in CS6 — not the hex code as text.
+    QVERIFY(swatch->text().isEmpty());
+    QVERIFY(swatch->styleSheet().contains(QStringLiteral("#0000ff")));
+    const QList<double> values = dialog.values();
+    QCOMPARE(values, (QList<double>{5.0, 15.0, 0.0, 0.0, 255.0}));
+}
+
+void FilterMenuTest::artisticDialogDefaults()
+{
+    const auto open = [this](const QString& leaf) {
+        const pictura::FilterCommandSpec* spec =
+            pictura::filterCommandForPath({QStringLiteral("Filter"), QStringLiteral("Artistic"), leaf});
+        return pictura::FilterPreviewDialog(window_->activeView(), *spec).values();
+    };
+    QCOMPARE(open(QStringLiteral("Plastic Wrap")), (QList<double>{15.0, 9.0, 7.0}));
+    // Palette Knife has no randomness, so no Seed.
+    QCOMPARE(open(QStringLiteral("Palette Knife")), (QList<double>{25.0, 3.0, 0.0}));
+    // No foreground/background swatches; trailing slot is the Seed.
+    QCOMPARE(open(QStringLiteral("Colored Pencil")), (QList<double>{4.0, 8.0, 25.0, 1.0}));
+    QCOMPARE(open(QStringLiteral("Watercolor")), (QList<double>{9.0, 1.0, 1.0, 1.0}));
+    // Texture Canvas (2), Light Direction Bottom (0) / Top (4).
+    QCOMPARE(open(QStringLiteral("Rough Pastels")),
+             (QList<double>{6.0, 4.0, 2.0, 100.0, 20.0, 0.0, 0.0}));
+    QCOMPARE(open(QStringLiteral("Underpainting")),
+             (QList<double>{6.0, 16.0, 2.0, 100.0, 4.0, 4.0, 0.0, 1.0}));
+}
+
+void FilterMenuTest::underpaintingStaysInOneColumn()
+{
+    const pictura::FilterCommandSpec* spec = pictura::filterCommandForPath(
+        {QStringLiteral("Filter"), QStringLiteral("Artistic"), QStringLiteral("Underpainting")});
+    QVERIFY(spec != nullptr);
+    pictura::FilterPreviewDialog dialog(window_->activeView(), *spec);
+    dialog.show();
+    QApplication::processEvents();
+    // Relief, Light Direction, Invert and Seed run on below Scaling rather
+    // than spilling into a second column.
+    const QList<QSlider*> sliders = dialog.findChildren<QSlider*>();
+    QVERIFY(sliders.size() >= 2);
+    const int x = sliders.first()->mapTo(&dialog, QPoint(0, 0)).x();
+    for (QSlider* slider : sliders) {
+        QCOMPARE(slider->mapTo(&dialog, QPoint(0, 0)).x(), x);
+    }
+    dialog.reject();
 }
 
 QTEST_MAIN(FilterMenuTest)

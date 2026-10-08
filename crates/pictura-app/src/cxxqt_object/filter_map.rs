@@ -235,21 +235,21 @@ pub(super) const FILTER_ARITIES: &[(&str, usize)] = &[
     ("fibers", 9),
     ("lens-flare", 4),
     ("lighting-effects", 19),
-    ("colored-pencil", 10),
+    ("colored-pencil", 4),
     ("cutout", 3),
     ("dry-brush", 4),
     ("film-grain", 4),
     ("fresco", 4),
     ("neon-glow", 5),
     ("paint-daubs", 4),
-    ("palette-knife", 4),
+    ("palette-knife", 3),
     ("plastic-wrap", 3),
     ("poster-edges", 3),
-    ("rough-pastels", 14),
+    ("rough-pastels", 7),
     ("smudge-stick", 4),
     ("sponge", 4),
     ("underpainting", 8),
-    ("watercolor", 10),
+    ("watercolor", 4),
     ("accented-edges", 3),
     ("angled-strokes", 3),
     ("crosshatch", 3),
@@ -620,140 +620,150 @@ pub(super) fn filter_from_kind_params(kind: &str, params: &[f64]) -> Option<Filt
             }
         }
         "colored-pencil" => {
-            arity!(params, 10);
+            arity!(params, 4);
             Filter::ColoredPencil {
-                pencil_width: u8v(params, 0, 6),
+                pencil_width: u8v(params, 0, 4),
                 stroke_pressure: u8v(params, 1, 8),
-                paper_brightness: u8v(params, 2, 20),
-                foreground: rgb(params, 3, [0, 0, 0]),
-                background: rgb(params, 6, [255, 255, 255]),
-                seed: u64v(params, 9, 1),
+                paper_brightness: u8v(params, 2, 25),
+                // ponytail: CS6 draws with the document foreground and
+                // background; the dialog shows no swatches, so the defaults
+                // stand in until the bridge passes the document colours.
+                foreground: [0, 0, 0],
+                background: [255, 255, 255],
+                seed: u64v(params, 3, 1),
             }
         }
         "cutout" => {
             arity!(params, 3);
             Filter::Cutout {
                 levels: u8v(params, 0, 4),
-                edge_simplicity: u8v(params, 1, 0),
-                edge_fidelity: u8v(params, 2, 1),
+                edge_simplicity: u8v(params, 1, 4),
+                edge_fidelity: u8v(params, 2, 2),
             }
         }
         "dry-brush" => {
             arity!(params, 4);
             Filter::DryBrush {
-                brush_size: u8v(params, 0, 8),
-                brush_detail: u8v(params, 1, 6),
-                texture: u8v(params, 2, 2),
+                brush_size: u8v(params, 0, 2),
+                brush_detail: u8v(params, 1, 8),
+                texture: u8v(params, 2, 1),
                 seed: u64v(params, 3, 1),
             }
         }
         "film-grain" => {
             arity!(params, 4);
             Filter::FilmGrain {
-                grain: u8v(params, 0, 10),
-                highlight_area: u8v(params, 1, 5),
-                intensity: u8v(params, 2, 5),
+                grain: u8v(params, 0, 4),
+                highlight_area: u8v(params, 1, 0),
+                intensity: u8v(params, 2, 10),
                 seed: u64v(params, 3, 1),
             }
         }
         "fresco" => {
             arity!(params, 4);
             Filter::Fresco {
-                brush_size: u8v(params, 0, 8),
-                brush_detail: u8v(params, 1, 6),
-                texture: u8v(params, 2, 2),
+                brush_size: u8v(params, 0, 2),
+                brush_detail: u8v(params, 1, 8),
+                texture: u8v(params, 2, 1),
                 seed: u64v(params, 3, 1),
             }
         }
         "neon-glow" => {
             arity!(params, 5);
             Filter::NeonGlow {
-                glow_size: i32v(params, 0, 8),
-                glow_brightness: u8v(params, 1, 40),
-                glow_color: rgb(params, 2, [0, 255, 255]),
+                glow_size: i32v(params, 0, 5),
+                glow_brightness: u8v(params, 1, 15),
+                glow_color: rgb(params, 2, [0, 0, 255]),
             }
         }
         "paint-daubs" => {
             arity!(params, 4);
             Filter::PaintDaubs {
                 brush_size: u8v(params, 0, 8),
-                sharpness: u8v(params, 1, 20),
+                sharpness: u8v(params, 1, 7),
                 brush_type: pick(&BRUSH_TYPES, params, 2, 0),
                 seed: u64v(params, 3, 1),
             }
         }
         "palette-knife" => {
-            arity!(params, 4);
+            arity!(params, 3);
             Filter::PaletteKnife {
-                stroke_size: u8v(params, 0, 12),
-                stroke_detail: u8v(params, 1, 2),
-                softness: u8v(params, 2, 8),
-                seed: u64v(params, 3, 1),
+                stroke_size: u8v(params, 0, 25),
+                stroke_detail: u8v(params, 1, 3),
+                softness: u8v(params, 2, 0),
             }
         }
         "plastic-wrap" => {
             arity!(params, 3);
             Filter::PlasticWrap {
                 highlight_strength: u8v(params, 0, 15),
-                detail: u8v(params, 1, 5),
-                smoothness: u8v(params, 2, 5),
+                detail: u8v(params, 1, 9),
+                smoothness: u8v(params, 2, 7),
             }
         }
         "poster-edges" => {
             arity!(params, 3);
             Filter::PosterEdges {
-                edge_thickness: u8v(params, 0, 3),
-                edge_intensity: u8v(params, 1, 10),
-                posterization: u8v(params, 2, 4),
+                edge_thickness: u8v(params, 0, 2),
+                edge_intensity: u8v(params, 1, 1),
+                posterization: u8v(params, 2, 2),
             }
         }
         "rough-pastels" => {
-            arity!(params, 14);
+            arity!(params, 7);
             Filter::RoughPastels {
-                stroke_length: u8v(params, 0, 8),
-                stroke_detail: u8v(params, 1, 6),
-                texture: texture(params, 2),
-                foreground: rgb(params, 7, [0, 0, 0]),
-                background: rgb(params, 10, [255, 255, 255]),
-                seed: u64v(params, 13, 1),
+                stroke_length: u8v(params, 0, 6),
+                stroke_detail: u8v(params, 1, 4),
+                texture: TextureOptions {
+                    relief: u8v(params, 4, 20),
+                    ..texture(params, 2)
+                },
+                // ponytail: document colours, as for Colored Pencil.
+                foreground: [0, 0, 0],
+                background: [255, 255, 255],
+                seed: 1,
             }
         }
         "smudge-stick" => {
             arity!(params, 4);
             Filter::SmudgeStick {
-                stroke_length: u8v(params, 0, 4),
-                highlight_area: u8v(params, 1, 8),
-                intensity: u8v(params, 2, 6),
+                stroke_length: u8v(params, 0, 2),
+                highlight_area: u8v(params, 1, 0),
+                intensity: u8v(params, 2, 10),
                 seed: u64v(params, 3, 1),
             }
         }
         "sponge" => {
             arity!(params, 4);
             Filter::Sponge {
-                brush_size: u8v(params, 0, 6),
-                definition: u8v(params, 1, 18),
-                smoothness: u8v(params, 2, 4),
+                brush_size: u8v(params, 0, 2),
+                definition: u8v(params, 1, 12),
+                smoothness: u8v(params, 2, 5),
                 seed: u64v(params, 3, 1),
             }
         }
         "underpainting" => {
             arity!(params, 8);
             Filter::Underpainting {
-                brush_size: u8v(params, 0, 10),
-                texture_coverage: u8v(params, 1, 24),
-                texture: texture(params, 2),
+                brush_size: u8v(params, 0, 6),
+                texture_coverage: u8v(params, 1, 16),
+                texture: TextureOptions {
+                    light_direction: u8v(params, 5, 4),
+                    ..texture(params, 2)
+                },
                 seed: u64v(params, 7, 1),
             }
         }
         "watercolor" => {
-            arity!(params, 10);
+            arity!(params, 4);
             Filter::Watercolor {
-                brush_detail: u8v(params, 0, 8),
-                shadow_intensity: u8v(params, 1, 6),
-                texture: u8v(params, 2, 2),
-                foreground: rgb(params, 3, [0, 0, 0]),
-                background: rgb(params, 6, [255, 255, 255]),
-                seed: u64v(params, 9, 1),
+                brush_detail: u8v(params, 0, 9),
+                shadow_intensity: u8v(params, 1, 1),
+                texture: u8v(params, 2, 1),
+                // ponytail: document colours, as for Colored Pencil.
+                foreground: [0, 0, 0],
+                background: [255, 255, 255],
+                seed: u64v(params, 3, 1),
             }
         }
         "accented-edges" => {

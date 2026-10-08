@@ -202,7 +202,6 @@ pub enum Filter {
         stroke_size: u8,
         stroke_detail: u8,
         softness: u8,
-        seed: u64,
     },
     PlasticWrap {
         highlight_strength: u8,

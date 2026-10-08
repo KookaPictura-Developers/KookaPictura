@@ -269,7 +269,6 @@ fn filters() -> Vec<(&'static str, Filter)> {
                 stroke_size: 12,
                 stroke_detail: 2,
                 softness: 8,
-                seed: 1,
             },
         ),
         (

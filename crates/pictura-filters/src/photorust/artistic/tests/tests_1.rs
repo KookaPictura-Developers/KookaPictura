@@ -423,195 +423,70 @@ fn dry_brush_over_an_empty_pixmap_does_nothing() {
     dry_brush(&mut pm, 2, 8, 2);
 }
 
-/// A ramp — where every step was the same size as the last — comes back as
-/// masses: long stretches that barely climb at all, and hard joins between
-/// them.
-///
-/// Not as *runs of one colour*, which is what this measured before the
-/// paint was given any thickness. One mass is one colour of pigment, but
-/// the paint it is made of is a slab with a lit side and a shaded one (see
-/// [`lay_the_paint_on`]), so the values inside it drift by a level or two.
-/// What survives the lighting is the shape of the climb: flat-ish, then a
-/// step, then flat-ish again.
+/// The knife lays a noisy surface down flat and stops dead at a boundary:
+/// Kuwahara takes each pixel from the calmest box beside it, which is never
+/// one straddling the edge.
 #[test]
-fn the_knife_lays_a_smooth_ramp_on_in_masses() {
-    let mut pm = ramp();
-    let steps = |pm: &Pixmap| -> Vec<i32> {
-        (0..63)
-            .map(|x| (pm.get(x + 1, 32).r as i32 - pm.get(x, 32).r as i32).abs())
-            .collect()
-    };
-    // The ramp climbs by 4 a pixel, everywhere, with no joins in it.
-    assert!(steps(&pm).iter().all(|&d| d == 4));
-
-    palette_knife(&mut pm, 25, 3, 0);
-    let after = steps(&pm);
-    // Afterwards the climb is not spread evenly: most of it happens at a
-    // few hard joins. Measured against the total rather than as a count of
-    // flat neighbours, because the lighting puts a slope on every mass and
-    // a count of flat ones counts the lighting instead of the paint.
-    let joins: i32 = after.iter().filter(|&&d| d > 12).sum();
-    let total: i32 = after.iter().sum();
+fn the_knife_flattens_a_surface_and_stops_at_a_boundary() {
+    let before = two_noisy_fields();
+    let mut pm = before.clone();
+    palette_knife(&mut pm, 12, 3, 0);
     assert!(
-        joins * 2 > total,
-        "the ramp came back climbing evenly: {joins} of {total} levels crossed at a join"
+        restlessness(&pm, 4..28) * 4 < restlessness(&before, 4..28),
+        "the knife left the noise in: {} against {}",
+        restlessness(&pm, 4..28),
+        restlessness(&before, 4..28)
     );
-    let hardest = *after.iter().max().unwrap();
+    let left = pm.get(28, 32).r as i32;
+    let right = pm.get(35, 32).r as i32;
     assert!(
-        hardest > 20,
-        "the masses met at a step of only {hardest} levels"
+        left < 80 && right > 180,
+        "the knife carried one field into the other: {left} and {right}"
     );
 }
 
-/// A wide knife works in bigger masses of colour than a fine one, and so
-/// leaves the picture further from where it started.
-///
-/// Measured as how far it strays rather than as a count of masses, of
-/// colours or of joins, all three of which were tried. Colours count the
-/// lighting now that the paint has thickness. Joins count nothing at all at
-/// the fine end: a knife this small follows a ramp so closely that it
-/// leaves no hard join anywhere, and the honest comparison came out 14
-/// against 0 the wrong way round.
+/// A wide knife works in bigger patches than a fine one, and so leaves the
+/// picture further from where it started.
 #[test]
 fn a_wider_knife_strays_further_from_the_picture() {
     let strayed = |size| {
-        let before = ramp();
+        let before = two_noisy_fields();
         let mut pm = before.clone();
         palette_knife(&mut pm, size, 3, 0);
-        (0..64)
-            .map(|y| {
-                (0..64)
-                    .map(|x| (pm.get(x, y).r as i32 - before.get(x, y).r as i32).unsigned_abs())
-                    .sum::<u32>()
-            })
+        pm.as_bytes()
+            .iter()
+            .zip(before.as_bytes())
+            .map(|(&a, &b)| (a as i32 - b as i32).unsigned_abs())
             .sum::<u32>()
     };
     assert!(
-        strayed(50) > strayed(2),
+        strayed(50) > strayed(3),
         "a wide knife stayed as close to the picture as a fine one: {} against {}",
         strayed(50),
-        strayed(2)
+        strayed(3)
     );
 }
 
-/// The paint stands off the canvas. A field of one flat colour has nothing
-/// in it to find and still comes back with light and shade in it, because
-/// what is being lit is the paint and not the picture.
-///
-/// This is the difference between a knife painting and a poster, and it is
-/// the one thing no amount of work on the *colours* was ever going to give.
+/// Stroke Detail is the palette, `2 + 3·detail` levels, and only half of each
+/// channel is rounded onto it. A flat 150 rounds to 127.5 on the four-step
+/// palette and to 153 on the ten-step one.
 #[test]
-fn the_paint_stands_off_the_canvas() {
-    let range = |softness| {
-        let mut pm = Pixmap::filled(96, 96, Rgba8::new(140, 140, 140, 255));
-        palette_knife(&mut pm, 12, 3, softness);
-        let band: Vec<i32> = (16..80).map(|x| pm.get(x, 48).r as i32).collect();
-        band.iter().max().unwrap() - band.iter().min().unwrap()
-    };
-    assert!(
-        range(0) > 20,
-        "a flat field came back flat: {} levels across it",
-        range(0)
-    );
-    // Laid on thin, it has no edge to catch the light.
-    assert!(
-        range(10) < range(0),
-        "thin paint caught as much light as thick: {} against {}",
-        range(10),
-        range(0)
-    );
-}
-
-/// The knife spreads a surface and stops at a boundary.
-///
-/// Stops, with the one exception the filter is built on: what lies between
-/// two masses is neither of them but a band of its own, flat, with a hard
-/// edge on each side. That is the dark ring around everything in the
-/// reference — see [`KNIFE_SETTLE`] — and this is the test that says it is
-/// a band and not a gradient, which for four attempts it wrongly was.
-#[test]
-fn the_knife_stops_at_a_boundary() {
-    let mut pm = two_noisy_fields();
-    palette_knife(&mut pm, 10, 3, 0);
-    let left = pm.get(20, 32).r as i32;
-    let right = pm.get(44, 32).r as i32;
-    assert!(
-        left < 90 && right > 170,
-        "the knife carried one field into the other: {left} and {right}"
-    );
-    // Whatever is neither field is the ring, and there is not much of it:
-    // the two fields meet inside the width of one stroke.
-    let between: Vec<i32> = (0..64)
-        .map(|x| pm.get(x, 32).r as i32)
-        .filter(|&v| v > 90 && v < 170)
-        .collect();
-    assert!(
-        between.len() <= 12,
-        "the knife spread the edge over {} pixels",
-        between.len()
-    );
-    // And it is made of flat rungs rather than of every level in between.
-    let mut rungs = between.clone();
-    rungs.sort_unstable();
-    rungs.dedup();
-    assert!(
-        rungs.len() <= 4,
-        "the ring came back as a gradient of {} shades, not as a band",
-        rungs.len()
-    );
-}
-
-/// Stroke Detail is how much of the picture the masses keep to. Wound up,
-/// a mass will reach for whatever matches it and the picture comes back
-/// close to what it was; wound down, the masses are held to their own patch
-/// of canvas and cut across it.
-#[test]
-fn stroke_detail_is_how_much_the_knife_keeps() {
-    // A diagonal edge, which no mass held to a patch of canvas can follow:
-    // every one of them that lands on the edge has to average the two sides
-    // and comes back as neither. Measuring what survives of a *mark*
-    // instead measures nothing, which two earlier versions of this test did
-    // — a region the colour of the mark is a region at either setting, so
-    // the mark comes back whole either way. What the setting changes is the
-    // shape of the masses, not whether a colour survives at all.
-    let strayed = |detail| {
-        let mut pm = Pixmap::new(96, 96);
-        for y in 0..96 {
-            for x in 0..96 {
-                let v = if x < y { 70 } else { 190 };
-                pm.set(x, y, Rgba8::new(v, v, v, 255));
-            }
-        }
-        let before = pm.clone();
+fn stroke_detail_is_the_palette() {
+    let flat = |detail| {
+        let mut pm = Pixmap::filled(16, 16, Rgba8::new(150, 150, 150, 255));
         palette_knife(&mut pm, 12, detail, 0);
-        (0..96)
-            .map(|y| {
-                (0..96)
-                    .map(|x| (pm.get(x, y).r as i32 - before.get(x, y).r as i32).unsigned_abs())
-                    .sum::<u32>()
-            })
-            .sum::<u32>()
+        pm.get(8, 8).r
     };
-    assert!(
-        strayed(3) < strayed(1),
-        "the knife kept as little at full detail as at none: {} against {}",
-        strayed(3),
-        strayed(1)
-    );
+    assert_eq!(flat(1), 139);
+    assert_eq!(flat(3), 152);
 }
 
-/// Softness is the blade's edge: wound up, the masses stop meeting at a
-/// hard line.
-///
-/// Measured on a ramp, which has no fine detail anywhere — so the masses
-/// stand over the whole of it and every join is one this slider can ease.
-/// At the bottom of the slider they are left hard, which is most of what
-/// makes the reference look scraped on rather than painted.
+/// Softness eases the hard join the knife leaves between two patches.
 #[test]
-fn softness_eases_the_joins_between_cells() {
+fn softness_eases_the_joins_between_patches() {
     let hardest_join = |softness| {
-        let mut pm = ramp();
-        palette_knife(&mut pm, 10, 3, softness);
+        let mut pm = two_noisy_fields();
+        palette_knife(&mut pm, 12, 3, softness);
         (0..63)
             .map(|x| (pm.get(x, 32).r as i32 - pm.get(x + 1, 32).r as i32).abs())
             .max()
@@ -732,10 +607,26 @@ fn sparkle_draws_contours_and_lights_the_picture_up() {
         across(&plain)
     );
 
+    // The lines are light: they rise well above the plain brush and nothing
+    // sinks below it.
+    let row = |pm: &Pixmap| (0..64).map(|x| pm.get(x, 32).r as i32).collect::<Vec<_>>();
+    let (lit, base) = (row(&sparkle), row(&plain));
+    let lines = lit.iter().zip(&base).filter(|(s, p)| *s - *p > 40).count();
+    assert!(
+        lines >= 4,
+        "only {lines} pixels of light lines across the ramp"
+    );
+    assert!(
+        lit.iter().zip(&base).all(|(s, p)| s - p > -8),
+        "Sparkle drew dark lines: {lit:?} against {base:?}"
+    );
+
+    // A flat field has no bands to draw, so what lifts it is the tone curve
+    // alone — gently, so the picture keeps its colour under the lines.
     let mut light = Pixmap::filled(32, 32, Rgba8::new(200, 200, 200, 255));
     paint_daubs(&mut light, 4, 0, DaubBrush::Sparkle);
     assert!(
-        light.get(16, 16).r > 220,
+        light.get(16, 16).r > 205,
         "not lit up: {}",
         light.get(16, 16).r
     );

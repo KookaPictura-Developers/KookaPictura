@@ -397,20 +397,18 @@ fn cases() -> Vec<Case> {
                 seed,
             },
         ),
-        seeded(
+        case(
             "PaletteKnife",
+            Filter::PaletteKnife {
+                stroke_size: 6,
+                stroke_detail: 3,
+                softness: 0,
+            },
             Some(Filter::PaletteKnife {
                 stroke_size: 25,
                 stroke_detail: 4,
                 softness: 0,
-                seed: 1,
             }),
-            |seed| Filter::PaletteKnife {
-                stroke_size: 6,
-                stroke_detail: 3,
-                softness: 0,
-                seed,
-            },
         ),
         case(
             "PlasticWrap",

@@ -1,8 +1,10 @@
 #include "filter_preview_dialog.h"
+#include "color_picker_dialog.h"
 #include "dialogs.h"
 #include "panels/jump_slider.h"
 
 #include <QtCore/QSignalBlocker>
+#include <QtCore/QTimer>
 #include <QtCore/QVariant>
 #include <QtGui/QColor>
 #include <QtGui/QFontMetrics>
@@ -13,9 +15,9 @@
 #include <QtGui/QPen>
 #include <QtGui/QPixmap>
 #include <QtGui/QResizeEvent>
+#include <QtGui/QShowEvent>
 #include <QtMath>
 #include <QtWidgets/QCheckBox>
-#include <QtWidgets/QColorDialog>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QDoubleSpinBox>
 #include <QtWidgets/QFrame>
@@ -54,7 +56,7 @@ int slotCount(FilterControl control)
 
 // More parameter rows than this spill into a second input column, matching CS6's
 // 3-column dialogs for the input-heavy filters (Smart Sharpen, Wave, ...).
-const int kManyParams = 7;
+const int kManyParams = 8;
 
 // A value box only needs room for five digits and a decimal (with a sign); a
 // wider box would just waste the row.
@@ -206,6 +208,16 @@ private:
 QColor buttonColor(const QPushButton* button)
 {
     return button->property("filterColor").value<QColor>();
+}
+
+// A colour parameter shows as a swatch, as CS6's does; the hex is only the tooltip.
+void setButtonColor(QPushButton* button, const QColor& color)
+{
+    button->setProperty("filterColor", color);
+    button->setToolTip(color.name());
+    button->setStyleSheet(
+        QStringLiteral("QPushButton { background-color: %1; border: 1px solid #000; }")
+            .arg(color.name()));
 }
 
 // CS6 preview zoom steps, as a percentage of the base thumbnail size.
@@ -395,18 +407,19 @@ void FilterPreviewDialog::addControl(const QList<double>& initial, int index)
     }
     case FilterControl::Color: {
         control.colorButton = new QPushButton(this);
+        control.colorButton->setObjectName(QStringLiteral("filterColorSwatch"));
+        control.colorButton->setFixedSize(24, 22);
         const QColor color(static_cast<int>(fallback(0, spec.initial.value(0, 0))),
                            static_cast<int>(fallback(1, spec.initial.value(1, 0))),
                            static_cast<int>(fallback(2, spec.initial.value(2, 0))));
-        control.colorButton->setProperty("filterColor", color);
-        control.colorButton->setText(color.name());
+        setButtonColor(control.colorButton, color);
         connect(control.colorButton, &QPushButton::clicked, this, [this, button = control.colorButton,
                                                                     spec] {
-            const QColor picked =
-                QColorDialog::getColor(buttonColor(button), this, spec.label);
+            QString title = spec.label;
+            title.remove(QLatin1Char(':'));
+            const QColor picked = ColorPickerDialog::getColor(buttonColor(button), this, title);
             if (picked.isValid()) {
-                button->setProperty("filterColor", picked);
-                button->setText(picked.name());
+                setButtonColor(button, picked);
                 valuesChanged();
             }
         });
@@ -572,9 +585,8 @@ void FilterPreviewDialog::applyInitial(const QList<double>& initial)
             const double r = slot < initial.size() ? initial.at(slot) : buttonColor(control.colorButton).red();
             const double g = slot + 1 < initial.size() ? initial.at(slot + 1) : buttonColor(control.colorButton).green();
             const double b = slot + 2 < initial.size() ? initial.at(slot + 2) : buttonColor(control.colorButton).blue();
-            const QColor color(static_cast<int>(r), static_cast<int>(g), static_cast<int>(b));
-            control.colorButton->setProperty("filterColor", color);
-            control.colorButton->setText(color.name());
+            setButtonColor(control.colorButton,
+                           QColor(static_cast<int>(r), static_cast<int>(g), static_cast<int>(b)));
             break;
         }
         case FilterControl::Placement:
@@ -702,6 +714,21 @@ void FilterPreviewDialog::resizeEvent(QResizeEvent* event)
     QDialog::resizeEvent(event);
     // The preview pane grows with the dialog; re-render it at the new size.
     updateThumbnail();
+}
+
+void FilterPreviewDialog::showEvent(QShowEvent* event)
+{
+    QDialog::showEvent(event);
+    // Preview on open, as CS6 does. Deferred a turn so the dialog paints before
+    // a slow filter runs.
+    if (!shownOnce_) {
+        shownOnce_ = true;
+        QTimer::singleShot(0, this, [this] {
+            if (isVisible()) {
+                valuesChanged();
+            }
+        });
+    }
 }
 
 bool FilterPreviewDialog::get(PictureView* view, const FilterCommandSpec& spec,
