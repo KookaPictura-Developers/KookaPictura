@@ -73,6 +73,7 @@ private slots:
     void colorParameterIsASwatch();
     void artisticDialogDefaults();
     void underpaintingStaysInOneColumn();
+    void smartSharpenStacksInOneWideColumn();
 
 private:
     pictura::test::ScopedStateHome stateHome_;
@@ -572,6 +573,40 @@ void FilterMenuTest::underpaintingStaysInOneColumn()
     for (QSlider* slider : sliders) {
         QCOMPARE(slider->mapTo(&dialog, QPoint(0, 0)).x(), x);
     }
+    dialog.reject();
+}
+
+
+void FilterMenuTest::smartSharpenStacksInOneWideColumn()
+{
+    const pictura::FilterCommandSpec* spec = pictura::filterCommandForPath(
+        {QStringLiteral("Filter"), QStringLiteral("Sharpen"), QStringLiteral("Smart Sharpen")});
+    QVERIFY(spec != nullptr);
+    QVERIFY(spec->stacked);
+    pictura::FilterPreviewDialog dialog(window_->activeView(), *spec);
+    dialog.show();
+    QApplication::processEvents();
+    // Every slider, Shadow and Highlight included, shares one wide column.
+    const QList<QSlider*> sliders = dialog.findChildren<QSlider*>();
+    QCOMPARE(sliders.size(), 10);
+    const int x = sliders.first()->mapTo(&dialog, QPoint(0, 0)).x();
+    int lastY = -1;
+    for (QSlider* slider : sliders) {
+        const QPoint at = slider->mapTo(&dialog, QPoint(0, 0));
+        QCOMPARE(at.x(), x);
+        QVERIFY(at.y() > lastY);
+        lastY = at.y();
+        QVERIFY2(slider->parentWidget()->width() >= 360, "rows are widened");
+    }
+    // More Accurate trails the column, below Highlight Radius.
+    QCheckBox* accurate = nullptr;
+    for (QCheckBox* box : dialog.findChildren<QCheckBox*>()) {
+        if (box->text() == QStringLiteral("More Accurate")) {
+            accurate = box;
+        }
+    }
+    QVERIFY(accurate != nullptr);
+    QVERIFY(accurate->mapTo(&dialog, QPoint(0, 0)).y() > lastY);
     dialog.reject();
 }
 

@@ -44,6 +44,9 @@ namespace {
 // 3-column dialogs for the input-heavy filters (Smart Sharpen, Wave, ...).
 const int kManyParams = 8;
 
+// A stacked dialog's rows span this width, wider than the preview alone.
+const int kStackedRowWidth = 360;
+
 // CS6 preview zoom steps, as a percentage of the base thumbnail size.
 const int kZoomLevels[] = {25, 50, 100, 200, 400};
 const int kZoomCount = 5;
@@ -137,9 +140,23 @@ FilterPreviewDialog::FilterPreviewDialog(PictureView* view, const FilterCommandS
     // many inputs spills the overflow into the middle column.
     controls_ = new FilterParamControls(spec_.params, this, view_ ? view_->image() : QImage());
     connect(controls_, &FilterParamControls::changed, this, &FilterPreviewDialog::valuesChanged);
-    const QList<QWidget*> rows = controls_->rows();
+    QList<QWidget*> rows = controls_->rows();
+    if (spec.stacked) {
+        // Checkboxes trail the column so the sliders run on unbroken.
+        QList<QWidget*> checks;
+        for (int i = rows.size() - 1; i >= 0; --i) {
+            if (spec.params.at(i).control == FilterControl::CheckBox) {
+                checks.prepend(rows.takeAt(i));
+            }
+        }
+        rows.append(checks);
+        for (QWidget* row : rows) {
+            row->setMinimumWidth(kStackedRowWidth);
+        }
+    }
     QVBoxLayout* middleColumn = nullptr;
-    const int split = rows.size() > kManyParams ? (rows.size() + 1) / 2 : rows.size();
+    const int split = rows.size() > kManyParams && !spec.stacked ? (rows.size() + 1) / 2
+                                                                 : rows.size();
     for (int i = 0; i < rows.size(); ++i) {
         QVBoxLayout* column = leftColumn;
         if (i >= split) {
