@@ -24,10 +24,8 @@ pub fn apply(filter: &Filter, buf: &mut PixelBuffer) -> Result<(), FilterError> 
         } => blur::radial(buf, *method, *amount, *quality),
         Filter::Blur => blur::simple(buf, false),
         Filter::BlurMore => blur::simple(buf, true),
-        Filter::SurfaceBlur { radius, threshold } => blur::surface(buf, *radius, *threshold),
         Filter::Sharpen => sharpen::sharpen(buf),
         Filter::SharpenMore => sharpen::sharpen_more(buf),
-        Filter::SharpenEdges => sharpen::edges(buf),
         Filter::UnsharpMask {
             amount,
             radius,

@@ -168,8 +168,8 @@ fn motion_blur_known_values() {
     assert_eq!(same.data, base.data);
 }
 
-/// ImageMagick has no faithful Sharpen-family equivalent (fixed 3x3 kernels;
-/// IM `-sharpen` is a Gaussian unsharp). Guard the PS contract directly.
+/// Sharpen Edges has no faithful ImageMagick equivalent; Sharpen and Sharpen
+/// More are diffed too. Guard the PS contract directly for all three.
 #[test]
 fn sharpen_family_known_values() {
     let flat = pixel_row(&[77, 77, 77, 77, 77, 77]);
@@ -193,7 +193,8 @@ fn sharpen_family_known_values() {
     }
 }
 
-/// ImageMagick has no faithful Average / Radial / Surface / Blur equivalent.
+/// ImageMagick has no faithful Average / Radial / Surface equivalent; Blur and
+/// Blur More are diffed too.
 /// Guard their contracts (identity at zero, or a trivial known value).
 #[test]
 fn no_equivalent_filters_properties() {

@@ -45,24 +45,46 @@ pub fn median(buf: &mut PixelBuffer, radius: u32) -> Result<(), FilterError> {
 }
 
 /// Per-plane windowed median, clamp-to-edge. `r` is the window reach.
+///
+/// photorust's sliding histogram (#222): each row slides a 256-bin tally one
+/// column at a time, so a pixel costs `O(r)` rather than a `(2r+1)²` sort.
+/// Unlike photorust's, the window is not clipped at the border: a column or
+/// row past the edge counts the edge sample again, so the multiset (and so
+/// the median) is the clamped sort's, and the ImageMagick oracle stays exact.
 fn window_median(src: &[u8], w: usize, h: usize, r: usize) -> Vec<u8> {
-    let k = 2 * r + 1;
+    let reach = r as isize;
+    let target = (2 * r + 1) * (2 * r + 1) / 2;
     let mut out = vec![0u8; w * h];
-    // ponytail: sort-as-we-go is O(pixels · k² log k); swap in the sliding
-    // histogram from Huang et al. 1979 (cited by FILT-030) if Median gets hot.
-    let mut window: Vec<u8> = Vec::with_capacity(k * k);
+    let mut rows = Vec::with_capacity(2 * r + 1);
     for y in 0..h {
-        for x in 0..w {
-            window.clear();
-            for dy in 0..k {
-                let sy = clamp_index(y as isize + dy as isize - r as isize, h);
-                for dx in 0..k {
-                    let sx = clamp_index(x as isize + dx as isize - r as isize, w);
-                    window.push(src[sy * w + sx]);
+        rows.clear();
+        rows.extend((-reach..=reach).map(|dy| clamp_index(y as isize + dy, h) * w));
+        let mut hist = [0u32; 256];
+        let column = |hist: &mut [u32; 256], x: isize, add: bool| {
+            let sx = clamp_index(x, w);
+            for &row in &rows {
+                let bin = &mut hist[src[row + sx] as usize];
+                if add {
+                    *bin += 1;
+                } else {
+                    *bin -= 1;
                 }
             }
-            window.sort_unstable();
-            out[y * w + x] = window[window.len() / 2];
+        };
+        for x in -reach..=reach {
+            column(&mut hist, x, true);
+        }
+        for x in 0..w {
+            let mut seen = 0;
+            for (value, &count) in hist.iter().enumerate() {
+                seen += count as usize;
+                if seen > target {
+                    out[y * w + x] = value as u8;
+                    break;
+                }
+            }
+            column(&mut hist, x as isize - reach, false);
+            column(&mut hist, x as isize + reach + 1, true);
         }
     }
     out
@@ -190,6 +212,29 @@ mod tests {
         let before = e.data.clone();
         despeckle(&mut e).unwrap();
         assert_eq!(e.data, before, "strong step edge must be preserved");
+    }
+
+    #[test]
+    fn sliding_median_matches_the_clamped_sort() {
+        let (w, h) = (9, 6);
+        let src: Vec<u8> = (0..w * h).map(|i| ((i * 37 + i / 5) % 256) as u8).collect();
+        for r in [1, 2, 4, 9] {
+            let got = window_median(&src, w, h, r);
+            for y in 0..h {
+                for x in 0..w {
+                    let mut window = Vec::new();
+                    for dy in -(r as isize)..=r as isize {
+                        for dx in -(r as isize)..=r as isize {
+                            let sy = clamp_index(y as isize + dy, h);
+                            let sx = clamp_index(x as isize + dx, w);
+                            window.push(src[sy * w + sx]);
+                        }
+                    }
+                    window.sort_unstable();
+                    assert_eq!(got[y * w + x], window[window.len() / 2], "r={r} ({x},{y})");
+                }
+            }
+        }
     }
 
     #[test]

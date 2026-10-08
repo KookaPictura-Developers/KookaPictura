@@ -25,6 +25,26 @@ fn box_blur_matches_imagemagick() {
 }
 
 #[test]
+fn blur_matches_imagemagick() {
+    differential(
+        &Filter::Blur,
+        &["--op", "gaussian", "--sigma", "0.7"],
+        0,
+        "Blur",
+    );
+}
+
+#[test]
+fn blur_more_matches_imagemagick() {
+    differential(
+        &Filter::BlurMore,
+        &["--op", "gaussian", "--sigma", "2.0"],
+        1,
+        "BlurMore",
+    );
+}
+
+#[test]
 fn median_matches_imagemagick() {
     differential(
         &Filter::Median { radius: 1 },
@@ -54,6 +74,44 @@ fn unsharp_mask_matches_imagemagick() {
         ],
         6,
         "UnsharpMask radius 3.0 amount 150 threshold 0",
+    );
+}
+
+#[test]
+fn sharpen_matches_imagemagick() {
+    differential(
+        &Filter::Sharpen,
+        &[
+            "--op",
+            "unsharp",
+            "--sigma",
+            "1.0",
+            "--amount",
+            "50",
+            "--threshold",
+            "0",
+        ],
+        2,
+        "Sharpen",
+    );
+}
+
+#[test]
+fn sharpen_more_matches_imagemagick() {
+    differential(
+        &Filter::SharpenMore,
+        &[
+            "--op",
+            "unsharp",
+            "--sigma",
+            "1.0",
+            "--amount",
+            "100",
+            "--threshold",
+            "0",
+        ],
+        3,
+        "SharpenMore",
     );
 }
 

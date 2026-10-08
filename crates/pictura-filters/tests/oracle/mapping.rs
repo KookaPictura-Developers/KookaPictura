@@ -60,42 +60,45 @@ const MAPPING: &[Mapping] = &[
     },
     Mapping {
         filter: "Blur",
-        im: None,
+        im: Some("-gaussian-blur 0x0.7"),
         tolerance: 0,
-        note: "PS fixed [1 2 1] separable kernel; IM -blur is a Gaussian. Observed max delta 23 \
-               (vs -blur 0x1)",
+        note: "a Gaussian at the fixed sigma 0.7 (radius 2.1); measured max delta 0",
     },
     Mapping {
         filter: "BlurMore",
-        im: None,
-        tolerance: 0,
-        note: "three passes of the PS [1 2 1] kernel; observed max delta 14 (vs -blur 0x1)",
+        im: Some("-gaussian-blur 0x2"),
+        tolerance: 1,
+        note: "a Gaussian at the fixed sigma 2.0 (radius 6); IM's kernel at this sigma differs \
+               by rounding: measured max delta 1",
     },
     Mapping {
         filter: "SurfaceBlur",
         im: None,
         tolerance: 0,
-        note: "bilateral range/space weights are closed; IM has no bilateral operator. Observed \
-               max delta 32 (vs -gaussian-blur 0x1)",
+        note: "per-channel mean of the neighbours within the threshold; IM has no thresholded \
+               mean operator. Observed max delta 71 (radius 3 / threshold 20 vs \
+               -gaussian-blur 0x1)",
     },
     Mapping {
         filter: "Sharpen",
-        im: None,
-        tolerance: 0,
-        note: "fixed 3x3 high-pass kernel; IM -sharpen is a Gaussian unsharp. Observed max delta \
-               17 (vs -sharpen 0x1)",
+        im: Some("-unsharp 0x1+0.5+0"),
+        tolerance: 2,
+        note: "Unsharp Mask at the fixed 50% / sigma 1; IM's internal blur differs slightly: \
+               measured max delta 2",
     },
     Mapping {
         filter: "SharpenMore",
-        im: None,
-        tolerance: 0,
-        note: "fixed stronger 3x3 high-pass kernel; observed max delta 17 (vs -sharpen 0x1)",
+        im: Some("-unsharp 0x1+1+0"),
+        tolerance: 3,
+        note: "Unsharp Mask at the fixed 100% / sigma 1; IM's internal blur differs slightly: \
+               measured max delta 3",
     },
     Mapping {
         filter: "SharpenEdges",
         im: None,
         tolerance: 0,
-        note: "edge-gated high-pass with a fixed gate; observed max delta 17 (vs -sharpen 0x1)",
+        note: "unsharp gated by a smoothstep of the Sobel edge strength; IM has no edge-gated \
+               sharpen. Observed max delta 44 (vs -sharpen 0x1)",
     },
     Mapping {
         filter: "AddNoise",
@@ -357,15 +360,11 @@ const MAPPING: &[Mapping] = &[
 ];
 
 /// Filters the table marks as having no faithful ImageMagick equivalent.
-const NO_EQUIVALENT: [&str; 35] = [
+const NO_EQUIVALENT: [&str; 31] = [
     "MotionBlur",
     "RadialBlur",
     "Average",
-    "Blur",
-    "BlurMore",
     "SurfaceBlur",
-    "Sharpen",
-    "SharpenMore",
     "SharpenEdges",
     "AddNoise",
     "Despeckle",

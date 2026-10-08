@@ -64,12 +64,12 @@ The Sharpen filters focus blurred images by raising the contrast of adjacent pix
 
 Adobe kernels are closed; the following are the standard families that reproduce the documented behavior. **Behavioral parity only.**
 
-### Sharpen / Sharpen More — fixed high-pass convolution
-- A 3×3 sharpening kernel of the form `[0 −1 0; −1 5 −1; 0 −1 0]` (the canonical USM-derived "sharpen" kernel): the center pixel is boosted by 4× the local Laplacian. **Sharpen More** uses a stronger fixed gain. Apply to luminance to reduce color fringing (an option; Photoshop applies per channel).
-- Reference: Wikipedia *Unsharp masking* §Implementation gives this exact kernel and its derivation.
+### Sharpen / Sharpen More — fixed Unsharp Mask
+- Unsharp Mask at fixed settings: σ 1 (radius 3 under `FILT-010`), threshold 0, amount **50 %** for Sharpen and **100 %** for **Sharpen More**, per channel. The canonical 3×3 kernel `[0 −1 0; −1 5 −1; 0 −1 0]` (Wikipedia *Unsharp masking* §Implementation) has so much gain at the finest detail that a few repeated passes destroy a photograph, while CS6's Sharpen can be reapplied, each pass adding a little. The amounts are photorust's CS6-tuned approximation (#222); Adobe's kernel is closed.
+- Reference: Wikipedia *Unsharp masking* (formula and the 3×3 kernel derivation).
 
 ### Sharpen Edges — edge-gated sharpening
-- Run edge detection (gradient magnitude) and apply the high-pass gain only where the gradient exceeds a fixed threshold, leaving flat areas alone. No controls → fixed internal threshold.
+- Measure the edge strength as the Sobel gradient magnitude of the brightness of a σ 1 blur (the blur keeps noise from reading as an edge), then add `original − blurred` weighted by a smoothstep of that strength between fixed levels (6 and 36), leaving flat areas alone. The fade avoids the outline a hard gate draws. No controls → fixed internal levels (photorust's model, #222).
 
 ### Unsharp Mask — blur-difference sharpening
 - Compute a **blurred** copy (Gaussian, `FILT-010`), then `sharpened = original + (original − blurred) × amount`, with a **threshold** gate: only where `|original − blurred|` (or the local difference) exceeds the threshold. This is the canonical digital unsharp-mask formula. Amount controls the overshoot magnitude; radius controls the width of the edge rims/halos; threshold prevents sharpening smooth, low-contrast areas (which would amplify noise).
@@ -96,7 +96,8 @@ Apply through `FILT-001`: depth/mode gate → **apron** of `radius` → backend 
 
 Proposed under `pictura-filters::sharpen` (`ARCH-002`, `ARCH-006`):
 
-- `pictura-filters::sharpen::fixed` — `Sharpen`, `SharpenMore`, `SharpenEdges`; fixed 3×3 high-pass kernels with per-variant gain and (for Edges) a fixed gradient gate.
+- `pictura-filters::sharpen` — `Sharpen`, `SharpenMore`; Unsharp Mask at the fixed `SHARPEN_AMOUNT` / `SHARPEN_MORE_AMOUNT` and `SHARPEN_RADIUS`.
+- `pictura-filters::photorust::sharpen` — `SharpenEdges`; smoothstep-gated unsharp on a Sobel edge strength.
 - `pictura-filters::sharpen::usm` — `UnsharpMask { amount: f32, radius: f32, threshold: u8 }`; blurred-difference with threshold; reuses `blur::gaussian`.
 - `pictura-filters::sharpen::smart` — `SmartSharpen { amount, radius, remove: Remove, angle, more_accurate, shadow: TonalFade, highlight: TonalFade }`; `Remove = Gaussian|Lens|Motion`, each a strategy implementation of a `SharpenModel` trait; `TonalFade { fade_amount, tonal_width, radius }`.
 - `pictura-filters::sharpen::shake_reduction` — **CC-only, not parity**; `ShakeReduction { ... }` behind a feature flag, blind-deconvolution research placeholder. Not part of the CS6 registry default.

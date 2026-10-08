@@ -1,13 +1,18 @@
-//! Blur family: Gaussian, Box, Motion, Radial, Average, Blur/Blur More, Surface.
+//! Blur family: Gaussian, Box, Motion, Radial, Average, Blur/Blur More.
+//! Surface Blur runs on the photorust engine.
 //!
 //! Planar 8-bit buffers (channels 3 or 4); only the color planes are touched,
 //! alpha is never modified. Borders clamp-to-edge per `FILT-010`.
 
 use pictura_core::PixelBuffer;
 
-use crate::kernel::{clamp_index, convolve3x3_planes, gaussian_blur_planes, sigma_from_radius};
-use crate::luma::luma;
+use crate::kernel::{clamp_index, gaussian_blur_planes, sigma_from_radius};
 use crate::{validate, FilterError, Quality, RadialMethod};
+
+/// Blur's and Blur More's fixed Gaussian radii: σ 0.7 and σ 2.0 under the
+/// 3σ radius convention, photorust's CS6-tuned strengths (#222).
+pub const BLUR_RADIUS: f64 = 2.1;
+pub const BLUR_MORE_RADIUS: f64 = 6.0;
 
 pub fn gaussian(buf: &mut PixelBuffer, radius: f64) -> Result<(), FilterError> {
     validate(buf)?;
@@ -184,74 +189,9 @@ pub fn average(buf: &mut PixelBuffer) -> Result<(), FilterError> {
     Ok(())
 }
 
+/// Blur and Blur More: a Gaussian at a fixed radius, gentle and stronger.
 pub fn simple(buf: &mut PixelBuffer, more: bool) -> Result<(), FilterError> {
-    validate(buf)?;
-    let kernel = [[1.0, 2.0, 1.0], [2.0, 4.0, 2.0], [1.0, 2.0, 1.0]];
-    for _ in 0..if more { 3 } else { 1 } {
-        convolve3x3_planes(buf, &kernel, 16.0);
-    }
-    Ok(())
-}
-
-pub fn surface(buf: &mut PixelBuffer, radius: u32, threshold: u8) -> Result<(), FilterError> {
-    validate(buf)?;
-    if !(1..=100).contains(&radius) {
-        return Err(FilterError::InvalidParams(format!(
-            "surface radius {radius} is outside 1..=100"
-        )));
-    }
-    if threshold == 0 {
-        return Err(FilterError::InvalidParams(
-            "surface threshold must be 1..=255".into(),
-        ));
-    }
-    let w = buf.width as usize;
-    let h = buf.height as usize;
-    let n = w * h;
-    let planes = (buf.channels as usize).min(3);
-    let r = radius as isize;
-    let sigma = sigma_from_radius(radius as f64);
-    let two_sig_sq = 2.0 * sigma * sigma;
-    let thr = threshold as f64;
-    let two_thr_sq = 2.0 * thr * thr;
-    // ponytail: direct O(n·r²) bilateral. Upgrade to a guided filter (or a
-    // separable box-range approximation) only if large-radius cost bites.
-    let src: Vec<Vec<f64>> = (0..planes)
-        .map(|c| {
-            let base = c * n;
-            buf.data[base..base + n].iter().map(|&v| v as f64).collect()
-        })
-        .collect();
-    let lum: Vec<f64> = (0..n)
-        .map(|i| luma(src[0][i], src[1][i], src[2][i]))
-        .collect();
-    for y in 0..h {
-        for x in 0..w {
-            let ci = y * w + x;
-            let center_luma = lum[ci];
-            let mut weight_sum = 0f64;
-            let mut acc = [0f64; 3];
-            for ky in -r..=r {
-                let sy = clamp_index(y as isize + ky, h);
-                let dy2 = (ky * ky) as f64;
-                for kx in -r..=r {
-                    let sx = clamp_index(x as isize + kx, w);
-                    let si = sy * w + sx;
-                    let mut wgt = (-(((kx * kx) as f64) + dy2) / two_sig_sq).exp();
-                    let dl = (lum[si] - center_luma).abs();
-                    wgt *= (-(dl * dl) / two_thr_sq).exp();
-                    weight_sum += wgt;
-                    acc[0] += wgt * src[0][si];
-                    acc[1] += wgt * src[1][si];
-                    acc[2] += wgt * src[2][si];
-                }
-            }
-            for (c, a) in acc.iter().enumerate() {
-                buf.data[c * n + ci] = (a / weight_sum).round().clamp(0.0, 255.0) as u8;
-            }
-        }
-    }
-    Ok(())
+    gaussian(buf, if more { BLUR_MORE_RADIUS } else { BLUR_RADIUS })
 }
 
 fn bilinear(plane: &[u8], w: usize, h: usize, x: f64, y: f64) -> f64 {
@@ -343,6 +283,11 @@ fn prefix_at(pre: &[f64], v: &[f64], t: isize) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Surface Blur runs on the photorust engine, so it is reached through `apply`.
+    fn surface(buf: &mut PixelBuffer, radius: u32, threshold: u8) -> Result<(), FilterError> {
+        crate::apply(&crate::Filter::SurfaceBlur { radius, threshold }, buf)
+    }
 
     fn buf3(w: u32, h: u32, px: &[[u8; 3]]) -> PixelBuffer {
         let n = (w * h) as usize;
@@ -481,6 +426,19 @@ mod tests {
             for x in 0..2 {
                 assert_eq!(px3(&b, x, y), [25, 35, 45]);
             }
+        }
+    }
+
+    #[test]
+    fn blur_and_blur_more_are_fixed_gaussians() {
+        let mut base = PixelBuffer::new(9, 9, 3);
+        base.data[4 * 9 + 4] = 255;
+        for (more, radius) in [(false, BLUR_RADIUS), (true, BLUR_MORE_RADIUS)] {
+            let mut got = base.clone();
+            simple(&mut got, more).unwrap();
+            let mut want = base.clone();
+            gaussian(&mut want, radius).unwrap();
+            assert_eq!(got, want, "more={more}");
         }
     }
 

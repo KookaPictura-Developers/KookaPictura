@@ -1,6 +1,6 @@
 //! The photorust filter engine (#183): the Artistic, Brush Strokes, Sketch,
-//! Texture, Pixelate, Distort, Stylize, and Noise filters that replace
-//! Kooka's own, run on an interleaved [`Pixmap`] that `apply` converts to and
+//! Texture, Pixelate, Distort, Stylize, and Noise filters, Surface Blur, and
+//! Sharpen Edges that replace Kooka's own, run on an interleaved [`Pixmap`] that `apply` converts to and
 //! from the planar buffer.
 //!
 //! Ported from perfecto25/photorust (`core/src/filters/`), GPL-3.0.
@@ -16,6 +16,7 @@ pub(crate) mod dispatch;
 pub(crate) mod distort;
 pub(crate) mod pixelate;
 pub(crate) mod pixmap;
+pub(crate) mod sharpen;
 pub(crate) mod sketch;
 pub(crate) mod stylize;
 pub(crate) mod texture;

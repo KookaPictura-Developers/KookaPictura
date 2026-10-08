@@ -5,6 +5,7 @@
 
 use pictura_core::PixelBuffer;
 use rand_chacha::{rand_core::RngCore, ChaCha8Rng};
+use rayon::prelude::*;
 
 use crate::FilterError;
 
@@ -92,31 +93,6 @@ pub(crate) fn invalid(msg: String) -> FilterError {
     FilterError::InvalidParams(msg)
 }
 
-/// 3x3 clamp-to-edge convolution of the color planes (alpha untouched).
-pub(crate) fn convolve3x3_planes(buf: &mut PixelBuffer, kernel: &[[f64; 3]; 3], norm: f64) {
-    let w = buf.width as usize;
-    let h = buf.height as usize;
-    let n = w * h;
-    let planes = (buf.channels as usize).min(3);
-    for c in 0..planes {
-        let base = c * n;
-        let src = buf.data[base..base + n].to_vec();
-        for y in 0..h {
-            for x in 0..w {
-                let mut acc = 0f64;
-                for (ky, row) in kernel.iter().enumerate() {
-                    let sy = clamp_index(y as isize + ky as isize - 1, h);
-                    for (kx, &kv) in row.iter().enumerate() {
-                        let sx = clamp_index(x as isize + kx as isize - 1, w);
-                        acc += kv * src[sy * w + sx] as f64;
-                    }
-                }
-                buf.data[base + y * w + x] = (acc / norm).round().clamp(0.0, 255.0) as u8;
-            }
-        }
-    }
-}
-
 /// Separable Gaussian blur of the color planes of a 3/4-channel planar buffer
 /// (alpha untouched), clamp-to-edge. Shared by Gaussian Blur and Unsharp Mask.
 pub fn gaussian_blur_planes(buf: &mut PixelBuffer, sigma: f64) {
@@ -135,30 +111,37 @@ pub fn gaussian_blur_planes_with_support(buf: &mut PixelBuffer, sigma: f64, supp
     let kernel = gaussian_kernel_with_support(sigma, support_sigma);
     let support = (kernel.len() / 2) as isize;
     let planes = (buf.channels as usize).min(3);
+    // Rows are independent and each pixel's sum runs in kernel order, so the
+    // parallel passes are byte-identical to a serial run.
+    let kernel: Vec<f32> = kernel.iter().map(|&kw| kw as f32).collect();
     for c in 0..planes {
         let base = c * n;
         let src = buf.data[base..base + n].to_vec();
         let mut tmp = vec![0f32; n];
-        for y in 0..h {
-            for x in 0..w {
+        tmp.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+            let line = &src[y * w..y * w + w];
+            for (x, out) in row.iter_mut().enumerate() {
                 let mut acc = 0f32;
                 for (ki, &kw) in kernel.iter().enumerate() {
                     let sx = clamp_index(x as isize + ki as isize - support, w);
-                    acc += kw as f32 * src[y * w + sx] as f32;
+                    acc += kw * line[sx] as f32;
                 }
-                tmp[y * w + x] = acc;
+                *out = acc;
             }
-        }
-        for y in 0..h {
-            for x in 0..w {
-                let mut acc = 0f32;
-                for (ki, &kw) in kernel.iter().enumerate() {
-                    let sy = clamp_index(y as isize + ki as isize - support, h);
-                    acc += kw as f32 * tmp[sy * w + x];
+        });
+        buf.data[base..base + n]
+            .par_chunks_mut(w)
+            .enumerate()
+            .for_each(|(y, row)| {
+                for (x, out) in row.iter_mut().enumerate() {
+                    let mut acc = 0f32;
+                    for (ki, &kw) in kernel.iter().enumerate() {
+                        let sy = clamp_index(y as isize + ki as isize - support, h);
+                        acc += kw * tmp[sy * w + x];
+                    }
+                    *out = acc.round().clamp(0.0, 255.0) as u8;
                 }
-                buf.data[base + y * w + x] = acc.round().clamp(0.0, 255.0) as u8;
-            }
-        }
+            });
     }
 }
 

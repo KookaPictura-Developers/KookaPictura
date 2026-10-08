@@ -1,64 +1,29 @@
-//! Sharpen family: fixed high-pass kernels (Sharpen / Sharpen More), an
-//! edge-gated variant (Sharpen Edges), and thresholded blur-difference
-//! sharpening (Unsharp Mask). Color planes only; alpha is untouched.
+//! Sharpen family: Sharpen and Sharpen More as fixed-strength Unsharp Masks,
+//! and thresholded blur-difference sharpening (Unsharp Mask). Sharpen Edges
+//! runs on the photorust engine. Color planes only; alpha is untouched.
 
 use pictura_core::PixelBuffer;
 
-use crate::kernel::{clamp_index, convolve3x3_planes, gaussian_blur_planes, sigma_from_radius};
+use crate::kernel::{gaussian_blur_planes, sigma_from_radius};
 use crate::{validate, FilterError};
 
-/// Gradient magnitude above which Sharpen Edges applies the high-pass gain.
-/// The filter has no controls, so the gate is a fixed ~8-level edge.
-const EDGE_GRADIENT_THRESHOLD: i32 = 8;
-
-const SHARPEN_KERNEL: [[f64; 3]; 3] = [[0.0, -1.0, 0.0], [-1.0, 5.0, -1.0], [0.0, -1.0, 0.0]];
-const SHARPEN_MORE_KERNEL: [[f64; 3]; 3] =
-    [[-1.0, -1.0, -1.0], [-1.0, 9.0, -1.0], [-1.0, -1.0, -1.0]];
+/// Sharpen's and Sharpen More's Unsharp Mask: 50 % and 100 % at σ 1 (radius 3
+/// under the 3σ convention), photorust's model (#222). A 3×3 high-pass kernel
+/// has so much gain at the finest detail that repeated passes destroy a
+/// photograph; CS6's Sharpen can be applied again and again, each pass adding
+/// a little.
+pub const SHARPEN_AMOUNT: f64 = 50.0;
+pub const SHARPEN_MORE_AMOUNT: f64 = 100.0;
+pub const SHARPEN_RADIUS: f64 = 3.0;
 
 /*** public filters ***/
 
 pub fn sharpen(buf: &mut PixelBuffer) -> Result<(), FilterError> {
-    validate(buf)?;
-    convolve3x3_planes(buf, &SHARPEN_KERNEL, 1.0);
-    Ok(())
+    unsharp_mask(buf, SHARPEN_AMOUNT, SHARPEN_RADIUS, 0)
 }
 
 pub fn sharpen_more(buf: &mut PixelBuffer) -> Result<(), FilterError> {
-    validate(buf)?;
-    convolve3x3_planes(buf, &SHARPEN_MORE_KERNEL, 1.0);
-    Ok(())
-}
-
-pub fn edges(buf: &mut PixelBuffer) -> Result<(), FilterError> {
-    validate(buf)?;
-    let w = buf.width as usize;
-    let h = buf.height as usize;
-    let n = w * h;
-    let planes = (buf.channels as usize).min(3);
-    for c in 0..planes {
-        let base = c * n;
-        let src = buf.data[base..base + n].to_vec();
-        for y in 0..h {
-            for x in 0..w {
-                let xl = clamp_index(x as isize - 1, w);
-                let xr = clamp_index(x as isize + 1, w);
-                let yu = clamp_index(y as isize - 1, h);
-                let yd = clamp_index(y as isize + 1, h);
-                let gx = src[y * w + xr] as i32 - src[y * w + xl] as i32;
-                let gy = src[yd * w + x] as i32 - src[yu * w + x] as i32;
-                if gx.abs() + gy.abs() <= EDGE_GRADIENT_THRESHOLD {
-                    continue;
-                }
-                let acc = 5 * src[y * w + x] as i32
-                    - src[yu * w + x] as i32
-                    - src[yd * w + x] as i32
-                    - src[y * w + xl] as i32
-                    - src[y * w + xr] as i32;
-                buf.data[base + y * w + x] = acc.clamp(0, 255) as u8;
-            }
-        }
-    }
-    Ok(())
+    unsharp_mask(buf, SHARPEN_MORE_AMOUNT, SHARPEN_RADIUS, 0)
 }
 
 pub fn unsharp_mask(
@@ -110,6 +75,11 @@ pub use smart::smart_sharpen;
 mod tests {
     use super::*;
 
+    /// Sharpen Edges runs on the photorust engine, so it is reached through `apply`.
+    fn edges(buf: &mut PixelBuffer) -> Result<(), FilterError> {
+        crate::apply(&crate::Filter::SharpenEdges, buf)
+    }
+
     pub(super) fn planar(width: u32, height: u32, channels: u8, planes: &[Vec<u8>]) -> PixelBuffer {
         let mut data = Vec::new();
         for p in planes {
@@ -143,6 +113,34 @@ mod tests {
     pub(super) fn plane_range(buf: &PixelBuffer) -> u8 {
         let plane = &buf.data[..buf.pixel_count()];
         *plane.iter().max().unwrap() - *plane.iter().min().unwrap()
+    }
+
+    #[test]
+    fn sharpen_and_sharpen_more_are_fixed_unsharp_masks() {
+        let base = gray_row(&[100, 100, 100, 100, 140, 140, 140, 140]);
+        let mut got = base.clone();
+        sharpen(&mut got).unwrap();
+        let mut want = base.clone();
+        unsharp_mask(&mut want, SHARPEN_AMOUNT, SHARPEN_RADIUS, 0).unwrap();
+        assert_eq!(got, want);
+        let mut got = base.clone();
+        sharpen_more(&mut got).unwrap();
+        let mut want = base.clone();
+        unsharp_mask(&mut want, SHARPEN_MORE_AMOUNT, SHARPEN_RADIUS, 0).unwrap();
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn repeated_sharpen_stays_bounded() {
+        // A 3×3 high-pass multiplies fine detail several times over per pass;
+        // the fixed Unsharp Mask adds a little each time.
+        let base = gray_row(&[120, 130, 120, 130, 120, 130, 120, 130, 120, 130]);
+        let mut out = base.clone();
+        for _ in 0..3 {
+            sharpen(&mut out).unwrap();
+        }
+        assert!(plane_range(&out) > plane_range(&base));
+        assert!(plane_range(&out) < 80, "range {}", plane_range(&out));
     }
 
     #[test]
@@ -184,17 +182,21 @@ mod tests {
 
     #[test]
     fn edges_leaves_flat_region_unchanged() {
-        let values = [50u8, 50, 50, 50, 50, 100, 100, 100];
+        // The edge is found on a σ 1 blur, so it reaches four samples out;
+        // the flat runs are checked beyond that.
+        let values = [
+            50u8, 50, 50, 50, 50, 50, 50, 50, 100, 100, 100, 100, 100, 100, 100, 100,
+        ];
         let base = gray_row(&values);
         let mut out = base.clone();
         edges(&mut out).unwrap();
         let n = base.pixel_count();
-        for (x, &v) in values.iter().enumerate().take(4) {
+        for (x, &v) in values.iter().enumerate().take(3) {
             assert_eq!(out.data[x], v, "left flat region at {x}");
             assert_eq!(out.data[n + x], v, "left flat region at {x}");
             assert_eq!(out.data[2 * n + x], v, "left flat region at {x}");
         }
-        for (x, &v) in values.iter().enumerate().skip(6) {
+        for (x, &v) in values.iter().enumerate().skip(13) {
             assert_eq!(out.data[x], v, "right flat region at {x}");
         }
     }
