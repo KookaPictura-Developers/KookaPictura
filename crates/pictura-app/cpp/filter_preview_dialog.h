@@ -22,6 +22,7 @@ class QSlider;
 
 namespace pictura {
 
+class FilterParamControls;
 class PictureView;
 
 // The canvas state a filter dialog previews against: the document-space rect
@@ -53,26 +54,10 @@ public:
                     QList<double>* out, QWidget* parent);
 
 private:
-    struct Control {
-        FilterParamSpec spec;
-        QWidget* row = nullptr;
-        QDoubleSpinBox* spin = nullptr;
-        QSlider* slider = nullptr;
-        QComboBox* combo = nullptr;
-        QCheckBox* box = nullptr;
-        QPushButton* colorButton = nullptr;
-        QDoubleSpinBox* x = nullptr;
-        QDoubleSpinBox* y = nullptr;
-        QWidget* pad = nullptr;    // Placement crosshair pad
-        QWidget* center = nullptr; // Radial Blur centre pad
-    };
-
-    void addControl(const QList<double>& initial, int index);
     void applyInitial(const QList<double>& initial);
     void valuesChanged();
     void discardPreview();
     void updateThumbnail();
-    double controlValue(const Control& control, int slot) const;
 
 protected:
     void resizeEvent(QResizeEvent* event) override;
@@ -81,15 +66,13 @@ protected:
 private:
     PictureView* view_ = nullptr;
     const FilterCommandSpec spec_;
-    QList<Control> controls_;
-    QList<double> initial_;
+    FilterParamControls* controls_ = nullptr;
     QCheckBox* preview_ = nullptr;
     QLabel* thumbnail_ = nullptr;
     QLabel* zoomLabel_ = nullptr;
     int zoom_ = 2;
     bool previewShown_ = false;
     bool shownOnce_ = false;
-    bool sliderDragging_ = false;
     QRectF previewVisible_;
     double canvasZoom_ = 1.0;
 };

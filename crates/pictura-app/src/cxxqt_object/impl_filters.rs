@@ -146,6 +146,8 @@ pub(super) fn apply_filter_obj_active_region(
 /// Adjustments adjustment (colour only, no neighbourhood).
 pub(super) enum ActiveOp {
     Filter(pictura_filters::Filter),
+    /// A Filter Gallery stack, applied in order.
+    Filters(Vec<pictura_filters::Filter>),
     Adjustment(pictura_render::Adjustment),
 }
 
@@ -227,8 +229,9 @@ pub(super) fn apply_op_active_region(
         None
     };
     let region_out = (!layer_has_effects(layer)).then_some(layer.rect);
-    let filter = match op {
-        ActiveOp::Filter(filter) => filter,
+    let filters = match op {
+        ActiveOp::Filter(filter) => std::slice::from_ref(filter),
+        ActiveOp::Filters(filters) => filters.as_slice(),
         ActiveOp::Adjustment(adjustment) => {
             // A point operation: the visible section alone is exact.
             let region = match preview_region {
@@ -240,21 +243,35 @@ pub(super) fn apply_op_active_region(
             return finish_op(rust, applied, commit, index, existing, snapshot, region_out);
         }
     };
-    let applied = match preview_region {
-        Some(visible) if !commit => {
-            // Expand the visible rect by the filter's support so the viewport
-            // is exact; the renderer clamps it to the layer.
-            let apron = pictura_render::preview_apron(filter);
-            let expanded = pictura_core::PsdRect {
-                top: visible.top - apron,
-                left: visible.left - apron,
-                bottom: visible.bottom + apron,
-                right: visible.right + apron,
-            };
-            pictura_render::apply_filter_region(layer, filter, mask.as_ref(), gpu_compute, expanded)
+    // Expand the visible rect by the support of every filter still to run, so
+    // the viewport is exact after the whole stack; the renderer clamps it to
+    // the layer.
+    let mut apron: i32 = filters.iter().map(pictura_render::preview_apron).sum();
+    let mut applied = Ok(());
+    for filter in filters {
+        applied = match preview_region {
+            Some(visible) if !commit => {
+                let expanded = pictura_core::PsdRect {
+                    top: visible.top - apron,
+                    left: visible.left - apron,
+                    bottom: visible.bottom + apron,
+                    right: visible.right + apron,
+                };
+                pictura_render::apply_filter_region(
+                    layer,
+                    filter,
+                    mask.as_ref(),
+                    gpu_compute,
+                    expanded,
+                )
+            }
+            _ => pictura_render::apply_filter(layer, filter, mask.as_ref(), gpu_compute),
+        };
+        if applied.is_err() {
+            break;
         }
-        _ => pictura_render::apply_filter(layer, filter, mask.as_ref(), gpu_compute),
-    };
+        apron -= pictura_render::preview_apron(filter);
+    }
     finish_op(rust, applied, commit, index, existing, snapshot, region_out)
 }
 

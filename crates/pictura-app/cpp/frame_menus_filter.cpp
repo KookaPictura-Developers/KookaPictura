@@ -4,6 +4,7 @@
 #include <QtWidgets/QStatusBar>
 
 #include "filter_commands.h"
+#include "filter_gallery_dialog.h"
 #include "filter_preview_dialog.h"
 
 #include "pictura_app/src/cxxqt_object/filter_tools.cxxqt.h"
@@ -83,6 +84,31 @@ void PicturaMainWindow::wireFilterMenu()
             return view && filter_target_ready(*view);
         });
     }
+
+    // Filter > Filter Gallery: the stacked gallery dialog; OK commits the
+    // visible effects as one history state.
+    const QString gallery =
+        commandIdForPath({QStringLiteral("Filter"), QStringLiteral("Filter Gallery…")});
+    registry_->setImplemented(gallery, true);
+    registry_->setHandler(gallery, [this]() {
+        PictureView* view = activeView();
+        if (!view || !filter_target_ready(*view)) {
+            return;
+        }
+        FilterGalleryDialog dialog(view, this);
+        if (runDialog(dialog, this) != QDialog::Accepted) {
+            return;
+        }
+        if (dialog.commit()) {
+            refresh();
+        } else {
+            reportFilterRefusal(view);
+        }
+    });
+    registry_->setEnabledProvider(gallery, [this]() {
+        PictureView* view = activeView();
+        return view && filter_target_ready(*view);
+    });
 
     // Filter > Last Filter: re-apply the last committed filter with no dialog.
     registry_->setHandler(command_ids::FilterLastFilter, [this]() {

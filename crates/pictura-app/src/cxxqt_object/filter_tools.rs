@@ -1,5 +1,6 @@
 //! The Filter-menu bridges: apply a filter with runtime parameters, render a
-//! non-committing preview, and keep the last filter. Free functions over a
+//! non-committing preview, keep the last filter, and the Filter Gallery's stack
+//! preview/commit and thumbnails. Free functions over a
 //! [`PictureView`] (their own bridge, so the `PictureView` declaration list does
 //! not grow). Ported from perfecto25/photorust's filter commit path.
 //!
@@ -7,13 +8,18 @@
 //!
 //! [`PictureView`]: super::qobject::PictureView
 
+use super::filter_map::filter_from_kind_params;
 use super::helpers::{active_layer_visible, active_pixel_layer};
-use super::impl_filters::{apply_filter_active, apply_filter_active_region, cancel_filter_preview};
+use super::helpers_composite::buffer_to_image;
+use super::impl_filters::{
+    apply_filter_active, apply_filter_active_region, apply_op_active_region, cancel_filter_preview,
+    ActiveOp,
+};
 use super::qobject::PictureView;
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
-use cxx_qt_lib::{QList, QString};
-use pictura_core::layer_pixel_locked;
+use cxx_qt_lib::{QByteArray, QImage, QList, QString, QStringList};
+use pictura_core::{layer_pixel_locked, PixelBuffer};
 
 #[cxx_qt::bridge]
 pub mod ffi {
@@ -21,8 +27,17 @@ pub mod ffi {
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
 
+        include!("cxx-qt-lib/qstringlist.h");
+        type QStringList = cxx_qt_lib::QStringList;
+
         include!("cxx-qt-lib/qlist.h");
         type QList_f64 = cxx_qt_lib::QList<f64>;
+
+        include!("cxx-qt-lib/qbytearray.h");
+        type QByteArray = cxx_qt_lib::QByteArray;
+
+        include!("cxx-qt-lib/qimage.h");
+        type QImage = cxx_qt_lib::QImage;
 
         include!("pictura_app/src/cxxqt_object.cxxqt.h");
         #[namespace = "pictura"]
@@ -90,6 +105,41 @@ pub mod ffi {
         /// The reason the most recent apply/preview was refused, or an empty
         /// string when it succeeded.
         fn filter_last_error(view: Pin<&mut PictureView>) -> QString;
+
+        /// Preview the gallery stack — `kinds` in order, their parameter slots
+        /// concatenated in `params` — on the canvas, restricted to the document
+        /// rect `(x, y, w, h)`. Re-filters the pre-preview pixels each call. An
+        /// empty stack shows the layer unfiltered. Returns false on an unknown
+        /// kind, a bad arity, or no editable pixel layer.
+        fn filter_stack_preview(
+            view: Pin<&mut PictureView>,
+            kinds: &QStringList,
+            params: &QList_f64,
+            x: i32,
+            y: i32,
+            w: i32,
+            h: i32,
+        ) -> bool;
+
+        /// Commit the gallery stack to the active layer as one "Filter
+        /// Gallery" history state. Returns false for an empty stack or on the
+        /// same refusals as [`filter_stack_preview`].
+        fn apply_filter_stack(
+            view: Pin<&mut PictureView>,
+            kinds: &QStringList,
+            params: &QList_f64,
+        ) -> bool;
+
+        /// `kind` with `params` applied to a `width`×`height` straight-alpha
+        /// RGBA8888 image, for a gallery thumbnail. A null image when the
+        /// filter is refused.
+        fn filter_thumbnail(
+            rgba: &QByteArray,
+            width: i32,
+            height: i32,
+            kind: &QString,
+            params: &QList_f64,
+        ) -> QImage;
     }
 }
 
@@ -237,4 +287,165 @@ fn filter_last_error(view: Pin<&mut PictureView>) -> QString {
         .as_deref()
         .map(QString::from)
         .unwrap_or_default()
+}
+
+// The Filter Gallery: preview and commit a stack of filters on the active
+// layer through the same snapshot/preview/commit core as a single filter, and
+// render one filter onto a small image for a gallery thumbnail.
+
+/// Resolve a stack: each kind takes the next `arity` slots of `params`.
+fn resolve_stack(kinds: &QStringList, params: &QList<f64>) -> Option<Vec<pictura_filters::Filter>> {
+    let params: Vec<f64> = params.into_iter().copied().collect();
+    let mut at = 0;
+    let mut filters = Vec::new();
+    for kind in &QList::<QString>::from(kinds) {
+        let kind = kind.to_string();
+        let arity = super::filter_map::filter_param_arity(&kind)?;
+        let slots = params.get(at..at + arity)?;
+        filters.push(filter_from_kind_params(&kind, slots)?);
+        at += arity;
+    }
+    (at == params.len()).then_some(filters)
+}
+
+fn run_stack(
+    mut view: Pin<&mut PictureView>,
+    kinds: &QStringList,
+    params: &QList<f64>,
+    commit: bool,
+    section: Option<pictura_core::PsdRect>,
+) -> bool {
+    let Some(filters) = resolve_stack(kinds, params) else {
+        view.as_mut().rust_mut().filter_error =
+            Some("the gallery stack has an unknown filter or wrong parameters".to_string());
+        return false;
+    };
+    if commit && filters.is_empty() {
+        return false;
+    }
+    let region = {
+        let mut rust = view.as_mut().rust_mut();
+        apply_op_active_region(&mut rust, &ActiveOp::Filters(filters), commit, section)
+    };
+    let Some(region) = region else {
+        return false;
+    };
+    match region {
+        Some(rect) => view.as_mut().refresh_region(rect),
+        None => view.as_mut().recomposite(),
+    }
+    if commit {
+        view.as_mut().record("Filter Gallery");
+    }
+    true
+}
+
+fn filter_stack_preview(
+    view: Pin<&mut PictureView>,
+    kinds: &QStringList,
+    params: &QList<f64>,
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+) -> bool {
+    let visible = pictura_core::PsdRect {
+        top: y,
+        left: x,
+        bottom: y + h.max(0),
+        right: x + w.max(0),
+    };
+    let positional = QList::<QString>::from(kinds)
+        .iter()
+        .any(|k| filter_preview_needs_whole_layer(&k.to_string()));
+    run_stack(view, kinds, params, false, (!positional).then_some(visible))
+}
+
+fn apply_filter_stack(
+    view: Pin<&mut PictureView>,
+    kinds: &QStringList,
+    params: &QList<f64>,
+) -> bool {
+    run_stack(view, kinds, params, true, None)
+}
+
+fn filter_thumbnail(
+    rgba: &QByteArray,
+    width: i32,
+    height: i32,
+    kind: &QString,
+    params: &QList<f64>,
+) -> QImage {
+    let params: Vec<f64> = params.into_iter().copied().collect();
+    let (Ok(w), Ok(h)) = (u32::try_from(width), u32::try_from(height)) else {
+        return QImage::default();
+    };
+    let Some(filter) = filter_from_kind_params(&kind.to_string(), &params) else {
+        return QImage::default();
+    };
+    let Some(mut buffer) = rgba_to_buffer(rgba.as_slice(), w, h) else {
+        return QImage::default();
+    };
+    if pictura_filters::apply(&filter, &mut buffer).is_err() {
+        return QImage::default();
+    }
+    buffer_to_image(&buffer)
+}
+
+/// Packed RGBA bytes as a planar four-channel buffer.
+fn rgba_to_buffer(rgba: &[u8], width: u32, height: u32) -> Option<PixelBuffer> {
+    let n = width as usize * height as usize;
+    if n == 0 || rgba.len() != n * 4 {
+        return None;
+    }
+    let mut buffer = PixelBuffer::new(width, height, 4);
+    for (i, px) in rgba.as_chunks::<4>().0.iter().enumerate() {
+        for (c, &v) in px.iter().enumerate() {
+            buffer.data[c * n + i] = v;
+        }
+    }
+    Some(buffer)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_stack_takes_each_kinds_slots_in_turn() {
+        let mut kinds = QStringList::default();
+        kinds.append(QString::from("cutout"));
+        kinds.append(QString::from("palette-knife"));
+        let mut params = QList::<f64>::default();
+        for v in [4.0, 4.0, 2.0, 25.0, 3.0, 0.0] {
+            params.append(v);
+        }
+        let stack = resolve_stack(&kinds, &params).expect("stack resolves");
+        assert_eq!(stack.len(), 2);
+        assert_eq!(
+            stack[1],
+            pictura_filters::Filter::PaletteKnife {
+                stroke_size: 25,
+                stroke_detail: 3,
+                softness: 0,
+            }
+        );
+        // One slot short, or one over, is refused rather than misread.
+        params.remove(5);
+        assert!(resolve_stack(&kinds, &params).is_none());
+        params.append(0.0);
+        params.append(0.0);
+        assert!(resolve_stack(&kinds, &params).is_none());
+    }
+
+    #[test]
+    fn rgba_round_trips_through_a_planar_buffer() {
+        let rgba = [1u8, 2, 3, 4, 5, 6, 7, 8];
+        let buffer = rgba_to_buffer(&rgba, 2, 1).expect("buffer");
+        assert_eq!(buffer.data[0], 1);
+        assert_eq!(buffer.data[1], 5);
+        assert_eq!(buffer.data[2 * 2 + 1], 7);
+        assert_eq!(buffer.data[3 * 2], 4);
+        assert!(rgba_to_buffer(&rgba, 3, 1).is_none());
+    }
 }
