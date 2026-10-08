@@ -14,8 +14,10 @@
 #include <QtGui/QDropEvent>
 #include <QtGui/QImage>
 #include <QtGui/QPalette>
+#include <QtWidgets/QTabBar>
 
 #include "frame.h"
+#include "image_view.h"
 #include "panels/layers_panel.h"
 #include "panels/layers_panel_internal.h"
 #include "theme.h"
@@ -46,10 +48,13 @@ QModelIndex indexForPath(QAbstractItemModel* model, const QString& path,
     return {};
 }
 
-bool dropOnViewport(QWidget* viewport, const QString& source, const QPoint& pos)
+bool dropOnViewport(QWidget* viewport, const void* document, const QString& source,
+                    const QPoint& pos)
 {
     QMimeData mime;
     mime.setData(pictura::kLayerMimeType, source.toUtf8());
+    mime.setData(pictura::kLayerSourceMimeType,
+                 QByteArray::number(reinterpret_cast<quintptr>(document)));
     QDragEnterEvent enter(pos, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
     QCoreApplication::sendEvent(viewport, &enter);
     QDragMoveEvent move(pos, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
@@ -57,6 +62,37 @@ bool dropOnViewport(QWidget* viewport, const QString& source, const QPoint& pos)
     QDropEvent drop(QPointF(pos), Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
     QCoreApplication::sendEvent(viewport, &drop);
     return drop.isAccepted();
+}
+
+// Send a layer drag from `document` over `target` at `pos`; with `drop`, release
+// it there. Returns whether the last event was accepted.
+bool dragLayerOver(QWidget* target, const void* document, const QString& path,
+                   const QPoint& pos, bool drop)
+{
+    QMimeData mime;
+    mime.setData(pictura::kLayerMimeType, path.toUtf8());
+    mime.setData(pictura::kLayerSourceMimeType,
+                 QByteArray::number(reinterpret_cast<quintptr>(document)));
+    const auto actions = Qt::MoveAction | Qt::CopyAction;
+    QDragEnterEvent enter(pos, actions, &mime, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(target, &enter);
+    QDragMoveEvent move(pos, actions, &mime, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(target, &move);
+    if (!drop) {
+        return move.isAccepted();
+    }
+    QDropEvent release(QPointF(pos), actions, &mime, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(target, &release);
+    return release.isAccepted();
+}
+
+int countNamed(pictura::PictureView* view, const QString& name)
+{
+    int count = 0;
+    for (int i = 0; i < view->layer_row_count(); ++i) {
+        count += view->layer_row_name(i) == name ? 1 : 0;
+    }
+    return count;
 }
 
 } // namespace
@@ -75,6 +111,7 @@ private slots:
     void dragReorder();
     void dropAnywhereOnLayerRowReorders();
     void dropOnGroupRowEdgesPlacesSibling();
+    void dragLayerOntoAnotherDocument();
     void dropOnDelete();
     void clippingMasks();
 
@@ -369,7 +406,7 @@ void LayersPanelTest::dropAnywhereOnLayerRowReorders()
     QRect row = panel_->rowViewportRectForTest(b);
     QVERIFY2(row.height() > 8, "layer B row is laid out");
     const int base = view_->history_count();
-    QVERIFY2(dropOnViewport(tree->viewport(), a,
+    QVERIFY2(dropOnViewport(tree->viewport(), view_, a,
                             QPoint(row.center().x(), row.top() + row.height() / 4)),
              "upper-half drop accepted");
     QCOMPARE(view_->layer_row_name(rowOf(QStringLiteral("2"))), QStringLiteral("A"));
@@ -378,7 +415,7 @@ void LayersPanelTest::dropAnywhereOnLayerRowReorders()
     panel_->refresh();
     QCoreApplication::processEvents();
     row = panel_->rowViewportRectForTest(QStringLiteral("1"));
-    QVERIFY2(dropOnViewport(tree->viewport(), QStringLiteral("2"),
+    QVERIFY2(dropOnViewport(tree->viewport(), view_, QStringLiteral("2"),
                             QPoint(row.center().x(), row.bottom() - row.height() / 4)),
              "lower-half drop accepted");
     QCOMPARE(view_->layer_row_name(rowOf(QStringLiteral("1"))), QStringLiteral("A"));
@@ -411,7 +448,7 @@ void LayersPanelTest::dropOnGroupRowEdgesPlacesSibling()
     QRect row = panel_->rowViewportRectForTest(QStringLiteral("2"));
     QVERIFY2(row.height() >= 16, "group row is laid out");
     const int base = view_->history_count();
-    QVERIFY2(dropOnViewport(tree->viewport(), QStringLiteral("1"),
+    QVERIFY2(dropOnViewport(tree->viewport(), view_, QStringLiteral("1"),
                             QPoint(row.center().x(), row.top() + row.height() / 8)),
              "upper-quarter drop accepted");
     QCOMPARE(view_->layer_row_name(rowOf(QStringLiteral("2"))), QStringLiteral("L"));
@@ -421,13 +458,79 @@ void LayersPanelTest::dropOnGroupRowEdgesPlacesSibling()
     panel_->refresh();
     QCoreApplication::processEvents();
     row = panel_->rowViewportRectForTest(QStringLiteral("1"));
-    QVERIFY2(dropOnViewport(tree->viewport(), QStringLiteral("2"),
+    QVERIFY2(dropOnViewport(tree->viewport(), view_, QStringLiteral("2"),
                             QPoint(row.center().x(), row.bottom() - row.height() / 8)),
              "lower-quarter drop accepted");
     QCOMPARE(view_->layer_row_name(rowOf(QStringLiteral("1"))), QStringLiteral("L"));
     QCOMPARE(view_->layer_row_name(rowOf(QStringLiteral("2"))), QStringLiteral("G"));
     QCOMPARE(view_->history_count(), base + 2);
     window_->closeDocument(doc, false);
+}
+
+// Issue #231: a layer dragged onto another document's tab brings that document
+// forward and copies the layer in; its canvas takes the drop too. The source is
+// untouched, and the other document's panel never treats the drag as its own.
+void LayersPanelTest::dragLayerOntoAnotherDocument()
+{
+    QVERIFY(window_->newDocument(QStringLiteral("Src"), 16, 16, QStringLiteral("rgb"), 8,
+                                 QStringLiteral("white")));
+    pictura::PictureView* src = window_->activeView();
+    const QString sky = src->add_layer_in(QString());
+    src->set_layer_name_path(sky, QStringLiteral("Sky"));
+    src->set_layers_opacity(QStringList{sky}, 40);
+    QVERIFY(window_->newDocument(QStringLiteral("Dst"), 16, 16, QStringLiteral("rgb"), 8,
+                                 QStringLiteral("white")));
+    pictura::PictureView* dst = window_->activeView();
+    QVERIFY(window_->newDocument(QStringLiteral("Gray"), 16, 16, QStringLiteral("grayscale"), 8,
+                                 QStringLiteral("white")));
+    pictura::PictureView* gray = window_->activeView();
+    window_->setActiveDocumentIndex(0);
+    window_->show();
+    QTest::qWait(50);
+    auto* bar = window_->findChild<QTabBar*>(QStringLiteral("documentTabBar"));
+    QVERIFY(bar != nullptr && bar->count() == 3);
+    const int srcRows = src->layer_row_count();
+    const int base = dst->history_count();
+
+    QVERIFY2(!dragLayerOver(bar, src, sky, bar->tabRect(0).center(), true),
+             "a drop on its own document's tab copies nothing");
+    QCOMPARE(src->layer_row_count(), srcRows);
+
+    QVERIFY2(dragLayerOver(bar, src, sky, bar->tabRect(1).center(), false),
+             "hovering another tab accepts the drag");
+    QCOMPARE(window_->activeView(), dst);
+    QVERIFY2(dragLayerOver(bar, src, sky, bar->tabRect(1).center(), true), "tab drop accepted");
+    QCOMPARE(countNamed(dst, QStringLiteral("Sky")), 1);
+    QCOMPARE(dst->history_count(), base + 1);
+    view_ = dst;
+    panel_ = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    QVERIFY(panel_ != nullptr);
+    const QString copied = panel_->currentPath();
+    QCOMPARE(dst->layer_row_name(rowOf(copied)), QStringLiteral("Sky"));
+    view_ = src;
+    const int srcOpacity = src->layer_row_opacity(rowOf(sky));
+    view_ = dst;
+    QVERIFY(srcOpacity < 100);
+    QCOMPARE(dst->layer_row_opacity(rowOf(copied)), srcOpacity);
+    QCOMPARE(src->layer_row_count(), srcRows);
+
+    QWidget* canvas = window_->canvasAt(1);
+    QVERIFY2(dragLayerOver(canvas, src, sky, canvas->rect().center(), true),
+             "canvas drop accepted");
+    QCOMPARE(countNamed(dst, QStringLiteral("Sky")), 2);
+
+    const int dstRows = dst->layer_row_count();
+    QTreeView* tree = panel_->findChild<QTreeView*>();
+    QVERIFY(tree != nullptr);
+    QVERIFY2(!dropOnViewport(tree->viewport(), src, QStringLiteral("1"),
+                             tree->viewport()->rect().center()),
+             "another document's drag is not a drop on this panel");
+    QCOMPARE(dst->layer_row_count(), dstRows);
+
+    QVERIFY2(!dragLayerOver(bar, src, sky, bar->tabRect(2).center(), true),
+             "a Grayscale document refuses an RGB layer");
+    QCOMPARE(window_->activeView(), gray);
+    QCOMPARE(countNamed(gray, QStringLiteral("Sky")), 0);
 }
 
 void LayersPanelTest::dropOnDelete()

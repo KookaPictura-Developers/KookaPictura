@@ -69,6 +69,14 @@ pub mod ffi {
 
         /// `Purge > Clipboard`: drop the copy. Not undoable.
         fn clipboard_purge();
+
+        /// Deep-copy the layer node at `path` in `source` into `view` by the New Layer insertion rule relative to `selection` — the Layers panel drag onto another document. `source` and `view` must be different documents. One "Duplicate Layer" state; returns the new path, or empty for an unknown path or a different color mode or bit depth.
+        fn copy_layer_from_document(
+            view: Pin<&mut PictureView>,
+            source: &PictureView,
+            path: &QString,
+            selection: &QString,
+        ) -> QString;
     }
 }
 
@@ -115,6 +123,34 @@ fn clipboard_import(width: i32, height: i32, rgba: &[u8]) -> bool {
 
 fn clipboard_purge() {
     *CLIPBOARD.lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
+fn copy_layer_from_document(
+    mut view: Pin<&mut PictureView>,
+    source: &PictureView,
+    path: &QString,
+    selection: &QString,
+) -> QString {
+    let created = {
+        let source = source.rust();
+        let mut rust = view.as_mut().rust_mut();
+        match (source.doc.as_ref(), rust.doc.as_mut()) {
+            (Some(src), Some(dst)) => pictura_render::copy_path_to_document(
+                src,
+                &path.to_string(),
+                dst,
+                &selection.to_string(),
+            ),
+            _ => None,
+        }
+    };
+    let Some(created) = created else {
+        return QString::default();
+    };
+    view.as_mut().clear_link_sets();
+    view.as_mut().recomposite();
+    view.as_mut().record("Duplicate Layer");
+    QString::from(created.as_str())
 }
 
 /// The active selection's coverage plane, when it matches the document.

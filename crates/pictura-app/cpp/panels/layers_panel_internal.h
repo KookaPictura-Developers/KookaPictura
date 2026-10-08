@@ -47,6 +47,16 @@ namespace pictura {
 
 /// MIME type carrying dragged layer paths between the tree and the strip buttons.
 inline constexpr char kLayerMimeType[] = "application/x-pictura-layer";
+/// MIME type tagging a layer drag with its document (the source PictureView's
+/// address, compared but never dereferenced until a frame lookup vouches for it).
+inline constexpr char kLayerSourceMimeType[] = "application/x-pictura-layer-source";
+
+inline const void* layerDragSource(const QMimeData* mime)
+{
+    return mime ? reinterpret_cast<const void*>(static_cast<quintptr>(
+                      mime->data(kLayerSourceMimeType).toULongLong()))
+                : nullptr;
+}
 
 // One bridge row, as read by refresh(). The model owns a tree of these.
 struct LayerRow {
@@ -458,6 +468,13 @@ public:
     {
         dropValidator_ = std::move(validator);
     }
+    // The document a drag starts from; a layer drag from another document is
+    // not a drop on this tree (the frame copies it across instead).
+    void setDragSource(const void* source) { dragSource_ = source; }
+    bool isOwnLayerDrag(const QMimeData* mime) const
+    {
+        return mime->hasFormat(kLayerMimeType) && layerDragSource(mime) == dragSource_;
+    }
 
     // Closed-hand cursor for the duration of a drag, restored when it ends.
     void enterDragCursor()
@@ -525,15 +542,22 @@ protected:
         }
         auto* mime = new QMimeData();
         mime->setData(kLayerMimeType, paths.join(QLatin1Char('\n')).toUtf8());
+        mime->setData(kLayerSourceMimeType,
+                      QByteArray::number(reinterpret_cast<quintptr>(dragSource_)));
         auto* drag = new QDrag(this);
         drag->setMimeData(mime);
         enterDragCursor();
-        drag->exec(Qt::MoveAction);
+        // Copy is offered for a drop on another document's tab or canvas.
+        drag->exec(Qt::MoveAction | Qt::CopyAction, Qt::MoveAction);
         leaveDragCursor();
     }
 
     void dragEnterEvent(QDragEnterEvent* event) override
     {
+        if (event->mimeData()->hasFormat(kLayerMimeType) && !isOwnLayerDrag(event->mimeData())) {
+            event->ignore();
+            return;
+        }
         if (event->mimeData()->hasFormat(kLayerMimeType)) {
             // Enter the dragging state so the drop indicator paints (the base
             // implementation would do this, but we handle the drag ourselves).
@@ -552,6 +576,11 @@ protected:
 
     void dragMoveEvent(QDragMoveEvent* event) override
     {
+        if (event->mimeData()->hasFormat(kLayerMimeType) && !isOwnLayerDrag(event->mimeData())) {
+            clearDropIndicator();
+            event->ignore();
+            return;
+        }
         if (!event->mimeData()->hasFormat(kLayerMimeType) || !dropValidator_ || !pathForIndex_) {
             QTreeView::dragMoveEvent(event);
             return;
@@ -581,6 +610,10 @@ protected:
     void dropEvent(QDropEvent* event) override
     {
         clearDropIndicator();
+        if (event->mimeData()->hasFormat(kLayerMimeType) && !isOwnLayerDrag(event->mimeData())) {
+            event->ignore();
+            return;
+        }
         if (!event->mimeData()->hasFormat(kLayerMimeType) || !dropHandler_ || !pathForIndex_) {
             QTreeView::dropEvent(event);
             return;
@@ -649,6 +682,7 @@ private:
     std::function<QString(const QModelIndex&)> pathForIndex_;
     std::function<bool(const QString&, const QString&, int)> dropHandler_;
     std::function<bool(const QString&, const QString&, int)> dropValidator_;
+    const void* dragSource_ = nullptr;
     QCursor dragCursor_;
     QRect dropRect_;
     int dropMode_ = -1;

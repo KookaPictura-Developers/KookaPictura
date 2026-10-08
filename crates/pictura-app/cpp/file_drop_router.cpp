@@ -2,6 +2,7 @@
 
 #include "frame.h"
 #include "image_view.h"
+#include "panels/layers_panel_internal.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 
@@ -12,6 +13,7 @@
 #include <QtGui/QDragEnterEvent>
 #include <QtGui/QDragMoveEvent>
 #include <QtGui/QDropEvent>
+#include <QtWidgets/QTabBar>
 
 namespace pictura {
 
@@ -38,8 +40,52 @@ QStringList FileDropRouter::localPaths(const QMimeData* mime)
     return paths;
 }
 
+bool FileDropRouter::routeLayerDrag(QObject* watched, QEvent* event)
+{
+    auto* drag = static_cast<QDropEvent*>(event);
+    const QMimeData* mime = drag->mimeData();
+    const void* source = layerDragSource(mime);
+    if (!mime->hasFormat(kLayerMimeType) || !source) {
+        return false;
+    }
+    auto* bar = qobject_cast<QTabBar*>(watched);
+    if (!bar && !qobject_cast<ImageView*>(watched)) {
+        return false;
+    }
+    // Hovering another document's tab brings it forward, as CS6 does, so the
+    // drop can land on its tab or its canvas.
+    if (bar) {
+        const int tab = bar->tabAt(drag->position().toPoint());
+        if (tab >= 0 && frame_->viewAt(tab) != source) {
+            frame_->setActiveDocumentIndex(tab);
+        }
+    }
+    const PictureView* target = frame_->activeView();
+    if (!target || target == source) {
+        drag->ignore();
+        return true;
+    }
+    if (event->type() == QEvent::Drop) {
+        const QStringList paths =
+            QString::fromUtf8(mime->data(kLayerMimeType)).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+        // ponytail: only the dragged row crosses, as the in-panel drop moves only it.
+        if (paths.isEmpty() || !frame_->copyLayerFromDocument(source, paths.first())) {
+            drag->ignore();
+            return true;
+        }
+    }
+    drag->setDropAction(Qt::CopyAction);
+    drag->accept();
+    return true;
+}
+
 bool FileDropRouter::eventFilter(QObject* watched, QEvent* event)
 {
+    const bool dragEvent = event->type() == QEvent::DragEnter
+        || event->type() == QEvent::DragMove || event->type() == QEvent::Drop;
+    if (dragEvent && routeLayerDrag(watched, event)) {
+        return true;
+    }
     if (event->type() == QEvent::DragEnter || event->type() == QEvent::DragMove) {
         auto* drag = static_cast<QDragMoveEvent*>(event);
         if (localPaths(drag->mimeData()).isEmpty()) {
