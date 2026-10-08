@@ -1,0 +1,610 @@
+#include "filter_gallery_dialog.h"
+#include "filter_param_controls.h"
+#include "icons.h"
+
+#include <QtCore/QByteArray>
+#include <QtCore/QSignalBlocker>
+#include <QtCore/QStringList>
+#include <QtCore/QTimer>
+#include <QtGui/QMouseEvent>
+#include <QtGui/QPixmap>
+#include <QtGui/QShowEvent>
+#include <QtWidgets/QAbstractItemView>
+#include <QtWidgets/QComboBox>
+#include <QtWidgets/QGridLayout>
+#include <QtWidgets/QHBoxLayout>
+#include <QtWidgets/QLabel>
+#include <QtWidgets/QListWidget>
+#include <QtWidgets/QPushButton>
+#include <QtWidgets/QScrollArea>
+#include <QtWidgets/QScrollBar>
+#include <QtWidgets/QToolButton>
+#include <QtWidgets/QVBoxLayout>
+
+#include <algorithm>
+
+#include "pictura_app/src/cxxqt_object.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/filter_tools.cxxqt.h"
+
+namespace pictura {
+
+namespace {
+
+const QSize kThumbnailSize(80, 56);
+const double kZoomSteps[] = {0.0625, 0.125, 0.25, 0.333, 0.5, 0.667, 1.0, 2.0, 4.0};
+const int kZoomStepCount = 9;
+// Hold the canvas preview until the controls settle.
+const int kPreviewDelayMs = 120;
+
+// The gallery's membership in CS6: every Artistic filter, every Brush Strokes
+// filter, three Distort, every Sketch filter, Glowing Edges, every Texture
+// filter.
+const char* const kGallery[][2] = {
+    {"Artistic", "Colored Pencil"},  {"Artistic", "Cutout"},
+    {"Artistic", "Dry Brush"},       {"Artistic", "Film Grain"},
+    {"Artistic", "Fresco"},          {"Artistic", "Neon Glow"},
+    {"Artistic", "Paint Daubs"},     {"Artistic", "Palette Knife"},
+    {"Artistic", "Plastic Wrap"},    {"Artistic", "Poster Edges"},
+    {"Artistic", "Rough Pastels"},   {"Artistic", "Smudge Stick"},
+    {"Artistic", "Sponge"},          {"Artistic", "Underpainting"},
+    {"Artistic", "Watercolor"},      {"Brush Strokes", "Accented Edges"},
+    {"Brush Strokes", "Angled Strokes"}, {"Brush Strokes", "Crosshatch"},
+    {"Brush Strokes", "Dark Strokes"},   {"Brush Strokes", "Ink Outlines"},
+    {"Brush Strokes", "Spatter"},        {"Brush Strokes", "Sprayed Strokes"},
+    {"Brush Strokes", "Sumi-e"},     {"Distort", "Diffuse Glow"},
+    {"Distort", "Glass"},            {"Distort", "Ocean Ripple"},
+    {"Sketch", "Bas Relief"},        {"Sketch", "Chalk & Charcoal"},
+    {"Sketch", "Charcoal"},          {"Sketch", "Chrome"},
+    {"Sketch", "Conté Crayon"},      {"Sketch", "Graphic Pen"},
+    {"Sketch", "Halftone Pattern"},  {"Sketch", "Note Paper"},
+    {"Sketch", "Photocopy"},         {"Sketch", "Plaster"},
+    {"Sketch", "Reticulation"},      {"Sketch", "Stamp"},
+    {"Sketch", "Torn Edges"},        {"Sketch", "Water Paper"},
+    {"Stylize", "Glowing Edges"},    {"Texture", "Craquelure"},
+    {"Texture", "Grain"},            {"Texture", "Mosaic Tiles"},
+    {"Texture", "Patchwork"},        {"Texture", "Stained Glass"},
+    {"Texture", "Texturizer"},
+};
+
+const FilterCommandSpec* specFor(const QString& kind)
+{
+    return filterCommandForKind(kind);
+}
+
+// The session's last stack: CS6 reopens the gallery on it.
+QList<FilterGalleryDialog::Effect>& lastStack()
+{
+    static QList<FilterGalleryDialog::Effect> stack;
+    return stack;
+}
+
+} // namespace
+
+QImage FilterGalleryDialog::thumbnailSample(const QImage& picture)
+{
+    if (picture.isNull()) {
+        return {};
+    }
+    const QImage scaled = picture
+                              .scaled(kThumbnailSize, Qt::KeepAspectRatioByExpanding,
+                                      Qt::SmoothTransformation)
+                              .convertToFormat(QImage::Format_RGBA8888);
+    return scaled.copy((scaled.width() - kThumbnailSize.width()) / 2,
+                       (scaled.height() - kThumbnailSize.height()) / 2, kThumbnailSize.width(),
+                       kThumbnailSize.height());
+}
+
+QList<FilterGalleryDialog::Category> FilterGalleryDialog::categories()
+{
+    QList<Category> result;
+    for (const auto& row : kGallery) {
+        const QString family = QString::fromUtf8(row[0]);
+        const FilterCommandSpec* spec = filterCommandForPath(
+            {QStringLiteral("Filter"), family, QString::fromUtf8(row[1])});
+        if (!spec || !filter_kind_supported(spec->kind)) {
+            continue;
+        }
+        if (result.isEmpty() || result.last().first != family) {
+            result.append({family, {}});
+        }
+        result.last().second.append(spec);
+    }
+    return result;
+}
+
+FilterGalleryDialog::FilterGalleryDialog(PictureView* view, QWidget* parent)
+    : QDialog(parent), view_(view)
+{
+    setObjectName(QStringLiteral("filterGallery"));
+    setWindowTitle(QStringLiteral("Filter Gallery"));
+    if (view_) {
+        // Sampled once; every filter's thumbnail renders from the same bytes.
+        thumbnailSample_ = thumbnailSample(view_->image());
+        for (int y = 0; y < thumbnailSample_.height(); ++y) {
+            thumbnailRgba_.append(reinterpret_cast<const char*>(thumbnailSample_.constScanLine(y)),
+                                  thumbnailSample_.width() * 4);
+        }
+    }
+
+    previewTimer_ = new QTimer(this);
+    previewTimer_->setSingleShot(true);
+    previewTimer_->setInterval(kPreviewDelayMs);
+    connect(previewTimer_, &QTimer::timeout, this, &FilterGalleryDialog::runPreview);
+
+    auto* body = new QHBoxLayout(this);
+    body->setSpacing(8);
+    body->addWidget(buildPreview(), 1);
+    thumbnailPane_ = buildThumbnails();
+    body->addWidget(thumbnailPane_);
+
+    auto* right = new QVBoxLayout;
+    auto* topRow = new QHBoxLayout;
+    auto* toggle = new QToolButton(this);
+    toggle->setObjectName(QStringLiteral("galleryToggleThumbnails"));
+    toggle->setText(QStringLiteral("«"));
+    toggle->setToolTip(QStringLiteral("Show/hide the filter thumbnails"));
+    toggle->setCheckable(true);
+    toggle->setChecked(true);
+    connect(toggle, &QToolButton::toggled, thumbnailPane_, &QWidget::setVisible);
+    connect(toggle, &QToolButton::toggled, toggle, [toggle](bool shown) {
+        toggle->setText(shown ? QStringLiteral("«") : QStringLiteral("»"));
+    });
+    auto* buttons = new QVBoxLayout;
+    auto* ok = new QPushButton(QStringLiteral("OK"), this);
+    ok->setDefault(true);
+    auto* cancel = new QPushButton(QStringLiteral("Cancel"), this);
+    connect(ok, &QPushButton::clicked, this, &QDialog::accept);
+    connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
+    buttons->addWidget(ok);
+    buttons->addWidget(cancel);
+    topRow->addWidget(toggle, 0, Qt::AlignTop);
+    topRow->addLayout(buttons, 1);
+    right->addLayout(topRow);
+
+    filterCombo_ = new QComboBox(this);
+    filterCombo_->setObjectName(QStringLiteral("galleryFilter"));
+    QList<const FilterCommandSpec*> all;
+    for (const Category& category : categories()) {
+        all.append(category.second);
+    }
+    std::sort(all.begin(), all.end(), [](const FilterCommandSpec* a, const FilterCommandSpec* b) {
+        return a->label.localeAwareCompare(b->label) < 0;
+    });
+    for (const FilterCommandSpec* spec : all) {
+        filterCombo_->addItem(spec->label, spec->kind);
+    }
+    connect(filterCombo_, &QComboBox::activated, this,
+            [this](int index) { selectFilter(filterCombo_->itemData(index).toString()); });
+    right->addWidget(filterCombo_);
+
+    options_ = new QWidget(this);
+    optionsLayout_ = new QVBoxLayout(options_);
+    optionsLayout_->setContentsMargins(0, 0, 0, 0);
+    right->addWidget(options_);
+    right->addStretch(1);
+
+    list_ = new QListWidget(this);
+    list_->setObjectName(QStringLiteral("galleryEffects"));
+    list_->setDragDropMode(QAbstractItemView::InternalMove);
+    list_->setMinimumHeight(140);
+    list_->setIconSize(QSize(18, 18));
+    // Visibility is each row's check state, so Space toggles it and assistive
+    // technology reads it; the eye icon stands in for the hidden indicator.
+    list_->setStyleSheet(
+        QStringLiteral("QListWidget#galleryEffects::indicator { width: 0px; height: 0px; }"));
+    list_->viewport()->installEventFilter(this);
+    connect(list_, &QListWidget::itemChanged, this, [this](QListWidgetItem* item) {
+        const int index = effects_.size() - 1 - list_->row(item);
+        const bool visible = item->checkState() == Qt::Checked;
+        if (index >= 0 && index < effects_.size() && effects_.at(index).visible != visible) {
+            setEffectVisible(index, visible);
+        }
+    });
+    connect(list_, &QListWidget::currentRowChanged, this, [this](int row) {
+        if (row >= 0) {
+            selectEffect(effects_.size() - 1 - row);
+        }
+    });
+    connect(list_->model(), &QAbstractItemModel::rowsMoved, this,
+            [this](const QModelIndex&, int start, int, const QModelIndex&, int row) {
+                const int to = row > start ? row - 1 : row;
+                effectMoved(effects_.size() - 1 - start, effects_.size() - 1 - to);
+            });
+    right->addWidget(list_, 1);
+
+    auto* listButtons = new QHBoxLayout;
+    listButtons->addStretch(1);
+    auto* add = new QToolButton(this);
+    add->setObjectName(QStringLiteral("galleryNewEffect"));
+    add->setIcon(icon(QStringLiteral("layers.newLayer")));
+    add->setToolTip(QStringLiteral("New effect layer"));
+    connect(add, &QToolButton::clicked, this, &FilterGalleryDialog::addEffect);
+    auto* remove = new QToolButton(this);
+    remove->setObjectName(QStringLiteral("galleryDeleteEffect"));
+    remove->setIcon(icon(QStringLiteral("layers.delete")));
+    remove->setToolTip(QStringLiteral("Delete effect layer"));
+    connect(remove, &QToolButton::clicked, this, &FilterGalleryDialog::deleteEffect);
+    listButtons->addWidget(add);
+    listButtons->addWidget(remove);
+    right->addLayout(listButtons);
+
+    auto* rightPane = new QWidget(this);
+    rightPane->setLayout(right);
+    rightPane->setFixedWidth(260);
+    body->addWidget(rightPane);
+
+    effects_ = lastStack();
+    if (effects_.isEmpty() && filterCombo_->count() > 0) {
+        const QList<Category> groups = categories();
+        effects_.append({groups.first().second.first()->kind, {}, true});
+    }
+    selected_ = effects_.size() - 1;
+    rebuildList();
+    selectEffect(selected_);
+
+    connect(this, &QDialog::rejected, this, &FilterGalleryDialog::discardPreview);
+    resize(parent ? parent->size() * 0.9 : QSize(1200, 800));
+    QTimer::singleShot(0, this, &FilterGalleryDialog::renderNextThumbnail);
+}
+
+QWidget* FilterGalleryDialog::buildPreview()
+{
+    auto* pane = new QWidget(this);
+    auto* layout = new QVBoxLayout(pane);
+    layout->setContentsMargins(0, 0, 0, 0);
+    previewArea_ = new QScrollArea(pane);
+    previewArea_->setObjectName(QStringLiteral("galleryPreview"));
+    previewArea_->setAlignment(Qt::AlignCenter);
+    previewArea_->setBackgroundRole(QPalette::Dark);
+    previewLabel_ = new QLabel;
+    previewArea_->setWidget(previewLabel_);
+    for (QScrollBar* bar :
+         {previewArea_->horizontalScrollBar(), previewArea_->verticalScrollBar()}) {
+        connect(bar, &QScrollBar::valueChanged, this, &FilterGalleryDialog::schedulePreview);
+    }
+    layout->addWidget(previewArea_, 1);
+
+    auto* zoomRow = new QHBoxLayout;
+    auto* zoomOut = new QToolButton(pane);
+    zoomOut->setObjectName(QStringLiteral("galleryZoomOut"));
+    zoomOut->setText(QStringLiteral("−"));
+    auto* zoomIn = new QToolButton(pane);
+    zoomIn->setObjectName(QStringLiteral("galleryZoomIn"));
+    zoomIn->setText(QStringLiteral("+"));
+    zoomLabel_ = new QLabel(pane);
+    zoomLabel_->setObjectName(QStringLiteral("galleryZoomLabel"));
+    connect(zoomOut, &QToolButton::clicked, this, [this] {
+        for (int i = kZoomStepCount - 1; i >= 0; --i) {
+            if (kZoomSteps[i] < zoom_ - 1e-6) {
+                setZoom(kZoomSteps[i]);
+                return;
+            }
+        }
+    });
+    connect(zoomIn, &QToolButton::clicked, this, [this] {
+        for (double step : kZoomSteps) {
+            if (step > zoom_ + 1e-6) {
+                setZoom(step);
+                return;
+            }
+        }
+    });
+    zoomRow->addWidget(zoomOut);
+    zoomRow->addWidget(zoomIn);
+    zoomRow->addWidget(zoomLabel_);
+    zoomRow->addStretch(1);
+    layout->addLayout(zoomRow);
+    return pane;
+}
+
+QWidget* FilterGalleryDialog::buildThumbnails()
+{
+    auto* scroll = new QScrollArea(this);
+    scroll->setObjectName(QStringLiteral("galleryThumbnails"));
+    scroll->setWidgetResizable(true);
+    auto* content = new QWidget;
+    auto* column = new QVBoxLayout(content);
+    column->setSpacing(2);
+    bool first = true;
+    for (const Category& category : categories()) {
+        auto* header = new QToolButton(content);
+        header->setObjectName(QStringLiteral("galleryCategory:") + category.first);
+        header->setText(category.first);
+        header->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        header->setAutoRaise(true);
+        auto* grid = new QWidget(content);
+        auto* gridLayout = new QGridLayout(grid);
+        gridLayout->setContentsMargins(4, 0, 4, 4);
+        int i = 0;
+        for (const FilterCommandSpec* spec : category.second) {
+            auto* thumb = new QToolButton(grid);
+            thumb->setObjectName(QStringLiteral("galleryThumb:") + spec->kind);
+            thumb->setProperty("kind", spec->kind);
+            thumb->setText(spec->label);
+            thumb->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+            thumb->setIconSize(kThumbnailSize);
+            thumb->setCheckable(true);
+            thumb->setAutoRaise(true);
+            connect(thumb, &QToolButton::clicked, this,
+                    [this, kind = spec->kind] { selectFilter(kind); });
+            gridLayout->addWidget(thumb, i / 3, i % 3);
+            thumbnails_.append(thumb);
+            ++i;
+        }
+        const auto disclose = [header, grid](bool open) {
+            grid->setVisible(open);
+            header->setIcon(icon(open ? QStringLiteral("layers.disclosureDown")
+                                      : QStringLiteral("layers.disclosureRight")));
+        };
+        connect(header, &QToolButton::clicked, grid,
+                [disclose, grid] { disclose(grid->isHidden()); });
+        disclose(first);
+        first = false;
+        column->addWidget(header);
+        column->addWidget(grid);
+    }
+    column->addStretch(1);
+    scroll->setWidget(content);
+    scroll->setMinimumWidth(330);
+    return scroll;
+}
+
+void FilterGalleryDialog::selectFilter(const QString& kind)
+{
+    if (selected_ < 0 || selected_ >= effects_.size() || !specFor(kind)) {
+        return;
+    }
+    Effect& effect = effects_[selected_];
+    if (effect.kind != kind) {
+        effect.kind = kind;
+        effect.values.clear();
+    }
+    rebuildList();
+    selectEffect(selected_);
+}
+
+void FilterGalleryDialog::addEffect()
+{
+    if (selected_ < 0 || selected_ >= effects_.size()) {
+        return;
+    }
+    effects_.insert(selected_ + 1, effects_.at(selected_));
+    ++selected_;
+    rebuildList();
+    selectEffect(selected_);
+}
+
+void FilterGalleryDialog::deleteEffect()
+{
+    if (effects_.size() <= 1 || selected_ < 0 || selected_ >= effects_.size()) {
+        return;
+    }
+    effects_.removeAt(selected_);
+    selected_ = qMin(selected_, effects_.size() - 1);
+    rebuildList();
+    selectEffect(selected_);
+}
+
+void FilterGalleryDialog::setEffectVisible(int index, bool visible)
+{
+    if (index < 0 || index >= effects_.size()) {
+        return;
+    }
+    effects_[index].visible = visible;
+    showVisibility(list_->item(effects_.size() - 1 - index), visible);
+    schedulePreview();
+}
+
+void FilterGalleryDialog::effectMoved(int from, int to)
+{
+    if (from == to || from < 0 || to < 0 || from >= effects_.size() || to >= effects_.size()) {
+        return;
+    }
+    effects_.move(from, to);
+    selected_ = to;
+    // Rebuilt after the view finishes its own move.
+    QTimer::singleShot(0, this, [this] {
+        rebuildList();
+        schedulePreview();
+    });
+}
+
+void FilterGalleryDialog::rebuildList()
+{
+    const QSignalBlocker block(list_);
+    list_->clear();
+    // Top row = last applied, as CS6 stacks effect layers.
+    for (int i = effects_.size() - 1; i >= 0; --i) {
+        const FilterCommandSpec* spec = specFor(effects_.at(i).kind);
+        auto* item = new QListWidgetItem(spec ? spec->label : effects_.at(i).kind, list_);
+        item->setFlags(item->flags() | Qt::ItemIsDragEnabled | Qt::ItemIsUserCheckable);
+        showVisibility(item, effects_.at(i).visible);
+    }
+    list_->setCurrentRow(effects_.size() - 1 - selected_);
+}
+
+void FilterGalleryDialog::showVisibility(QListWidgetItem* item, bool visible)
+{
+    if (!item) {
+        return;
+    }
+    const QSignalBlocker block(list_);
+    item->setCheckState(visible ? Qt::Checked : Qt::Unchecked);
+    item->setIcon(icon(visible ? QStringLiteral("layers.eyeOn") : QStringLiteral("layers.eyeOff")));
+}
+
+void FilterGalleryDialog::selectEffect(int index)
+{
+    if (index < 0 || index >= effects_.size()) {
+        return;
+    }
+    selected_ = index;
+    Effect& effect = effects_[index];
+    const FilterCommandSpec* spec = specFor(effect.kind);
+    if (!spec) {
+        return;
+    }
+    {
+        const QSignalBlocker block(filterCombo_);
+        filterCombo_->setCurrentIndex(filterCombo_->findData(effect.kind));
+    }
+    for (QToolButton* thumb : thumbnails_) {
+        thumb->setChecked(thumb->property("kind").toString() == effect.kind);
+    }
+    if (controls_) {
+        for (QWidget* row : controls_->rows()) {
+            delete row;
+        }
+        delete controls_;
+    }
+    controls_ = new FilterParamControls(spec->params, options_);
+    for (QWidget* row : controls_->rows()) {
+        optionsLayout_->addWidget(row);
+    }
+    if (effect.values.isEmpty()) {
+        effect.values = controls_->values();
+    } else {
+        controls_->setValues(effect.values);
+    }
+    connect(controls_, &FilterParamControls::changed, this, [this] {
+        if (selected_ >= 0 && selected_ < effects_.size()) {
+            effects_[selected_].values = controls_->values();
+            schedulePreview();
+        }
+    });
+    schedulePreview();
+}
+
+void FilterGalleryDialog::schedulePreview()
+{
+    previewTimer_->start();
+}
+
+void FilterGalleryDialog::runPreview()
+{
+    if (!view_ || !view_->has_document()) {
+        return;
+    }
+    QStringList kinds;
+    QList<double> params;
+    for (const Effect& effect : effects_) {
+        if (effect.visible) {
+            kinds.append(effect.kind);
+            params.append(effect.values);
+        }
+    }
+    // Only what the pane shows is filtered; the commit filters the layer.
+    const QImage image = view_->image();
+    const QSize viewport = previewArea_->viewport()->size();
+    const int x = static_cast<int>(previewArea_->horizontalScrollBar()->value() / zoom_);
+    const int y = static_cast<int>(previewArea_->verticalScrollBar()->value() / zoom_);
+    const int w = qMin(image.width(), static_cast<int>(viewport.width() / zoom_) + 2);
+    const int h = qMin(image.height(), static_cast<int>(viewport.height() / zoom_) + 2);
+    if (filter_stack_preview(*view_, kinds, params, x, y, w, h)) {
+        previewShown_ = true;
+    }
+    showPreviewImage();
+}
+
+void FilterGalleryDialog::showPreviewImage()
+{
+    if (!view_ || !view_->has_document()) {
+        return;
+    }
+    const QImage image = view_->image();
+    const QSize size(qMax(1, qRound(image.width() * zoom_)), qMax(1, qRound(image.height() * zoom_)));
+    previewLabel_->setPixmap(QPixmap::fromImage(image.scaled(
+        size, Qt::IgnoreAspectRatio,
+        zoom_ < 1.0 ? Qt::SmoothTransformation : Qt::FastTransformation)));
+    previewLabel_->resize(size);
+    zoomLabel_->setText(QStringLiteral("%1%").arg(qRound(zoom_ * 1000.0) / 10.0));
+}
+
+double FilterGalleryDialog::fitZoom() const
+{
+    const QImage image = view_ ? view_->image() : QImage();
+    if (image.isNull()) {
+        return 1.0;
+    }
+    const QSize room = previewArea_->viewport()->size() - QSize(8, 8);
+    const double fit = qMin(static_cast<double>(room.width()) / image.width(),
+                            static_cast<double>(room.height()) / image.height());
+    return qBound(kZoomSteps[0], fit, 1.0);
+}
+
+void FilterGalleryDialog::setZoom(double zoom)
+{
+    zoom_ = zoom;
+    showPreviewImage();
+    schedulePreview();
+}
+
+void FilterGalleryDialog::showEvent(QShowEvent* event)
+{
+    QDialog::showEvent(event);
+    // CS6 opens at 100 %, or smaller when the picture does not fit.
+    setZoom(fitZoom());
+}
+
+bool FilterGalleryDialog::eventFilter(QObject* watched, QEvent* event)
+{
+    // The eye: a press on a row's icon shows or hides that effect.
+    if (watched == list_->viewport() && event->type() == QEvent::MouseButtonPress) {
+        const QPoint pos = static_cast<QMouseEvent*>(event)->position().toPoint();
+        const QListWidgetItem* item = list_->itemAt(pos);
+        if (item && pos.x() < list_->visualItemRect(item).left() + list_->iconSize().width() + 8) {
+            const int index = effects_.size() - 1 - list_->row(item);
+            setEffectVisible(index, !effects_.at(index).visible);
+            return true;
+        }
+    }
+    return QDialog::eventFilter(watched, event);
+}
+
+void FilterGalleryDialog::renderNextThumbnail()
+{
+    if (nextThumbnail_ >= thumbnails_.size() || thumbnailSample_.isNull()) {
+        return;
+    }
+    QToolButton* thumb = thumbnails_.at(nextThumbnail_++);
+    const QImage filtered =
+        filter_thumbnail(thumbnailRgba_, thumbnailSample_.width(), thumbnailSample_.height(),
+                         thumb->property("kind").toString(), QList<double>());
+    thumb->setIcon(QPixmap::fromImage(filtered.isNull() ? thumbnailSample_ : filtered));
+    QTimer::singleShot(0, this, &FilterGalleryDialog::renderNextThumbnail);
+}
+
+FilterGalleryDialog::CommitResult FilterGalleryDialog::commit()
+{
+    previewTimer_->stop();
+    QStringList kinds;
+    QList<double> params;
+    for (const Effect& effect : effects_) {
+        if (effect.visible) {
+            kinds.append(effect.kind);
+            params.append(effect.values);
+        }
+    }
+    lastStack() = effects_;
+    if (kinds.isEmpty()) {
+        discardPreview();
+        return CommitResult::NothingVisible;
+    }
+    if (view_ && apply_filter_stack(*view_, kinds, params)) {
+        previewShown_ = false;
+        return CommitResult::Applied;
+    }
+    discardPreview();
+    return CommitResult::Refused;
+}
+
+void FilterGalleryDialog::discardPreview()
+{
+    previewTimer_->stop();
+    if (previewShown_ && view_) {
+        filter_preview_cancel(*view_);
+        previewShown_ = false;
+    }
+}
+
+} // namespace pictura
