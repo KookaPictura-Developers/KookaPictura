@@ -316,7 +316,8 @@ void addDefaultCommands(CommandRegistry& registry) {
     registry.addSeparator({"Layer"});
     registry.add(command_ids::LayerDuplicateLayer, {"Layer", "Duplicate Layer…"},
                  QStringLiteral("Duplicate Layer…"), QKeySequence(), true);
-    leaf(registry, {"Layer", "Delete Layer"}, QStringLiteral("Delete Layer"));
+    registry.add(command_ids::LayerDeleteLayer, {"Layer", "Delete Layer"},
+                 QStringLiteral("Delete Layer"), QKeySequence(), true);
     registry.add(command_ids::LayerDeleteHiddenLayers, {"Layer", "Delete Hidden Layers"},
                  QStringLiteral("Delete Hidden Layers"), QKeySequence(), true);
     registry.addSeparator({"Layer"});
@@ -348,6 +349,7 @@ void addDefaultCommands(CommandRegistry& registry) {
          QStringLiteral("Disable Filter Mask"));
     leaf(registry, {"Layer", "Smart Filter", "Delete Filter Mask"},
          QStringLiteral("Delete Filter Mask"));
+    registry.addSeparator({"Layer"});
     registry.add(command_ids::LayerNewFillSolidColor, {"Layer", "New Fill Layer", "Solid Color…"},
                  QStringLiteral("Solid Color…"), QKeySequence(), true);
     registry.add(command_ids::LayerNewFillGradient, {"Layer", "New Fill Layer", "Gradient…"},
@@ -376,6 +378,7 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Layer", "New Adjustment Layer", "Selective Color"},
          QStringLiteral("Selective Color"));
     leaf(registry, {"Layer", "Layer Content Options…"}, QStringLiteral("Layer Content Options…"));
+    registry.addSeparator({"Layer"});
     leaf(registry, {"Layer", "Layer Mask", "Reveal All"}, QStringLiteral("Reveal All"));
     leaf(registry, {"Layer", "Layer Mask", "Hide All"}, QStringLiteral("Hide All"));
     leaf(registry, {"Layer", "Layer Mask", "Reveal Selection"}, QStringLiteral("Reveal Selection"));
@@ -400,6 +403,7 @@ void addDefaultCommands(CommandRegistry& registry) {
                  true);
     registry.add(command_ids::LayerReleaseClippingMask, {"Layer", "Release Clipping Mask"},
                  QStringLiteral("Release Clipping Mask"), QKeySequence(), true);
+    registry.addSeparator({"Layer"});
     registry.add(command_ids::LayerSmartObjectConvertTo,
                  {"Layer", "Smart Objects", "Convert to Smart Object"},
                  QStringLiteral("Convert to Smart Object"), QKeySequence(), true);
@@ -442,7 +446,9 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Layer", "Rasterize", "Layer Style"}, QStringLiteral("Layer Style"));
     leaf(registry, {"Layer", "Rasterize", "Video"}, QStringLiteral("Video"));
     leaf(registry, {"Layer", "Rasterize", "3D"}, QStringLiteral("3D"));
+    registry.addSeparator({"Layer"});
     leaf(registry, {"Layer", "New Layer-based Slice"}, QStringLiteral("New Layer-based Slice"));
+    registry.addSeparator({"Layer"});
     registry.add(command_ids::LayerGroupLayers, {"Layer", "Group Layers"},
                  QStringLiteral("Group Layers"), QKeySequence(QStringLiteral("Ctrl+G")), true);
     registry.add(command_ids::LayerUngroupLayers, {"Layer", "Ungroup Layers"},
@@ -488,6 +494,7 @@ void addDefaultCommands(CommandRegistry& registry) {
     leaf(registry, {"Layer", "Distribute", "Right"}, QStringLiteral("Right"));
     leaf(registry, {"Layer", "Lock All Layers In Group…"},
          QStringLiteral("Lock All Layers In Group…"));
+    registry.addSeparator({"Layer"});
     registry.add(command_ids::LayerMergeLayers, {"Layer", "Merge Layers"},
                  QStringLiteral("Merge Layers"), QKeySequence(QStringLiteral("Ctrl+E")), true);
     registry.add(command_ids::LayerMergeVisible, {"Layer", "Merge Visible"},
@@ -497,6 +504,7 @@ void addDefaultCommands(CommandRegistry& registry) {
                  QStringLiteral("Flatten Image"), QKeySequence(), true);
     registry.add(command_ids::LayerMergeClippingMask, {"Layer", "Merge Clipping Mask"},
                  QStringLiteral("Merge Clipping Mask"), QKeySequence(), true);
+    registry.addSeparator({"Layer"});
     leaf(registry, {"Layer", "Matting", "Defringe…"}, QStringLiteral("Defringe…"));
     leaf(registry, {"Layer", "Matting", "Remove Black Matte"}, QStringLiteral("Remove Black Matte"));
     leaf(registry, {"Layer", "Matting", "Remove White Matte"}, QStringLiteral("Remove White Matte"));

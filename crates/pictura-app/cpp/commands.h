@@ -115,6 +115,7 @@ inline constexpr char LayerNewLayerFromBackground[] = "layer.new.layerFromBackgr
 inline constexpr char LayerNewBackgroundFromLayer[] = "layer.new.backgroundFromLayer";
 inline constexpr char LayerNewLayerViaCopy[] = "layer.new.layerViaCopy";
 inline constexpr char LayerNewLayerViaCut[] = "layer.new.layerViaCut";
+inline constexpr char LayerDeleteLayer[] = "layer.delete.layer";
 inline constexpr char LayerDeleteHiddenLayers[] = "layer.delete.hiddenLayers";
 inline constexpr char LayerSelectSimilar[] = "layer.select.similar";
 inline constexpr char LayerSelectLinked[] = "layer.select.linked";
