@@ -1,6 +1,7 @@
 #include <QtTest/QtTest>
 
 #include <QtCore/QAbstractItemModel>
+#include <QtCore/QMimeData>
 #include <QtCore/QModelIndex>
 #include <QtCore/QPoint>
 #include <QtCore/QRect>
@@ -8,6 +9,9 @@
 #include <QtCore/QTimer>
 #include <QtGui/QAction>
 #include <QtGui/QColor>
+#include <QtGui/QDragEnterEvent>
+#include <QtGui/QDragMoveEvent>
+#include <QtGui/QDropEvent>
 #include <QtGui/QImage>
 #include <QtGui/QPalette>
 
@@ -42,6 +46,19 @@ QModelIndex indexForPath(QAbstractItemModel* model, const QString& path,
     return {};
 }
 
+bool dropOnViewport(QWidget* viewport, const QString& source, const QPoint& pos)
+{
+    QMimeData mime;
+    mime.setData(pictura::kLayerMimeType, source.toUtf8());
+    QDragEnterEvent enter(pos, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(viewport, &enter);
+    QDragMoveEvent move(pos, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(viewport, &move);
+    QDropEvent drop(QPointF(pos), Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(viewport, &drop);
+    return drop.isAccepted();
+}
+
 } // namespace
 
 class LayersPanelTest : public QObject {
@@ -56,6 +73,7 @@ private slots:
     void layerRowSurface();
     void gutterClickTogglesWithoutSelecting();
     void dragReorder();
+    void dropAnywhereOnLayerRowReorders();
     void dropOnDelete();
     void clippingMasks();
 
@@ -322,6 +340,48 @@ void LayersPanelTest::dragReorder()
     const bool dragged =
         panel_->moveForTest(QStringLiteral("1/0"), QStringLiteral("1/1"), 0);
     QVERIFY2(dragged && view_->history_count() == base + 1, "drag reorder is one undo step");
+    window_->closeDocument(doc, false);
+}
+
+// A real drag lets go somewhere inside a row, not on its 2 px edge. A plain
+// layer row is a sibling target across its whole height: the upper half drops
+// above it, the lower half below it.
+void LayersPanelTest::dropAnywhereOnLayerRowReorders()
+{
+    const bool created = window_->newDocument(QStringLiteral("DropRow"), 16, 16,
+                                              QStringLiteral("rgb"), 8, QStringLiteral("white"));
+    view_ = window_->activeView();
+    panel_ = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    QVERIFY2(created && view_ && panel_, "drop row fixture");
+    const int doc = window_->activeDocumentIndex();
+    const QString a = view_->add_layer_in(QString());
+    const QString b = view_->add_layer_in(QString());
+    view_->set_layer_name_path(a, QStringLiteral("A"));
+    view_->set_layer_name_path(b, QStringLiteral("B"));
+    panel_->setView(view_);
+    panel_->refresh();
+    window_->show();
+    QTest::qWait(50);
+    QTreeView* tree = panel_->findChild<QTreeView*>();
+    QVERIFY(tree != nullptr);
+
+    QRect row = panel_->rowViewportRectForTest(b);
+    QVERIFY2(row.height() > 8, "layer B row is laid out");
+    const int base = view_->history_count();
+    QVERIFY2(dropOnViewport(tree->viewport(), a,
+                            QPoint(row.center().x(), row.top() + row.height() / 4)),
+             "upper-half drop accepted");
+    QCOMPARE(view_->layer_row_name(rowOf(QStringLiteral("2"))), QStringLiteral("A"));
+    QCOMPARE(view_->history_count(), base + 1);
+
+    panel_->refresh();
+    QCoreApplication::processEvents();
+    row = panel_->rowViewportRectForTest(QStringLiteral("1"));
+    QVERIFY2(dropOnViewport(tree->viewport(), QStringLiteral("2"),
+                            QPoint(row.center().x(), row.bottom() - row.height() / 4)),
+             "lower-half drop accepted");
+    QCOMPARE(view_->layer_row_name(rowOf(QStringLiteral("1"))), QStringLiteral("A"));
+    QCOMPARE(view_->layer_row_name(rowOf(QStringLiteral("2"))), QStringLiteral("B"));
     window_->closeDocument(doc, false);
 }
 
