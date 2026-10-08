@@ -46,6 +46,9 @@ struct FilterCommandSpec {
     QString kind;
     QList<FilterParamSpec> params;
     bool previewPane = true; // Radial Blur uses a Blur Center instead
+    // One wide column under the preview instead of spilling into a second
+    // input column; checkboxes trail the column.
+    bool stacked = false;
 };
 
 // Every Filter-menu leaf that has an engine kernel, in menu order.

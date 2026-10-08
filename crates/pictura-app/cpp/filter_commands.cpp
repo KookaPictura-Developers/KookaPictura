@@ -110,6 +110,12 @@ FilterCommandSpec def(const QString& family, const QString& label, const QString
     return d;
 }
 
+FilterCommandSpec stacked(FilterCommandSpec d)
+{
+    d.stacked = true;
+    return d;
+}
+
 FilterCommandSpec defLeaf(const QString& label, const QString& kind, QList<FilterParamSpec> params)
 {
     FilterCommandSpec d;
@@ -429,7 +435,7 @@ const QList<FilterCommandSpec>& buildCommands()
              angle(QStringLiteral("Angle:"), 45.0)}),
 
         // Sharpen
-        def(QStringLiteral("Sharpen"), QStringLiteral("Smart Sharpen"),
+        stacked(def(QStringLiteral("Sharpen"), QStringLiteral("Smart Sharpen"),
             QStringLiteral("smart-sharpen"),
             {slider(QStringLiteral("Amount:"), 1, 500, 100, 0, QStringLiteral(" %")),
              slider(QStringLiteral("Radius:"), 0.1, 64.0, 1.0, 1, QStringLiteral(" px")),
@@ -445,7 +451,7 @@ const QList<FilterCommandSpec>& buildCommands()
              slider(QStringLiteral("Shadow Radius:"), 1, 100, 1),
              slider(QStringLiteral("Highlight Amount:"), 0, 100, 0, 0, QStringLiteral(" %")),
              slider(QStringLiteral("Highlight Width:"), 0, 100, 50, 0, QStringLiteral(" %")),
-             slider(QStringLiteral("Highlight Radius:"), 1, 100, 1)}),
+             slider(QStringLiteral("Highlight Radius:"), 1, 100, 1)})),
         def(QStringLiteral("Sharpen"), QStringLiteral("Unsharp Mask"),
             QStringLiteral("unsharp-mask"),
             {slider(QStringLiteral("Amount:"), 1, 500, 150, 0, QStringLiteral(" %")),
