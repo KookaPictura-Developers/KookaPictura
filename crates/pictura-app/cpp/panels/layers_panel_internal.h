@@ -58,6 +58,15 @@ inline const void* layerDragSource(const QMimeData* mime)
                 : nullptr;
 }
 
+// A layer drag's payload: the dragged panel `paths` tagged with their document.
+inline QMimeData* makeLayerDragMime(const void* source, const QStringList& paths)
+{
+    auto* mime = new QMimeData();
+    mime->setData(kLayerMimeType, paths.join(QLatin1Char('\n')).toUtf8());
+    mime->setData(kLayerSourceMimeType, QByteArray::number(reinterpret_cast<quintptr>(source)));
+    return mime;
+}
+
 // One bridge row, as read by refresh(). The model owns a tree of these.
 struct LayerRow {
     QString path;
@@ -540,12 +549,8 @@ protected:
         if (paths.isEmpty()) {
             return;
         }
-        auto* mime = new QMimeData();
-        mime->setData(kLayerMimeType, paths.join(QLatin1Char('\n')).toUtf8());
-        mime->setData(kLayerSourceMimeType,
-                      QByteArray::number(reinterpret_cast<quintptr>(dragSource_)));
         auto* drag = new QDrag(this);
-        drag->setMimeData(mime);
+        drag->setMimeData(makeLayerDragMime(dragSource_, paths));
         enterDragCursor();
         // Copy is offered for a drop on another document's tab or canvas.
         drag->exec(Qt::MoveAction | Qt::CopyAction, Qt::MoveAction);
