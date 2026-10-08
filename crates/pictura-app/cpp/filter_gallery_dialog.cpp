@@ -80,6 +80,20 @@ QList<FilterGalleryDialog::Effect>& lastStack()
 
 } // namespace
 
+QImage FilterGalleryDialog::thumbnailSample(const QImage& picture)
+{
+    if (picture.isNull()) {
+        return {};
+    }
+    const QImage scaled = picture
+                              .scaled(kThumbnailSize, Qt::KeepAspectRatioByExpanding,
+                                      Qt::SmoothTransformation)
+                              .convertToFormat(QImage::Format_RGBA8888);
+    return scaled.copy((scaled.width() - kThumbnailSize.width()) / 2,
+                       (scaled.height() - kThumbnailSize.height()) / 2, kThumbnailSize.width(),
+                       kThumbnailSize.height());
+}
+
 QList<FilterGalleryDialog::Category> FilterGalleryDialog::categories()
 {
     QList<Category> result;
@@ -103,7 +117,14 @@ FilterGalleryDialog::FilterGalleryDialog(PictureView* view, QWidget* parent)
 {
     setObjectName(QStringLiteral("filterGallery"));
     setWindowTitle(QStringLiteral("Filter Gallery"));
-    thumbnailSource_ = view_ ? view_->image() : QImage();
+    if (view_) {
+        // Sampled once; every filter's thumbnail renders from the same bytes.
+        thumbnailSample_ = thumbnailSample(view_->image());
+        for (int y = 0; y < thumbnailSample_.height(); ++y) {
+            thumbnailRgba_.append(reinterpret_cast<const char*>(thumbnailSample_.constScanLine(y)),
+                                  thumbnailSample_.width() * 4);
+        }
+    }
 
     previewTimer_ = new QTimer(this);
     previewTimer_->setSingleShot(true);
@@ -167,7 +188,18 @@ FilterGalleryDialog::FilterGalleryDialog(PictureView* view, QWidget* parent)
     list_->setDragDropMode(QAbstractItemView::InternalMove);
     list_->setMinimumHeight(140);
     list_->setIconSize(QSize(18, 18));
+    // Visibility is each row's check state, so Space toggles it and assistive
+    // technology reads it; the eye icon stands in for the hidden indicator.
+    list_->setStyleSheet(
+        QStringLiteral("QListWidget#galleryEffects::indicator { width: 0px; height: 0px; }"));
     list_->viewport()->installEventFilter(this);
+    connect(list_, &QListWidget::itemChanged, this, [this](QListWidgetItem* item) {
+        const int index = effects_.size() - 1 - list_->row(item);
+        const bool visible = item->checkState() == Qt::Checked;
+        if (index >= 0 && index < effects_.size() && effects_.at(index).visible != visible) {
+            setEffectVisible(index, visible);
+        }
+    });
     connect(list_, &QListWidget::currentRowChanged, this, [this](int row) {
         if (row >= 0) {
             selectEffect(effects_.size() - 1 - row);
@@ -359,7 +391,7 @@ void FilterGalleryDialog::setEffectVisible(int index, bool visible)
         return;
     }
     effects_[index].visible = visible;
-    rebuildList();
+    showVisibility(list_->item(effects_.size() - 1 - index), visible);
     schedulePreview();
 }
 
@@ -384,13 +416,21 @@ void FilterGalleryDialog::rebuildList()
     // Top row = last applied, as CS6 stacks effect layers.
     for (int i = effects_.size() - 1; i >= 0; --i) {
         const FilterCommandSpec* spec = specFor(effects_.at(i).kind);
-        auto* item = new QListWidgetItem(
-            icon(effects_.at(i).visible ? QStringLiteral("layers.eyeOn")
-                                        : QStringLiteral("layers.eyeOff")),
-            spec ? spec->label : effects_.at(i).kind, list_);
-        item->setFlags(item->flags() | Qt::ItemIsDragEnabled);
+        auto* item = new QListWidgetItem(spec ? spec->label : effects_.at(i).kind, list_);
+        item->setFlags(item->flags() | Qt::ItemIsDragEnabled | Qt::ItemIsUserCheckable);
+        showVisibility(item, effects_.at(i).visible);
     }
     list_->setCurrentRow(effects_.size() - 1 - selected_);
+}
+
+void FilterGalleryDialog::showVisibility(QListWidgetItem* item, bool visible)
+{
+    if (!item) {
+        return;
+    }
+    const QSignalBlocker block(list_);
+    item->setCheckState(visible ? Qt::Checked : Qt::Unchecked);
+    item->setIcon(icon(visible ? QStringLiteral("layers.eyeOn") : QStringLiteral("layers.eyeOff")));
 }
 
 void FilterGalleryDialog::selectEffect(int index)
@@ -523,30 +563,18 @@ bool FilterGalleryDialog::eventFilter(QObject* watched, QEvent* event)
 
 void FilterGalleryDialog::renderNextThumbnail()
 {
-    if (nextThumbnail_ >= thumbnails_.size() || thumbnailSource_.isNull()) {
+    if (nextThumbnail_ >= thumbnails_.size() || thumbnailSample_.isNull()) {
         return;
     }
-    // One small sample of the picture, rendered once through every filter.
-    const QImage sample = thumbnailSource_
-                              .scaled(kThumbnailSize, Qt::KeepAspectRatioByExpanding,
-                                      Qt::SmoothTransformation)
-                              .convertToFormat(QImage::Format_RGBA8888);
-    const QImage cropped =
-        sample.copy((sample.width() - kThumbnailSize.width()) / 2,
-                    (sample.height() - kThumbnailSize.height()) / 2, kThumbnailSize.width(),
-                    kThumbnailSize.height());
-    QByteArray rgba;
-    for (int y = 0; y < cropped.height(); ++y) {
-        rgba.append(reinterpret_cast<const char*>(cropped.constScanLine(y)), cropped.width() * 4);
-    }
     QToolButton* thumb = thumbnails_.at(nextThumbnail_++);
-    const QImage filtered = filter_thumbnail(rgba, cropped.width(), cropped.height(),
-                                             thumb->property("kind").toString(), QList<double>());
-    thumb->setIcon(QPixmap::fromImage(filtered.isNull() ? cropped : filtered));
+    const QImage filtered =
+        filter_thumbnail(thumbnailRgba_, thumbnailSample_.width(), thumbnailSample_.height(),
+                         thumb->property("kind").toString(), QList<double>());
+    thumb->setIcon(QPixmap::fromImage(filtered.isNull() ? thumbnailSample_ : filtered));
     QTimer::singleShot(0, this, &FilterGalleryDialog::renderNextThumbnail);
 }
 
-bool FilterGalleryDialog::commit()
+FilterGalleryDialog::CommitResult FilterGalleryDialog::commit()
 {
     previewTimer_->stop();
     QStringList kinds;
@@ -560,15 +588,14 @@ bool FilterGalleryDialog::commit()
     lastStack() = effects_;
     if (kinds.isEmpty()) {
         discardPreview();
-        return false;
+        return CommitResult::NothingVisible;
     }
-    const bool applied = view_ && apply_filter_stack(*view_, kinds, params);
-    if (applied) {
+    if (view_ && apply_filter_stack(*view_, kinds, params)) {
         previewShown_ = false;
-    } else {
-        discardPreview();
+        return CommitResult::Applied;
     }
-    return applied;
+    discardPreview();
+    return CommitResult::Refused;
 }
 
 void FilterGalleryDialog::discardPreview()

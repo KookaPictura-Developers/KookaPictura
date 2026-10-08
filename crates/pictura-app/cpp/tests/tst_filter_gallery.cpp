@@ -10,6 +10,7 @@
 #include "filter_gallery_dialog.h"
 #include "frame.h"
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/filter_tools.cxxqt.h"
 
 #include "qt_test_support.h"
 
@@ -44,6 +45,7 @@ private slots:
     void effectLayersAddDeleteAndHide();
     void thumbnailsRender();
     void clickingTheEyeHidesTheEffect();
+    void spaceTogglesTheEye();
 
 private:
     pictura::test::ScopedStateHome stateHome_;
@@ -121,7 +123,7 @@ void FilterGalleryTest::okCommitsOneHistoryState()
                                                    QStringLiteral("texturizer")}));
     dialog.show();
     QTRY_VERIFY_WITH_TIMEOUT(view->image() != before, 3000);
-    QVERIFY(dialog.commit());
+    QVERIFY(dialog.commit() == pictura::FilterGalleryDialog::CommitResult::Applied);
     QVERIFY(view->image() != before);
     QCOMPARE(view->history_count(), states + 1);
     // CS6 reopens the gallery on the stack it last applied.
@@ -149,19 +151,32 @@ void FilterGalleryTest::effectLayersAddDeleteAndHide()
     // The last effect cannot be deleted.
     dialog.deleteEffect();
     QCOMPARE(dialog.effects().size(), 1);
-    // With every effect hidden, OK changes nothing.
+    // With every effect hidden, OK changes nothing and is not a refusal.
+    const int states = view->history_count();
     dialog.setEffectVisible(0, false);
     QVERIFY(!dialog.effects().at(0).visible);
-    QVERIFY(!dialog.commit());
+    QVERIFY(dialog.commit() == pictura::FilterGalleryDialog::CommitResult::NothingVisible);
     QCOMPARE(view->image(), before);
+    QCOMPARE(view->history_count(), states);
 }
 
 void FilterGalleryTest::thumbnailsRender()
 {
-    pictura::FilterGalleryDialog dialog(window_->activeView());
-    auto* thumb = dialog.findChild<QToolButton*>(QStringLiteral("galleryThumb:cutout"));
-    QVERIFY(thumb != nullptr);
-    QTRY_VERIFY_WITH_TIMEOUT(!thumb->icon().isNull(), 3000);
+    pictura::PictureView* view = window_->activeView();
+    // A textured picture, so a filter has something to change.
+    QVERIFY(apply_filter_params(*view, QStringLiteral("clouds"), {}));
+    const QImage sample = pictura::FilterGalleryDialog::thumbnailSample(view->image());
+    pictura::FilterGalleryDialog dialog(view);
+    for (const QString& kind : {QStringLiteral("cutout"), QStringLiteral("glowing-edges")}) {
+        auto* thumb = dialog.findChild<QToolButton*>(QStringLiteral("galleryThumb:") + kind);
+        QVERIFY(thumb != nullptr);
+        QTRY_VERIFY_WITH_TIMEOUT(!thumb->icon().isNull(), 3000);
+        const QImage shown =
+            thumb->icon().pixmap(sample.size()).toImage().convertToFormat(QImage::Format_RGBA8888);
+        QCOMPARE(shown.size(), sample.size());
+        // The unfiltered crop is the fallback; the thumbnail must be filtered.
+        QVERIFY2(shown != sample, qPrintable(kind));
+    }
 }
 
 void FilterGalleryTest::clickingTheEyeHidesTheEffect()
@@ -189,6 +204,29 @@ void FilterGalleryTest::clickingTheEyeHidesTheEffect()
     QTRY_VERIFY_WITH_TIMEOUT(view->image() != before, 3000);
     dialog.reject();
     QCOMPARE(view->image(), before);
+}
+
+void FilterGalleryTest::spaceTogglesTheEye()
+{
+    pictura::FilterGalleryDialog dialog(window_->activeView());
+    while (dialog.effects().size() > 1) {
+        dialog.deleteEffect();
+    }
+    dialog.setEffectVisible(0, true);
+    dialog.show();
+    auto* list = dialog.findChild<QListWidget*>(QStringLiteral("galleryEffects"));
+    QVERIFY(list != nullptr);
+    // Visibility is the row's check state, readable by assistive technology.
+    QVERIFY(list->item(0)->flags() & Qt::ItemIsUserCheckable);
+    QCOMPARE(list->item(0)->checkState(), Qt::Checked);
+    list->setFocus();
+    list->setCurrentRow(0);
+    QTest::keyClick(list, Qt::Key_Space);
+    QVERIFY(!dialog.effects().at(0).visible);
+    QCOMPARE(list->item(0)->checkState(), Qt::Unchecked);
+    QTest::keyClick(list, Qt::Key_Space);
+    QVERIFY(dialog.effects().at(0).visible);
+    dialog.reject();
 }
 
 QTEST_MAIN(FilterGalleryTest)

@@ -99,10 +99,15 @@ void PicturaMainWindow::wireFilterMenu()
         if (runDialog(dialog, this) != QDialog::Accepted) {
             return;
         }
-        if (dialog.commit()) {
+        switch (dialog.commit()) {
+        case FilterGalleryDialog::CommitResult::Applied:
             refresh();
-        } else {
+            break;
+        case FilterGalleryDialog::CommitResult::Refused:
             reportFilterRefusal(view);
+            break;
+        case FilterGalleryDialog::CommitResult::NothingVisible:
+            break;
         }
     });
     registry_->setEnabledProvider(gallery, [this]() {

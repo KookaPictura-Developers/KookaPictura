@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QtCore/QByteArray>
 #include <QtCore/QList>
 #include <QtCore/QPair>
 #include <QtCore/QString>
@@ -11,6 +12,7 @@
 class QComboBox;
 class QLabel;
 class QListWidget;
+class QListWidgetItem;
 class QScrollArea;
 class QShowEvent;
 class QTimer;
@@ -42,11 +44,17 @@ public:
 
     using Category = QPair<QString, QList<const FilterCommandSpec*>>;
 
+    enum class CommitResult { Applied, NothingVisible, Refused };
+
     explicit FilterGalleryDialog(PictureView* view, QWidget* parent = nullptr);
 
     // The gallery's filters by category, in CS6 order. A gallery filter with no
     // engine kernel yet is left out.
     static QList<Category> categories();
+
+    // The picture as a thumbnail sees it: scaled to cover the thumbnail size
+    // and cropped to its centre, in RGBA8888.
+    static QImage thumbnailSample(const QImage& picture);
 
     // The stack, first-applied first.
     QList<Effect> effects() const { return effects_; }
@@ -67,9 +75,9 @@ public:
     // Show or hide the effect at `index` (the eye).
     void setEffectVisible(int index, bool visible);
 
-    // Commit the visible effects as one history state. False when refused or
-    // when every effect is hidden.
-    bool commit();
+    // Commit the visible effects as one history state. With every effect
+    // hidden nothing is committed, which is not a refusal.
+    CommitResult commit();
 
 protected:
     void showEvent(QShowEvent* event) override;
@@ -80,6 +88,7 @@ private:
     QWidget* buildPreview();
     void selectEffect(int index);
     void rebuildList();
+    void showVisibility(QListWidgetItem* item, bool visible);
     void effectMoved(int from, int to);
     void schedulePreview();
     void runPreview();
@@ -106,7 +115,8 @@ private:
     FilterParamControls* controls_ = nullptr;
     QListWidget* list_ = nullptr;
     QTimer* previewTimer_ = nullptr;
-    QImage thumbnailSource_;
+    QImage thumbnailSample_;
+    QByteArray thumbnailRgba_;
     int nextThumbnail_ = 0;
 };
 
