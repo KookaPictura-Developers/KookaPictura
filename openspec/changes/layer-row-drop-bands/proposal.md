@@ -18,7 +18,7 @@ only worked at a pixel-exact edge. The synthesized-drop checks always dropped
 
 ## Capabilities
 
-### New Capabilities
+### Modified Capabilities
 
 - `ui/layers-panel`: layer row drop bands.
 
