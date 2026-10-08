@@ -76,12 +76,14 @@ Adobe kernels are closed; the following are the standard families that reproduce
 - Implement via the separable Gaussian kernel; the "difference" can be applied in a single combined convolution (Dirac − Gaussian) for speed.
 - Reference: Wikipedia *Unsharp masking* (formula, amount/radius/threshold semantics, halo cause).
 
-### Smart Sharpen — deconvolution-flavored sharpening
-- The three **Remove** modes are sharpening algorithms that differ in the assumed blur model:
-  - **Gaussian Blur** = the USM (Gaussian high-pass) method — the baseline.
-  - **Lens Blur** = an edge/detail-aware deconvolution-like method giving finer detail and **reduced halos**; family: deconvolution with a lens/defocus PSF or a detail-preserving edge model.
-  - **Motion Blur** = directional deconvolution using a **linear motion PSF** at **Angle**; family: 1-D deconvolution along the motion direction.
-  - **More Accurate** trades time for a better blur estimate (iterative/multi-scale).
+### Smart Sharpen — deconvolution of a sharp-core + halo blur
+- The blur model is `H = 0.62·core + 0.38·halo`. `core` is a pixel-scale separable 3-tap `[0.17, 0.66, 0.17]`. `halo` follows **Remove** at `0.8·radius`:
+  - **Gaussian Blur:** a Gaussian of that σ.
+  - **Lens Blur:** a disc of that radius (a defocus PSF), so its inverse peaks near the disc's first Airy minimum instead of drawing an even-width outline.
+  - **Motion Blur:** a line of twice that length along **Angle** (a linear motion PSF).
+- `core⁻¹` is exact (a causal and an anticausal one-pole pass). The halo factor is solved by relaxed Van Cittert iteration from the original. The detail `deconvolved − original` is scaled by **Amount**, rolled off below a **Reduce Noise** floor, and damped by the tonal fades. Inverting `H` lifts the finest detail hard and the radius-scale structure moderately. The Help says Gaussian Blur is "the method used by Unsharp Mask", but CC's Smart Sharpen does not reduce to an unsharp mask.
+- **More Accurate** runs the halo solve to convergence (8 iterations instead of 3).
+- *(approximation)* The constants were fitted to two Photoshop screenshots of one JPEG (Gaussian r 30.3 / 378 %, Lens r 9.9 / 405 %). The measured response has a moderate plateau above `1/radius` and a rise toward Nyquist that amplifies the JPEG's 8×8 blocks. That is the signature of this inverse, not of an unsharp mask. It is behavioral parity from those screenshots only; Adobe's algorithm is closed. See OpenSpec `smart-sharpen-deconvolution`.
 - **Advanced Shadow/Highlight fade** is a **tonal-range gate**, closely related to layer "Blend If": for each pixel, Fade Amount scales the sharpening contribution when the pixel lies in the shadow (or highlight) tonal band; Tonal Width sets the band width; Radius sets the neighborhood used to decide the pixel's tonality. This is how the Help describes reducing halos in dark/light areas. 8-/16-bit only in CS6.
 - Reference: Wikipedia *Unsharp masking* §Comparison with deconvolution (USM is a linear convolution; deconvolution is a nonlinear inverse problem using a PSF model).
 
@@ -142,7 +144,7 @@ Widgets, matching the CS6 modal dialogs.
 2. Given a uniform image, USM with any Amount/Radius leaves it unchanged within 1 LSB (no-op on zero-contrast areas).
 3. Given a step edge, USM amount A and radius R produce an overshoot proportional to A and an edge-rim width proportional to R, within a stated tolerance of a reference blurred-difference implementation.
 4. Given adjacent pixels differing by less than Threshold, USM does not change them; differing by Threshold or more, it does. Threshold 0 sharpens every pixel (sourced behavior).
-5. Given Smart Sharpen `Remove = Gaussian Blur`, output matches USM at the same Amount/Radius/Threshold within tolerance; `Remove = Lens Blur` produces less halo at the same Amount/Radius; `Remove = Motion Blur` with Angle θ emphasizes edges perpendicular to the motion direction.
+5. Given Smart Sharpen at the same Amount/Radius as USM, the finest detail gains more than under USM (deconvolution, not a blur difference); `Remove = Lens Blur` produces a softer halo than the even-width outline of a disc unsharp mask; `Remove = Motion Blur` with Angle θ acts along the motion direction.
 6. Given Advanced mode with a Shadow Fade Amount > 0, dark-region halos are reduced relative to the same settings without fade; Tonal Width changes which tones are damped; these controls are disabled on 32-bit documents.
 7. Given a selection, only the selection is sharpened; given an edge mask, only masked areas are sharpened.
 8. Given sharpening on a separate Luminosity layer (or `Fade ... Luminosity`), hue shifts along edges are reduced versus Normal mode.
