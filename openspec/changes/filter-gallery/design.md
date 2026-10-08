@@ -22,7 +22,8 @@ preview, as for a single filter.
 
 CS6 ships fixed sample thumbnails; Kooka has no such assets. Each thumbnail is
 the filter at its defaults over an 80×56 sample of the picture, rendered one
-per event-loop turn so the dialog opens immediately. Scale-dependent filters
+per event-loop turn so the dialog opens immediately. The sample is scaled and
+packed once when the dialog opens, and every filter renders from it. Scale-dependent filters
 look coarser on the sample than on the picture (ponytail: no fixed sample
 image).
 
