@@ -1,9 +1,6 @@
-# panel-rail Specification
+# Spec Delta
 
-## Purpose
-The panel set and the right icon rail that shares panel toggles with the Window menu.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Panel set
 
@@ -35,20 +32,3 @@ rather than fabricated content.
 
 - **WHEN** the frame starts with a fresh session
 - **THEN** `Styles` is a default-visible tab of the `Adjustments` group, not the third tab of the Color/Swatches group
-
-### Requirement: Rail and Window menu share panel toggles
-
-The `Window > Panels > <name>` command SHALL toggle its panel's visibility and
-SHALL be the single command path for panel visibility. The panel's registry
-visibility SHALL reflect the command's state, and SHALL track visibility changes
-made from the column. The former rail buttons SHALL no longer exist.
-
-#### Scenario: Window menu entry toggles the panel
-
-- **WHEN** `Window > Panels > <name>` is invoked
-- **THEN** the panel's visibility toggles and the column reflects the new state
-
-#### Scenario: Grouped panels have menu toggles
-
-- **WHEN** `Window > Panels > Gradients` (or Patterns, Properties, Adjustments, Libraries, Channels, Paths, Actions) is invoked
-- **THEN** that panel is shown or hidden

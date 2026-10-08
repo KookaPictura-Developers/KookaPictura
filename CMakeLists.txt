@@ -81,6 +81,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/theme.cpp
     crates/pictura-app/cpp/fonts.cpp
     crates/pictura-app/cpp/session.cpp
+    crates/pictura-app/cpp/workspace_store.cpp
     crates/pictura-app/cpp/preferences_dialog.cpp
     crates/pictura-app/cpp/file_info_dialog.cpp
     crates/pictura-app/cpp/profile_dialog.cpp
@@ -146,6 +147,8 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/frame_recent.cpp
     crates/pictura-app/cpp/frame_test.cpp
     crates/pictura-app/cpp/frame_build.cpp
+    crates/pictura-app/cpp/frame_workspaces.cpp
+    crates/pictura-app/cpp/frame_workspace_controller.cpp
     crates/pictura-app/cpp/frame_canvas.cpp
     crates/pictura-app/cpp/frame_canvas.h
     crates/pictura-app/cpp/panels/layers_panel.cpp
@@ -256,6 +259,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/theme.h
     crates/pictura-app/cpp/fonts.h
     crates/pictura-app/cpp/session.h
+    crates/pictura-app/cpp/workspace_store.h
     crates/pictura-app/cpp/preferences_dialog.h
     crates/pictura-app/cpp/file_info_dialog.h
     crates/pictura-app/cpp/profile_dialog.h

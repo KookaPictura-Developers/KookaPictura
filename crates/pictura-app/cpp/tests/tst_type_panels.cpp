@@ -92,7 +92,8 @@ bool TypePanelsTest::openPanel(const char* command, const QString& panel)
         action->trigger();
     }
     QCoreApplication::processEvents();
-    return window_->panelColumn()->isPanelVisible(panel);
+    pictura::PanelColumn* owner = window_->columnForPanel(panel);
+    return owner != nullptr && owner->isPanelVisible(panel);
 }
 
 void TypePanelsTest::glyphsPanel()

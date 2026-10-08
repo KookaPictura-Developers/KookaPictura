@@ -356,7 +356,8 @@ void CommandTreeTest::toolboxInteractions()
 
 void CommandTreeTest::widgetmenuButton()
 {
-    pictura::PanelColumn* column = window_->panelColumn();
+    pictura::PanelColumn* column =
+        window_->columnForPanel(QStringLiteral("layersPanel"));
     QVERIFY(column != nullptr);
     column->setRailMode(false);
     column->ensureGroupVisibleForTest(QStringLiteral("layersPanel"));
@@ -397,16 +398,19 @@ void CommandTreeTest::widgetmenuButton()
                  && layerGroup->panelMenuToolTipForTest(QStringLiteral("Copy CSS"))
                         == QStringLiteral("Copy CSS — not implemented yet"),
              "disabled entries");
+    pictura::PanelColumn* historyColumn =
+        window_->columnForPanel(QStringLiteral("historyPanel"));
     QVERIFY2(column->widgetMenuHasCloseForTest(QStringLiteral("layersPanel"))
                  && column->widgetMenuHasCloseForTest(QStringLiteral("channelsPanel"))
                  && column->widgetMenuHasCloseForTest(QStringLiteral("colorPanel"))
-                 && column->widgetMenuHasCloseForTest(QStringLiteral("historyPanel")),
+                 && historyColumn->widgetMenuHasCloseForTest(QStringLiteral("historyPanel")),
              "close stays off the widget menu");
 }
 
 void CommandTreeTest::panelGroupChrome()
 {
-    pictura::PanelColumn* column = window_->panelColumn();
+    pictura::PanelColumn* column =
+        window_->columnForPanel(QStringLiteral("layersPanel"));
     QVERIFY(column != nullptr);
     column->setRailMode(false);
     column->showPanel(QStringLiteral("layersPanel"), true);
@@ -463,7 +467,9 @@ void CommandTreeTest::panelGroupChrome()
 
 void CommandTreeTest::selfAnchorDock()
 {
-    pictura::PanelColumn* primary = window_->panelColumn();
+    // The pre-Essentials single column: its only right-hand column is
+    // document-facing on the left, which this self-anchor drop check exercises.
+    pictura::PanelColumn* primary = window_->restoreLegacyDefaultForTest();
     QVERIFY(primary != nullptr);
     primary->setRailMode(false);
     primary->showPanel(QStringLiteral("layersPanel"), true);
@@ -615,9 +621,13 @@ void CommandTreeTest::menuMoves()
     QVERIFY2(!viewOptions, "View > Options is gone");
     QVERIFY2(!viewGpu, "View > Use GPU Compute is gone");
     QVERIFY2(!window3d, "Window > 3D is gone");
-    QVERIFY2(registry->action(pictura::commandIdForPath(
-                 {QStringLiteral("Window"), QStringLiteral("Workspace"), QStringLiteral("3D")})),
-             "Workspace > 3D stays");
+    // The unimplemented workspace placeholders are removed, not disabled.
+    for (const QString& gone : {QStringLiteral("3D"), QStringLiteral("Advanced 3D"),
+                                QStringLiteral("Motion"), QStringLiteral("New Features")}) {
+        QVERIFY2(!registry->action(pictura::commandIdForPath(
+                     {QStringLiteral("Window"), QStringLiteral("Workspace"), gone})),
+                 qPrintable(QStringLiteral("Workspace > ") + gone + QStringLiteral(" is gone")));
+    }
     QVERIFY2(registry->action(pictura::commandIdForPath(
                  {QStringLiteral("Window"), QStringLiteral("Panels"), QStringLiteral("3D")})),
              "Window > Panels > 3D stays");

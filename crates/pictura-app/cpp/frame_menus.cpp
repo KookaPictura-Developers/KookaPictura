@@ -51,6 +51,7 @@ void PicturaMainWindow::buildMenus()
             action->setIcon(icon(commandId));
         }
     }
+    wireWorkspaceCommands();
 }
 
 bool PicturaMainWindow::saveAsWithDialog()

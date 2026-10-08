@@ -35,6 +35,7 @@ set(PICTURA_QT_TESTS
     tst_image_adjustments
     tst_layers_smart_filters
     tst_edit_shortcuts
+    tst_workspaces
 )
 
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/qt-test-results)

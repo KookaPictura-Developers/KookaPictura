@@ -1016,12 +1016,12 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             QStringLiteral("window.panels.histogram"),
         };
         int panelsToggled = 0;
-        auto* layersColumn = frame.panelColumn();
         for (const QString& id : panelCommands) {
             QAction* action = frame.registry()->action(id);
             const QString objectName =
                 id.section(QLatin1Char('.'), -1) + QStringLiteral("Panel");
             QWidget* panel = frame.findChild<QWidget*>(objectName);
+            pictura::PanelColumn* layersColumn = frame.columnForPanel(objectName);
             if (!action || !panel || !layersColumn) {
                 continue;
             }
@@ -1686,27 +1686,27 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // panels, 63 the Window > Panels toggles (the icon rail was removed in
         // M41, so this now proves no PanelRail remains and the toggles work).
         auto* railColumn = frame.panelColumn();
-        auto groupOf = [railColumn](const char* name) {
-            return railColumn ? railColumn->groupOfForTest(QString::fromLatin1(name)) : QString();
+        auto groupOf = [&frame](const char* name) {
+            pictura::PanelColumn* column = frame.columnForPanel(QString::fromLatin1(name));
+            return column ? column->groupOfForTest(QString::fromLatin1(name)) : QString();
         };
         QWidget* railProperties = frame.findChild<QWidget*>(QStringLiteral("propertiesPanel"));
         int railGroups = 0;
         railGroups += (!groupOf("colorPanel").isEmpty()
                       && groupOf("colorPanel") == groupOf("swatchesPanel")) ? 1 : 0;
-        railGroups += (!groupOf("colorPanel").isEmpty()
-                      && groupOf("colorPanel") == groupOf("stylesPanel")) ? 1 : 0;
+        railGroups += (!groupOf("adjustmentsPanel").isEmpty()
+                      && groupOf("adjustmentsPanel") == groupOf("stylesPanel")) ? 1 : 0;
         railGroups += (!groupOf("layersPanel").isEmpty()
-                      && groupOf("layersPanel") == groupOf("channelsPanel")) ? 1 : 0;
-        railGroups += (groupOf("layersPanel") == groupOf("pathsPanel")) ? 1 : 0;
-        railGroups += (!groupOf("navigatorPanel").isEmpty()
-                      && groupOf("navigatorPanel") == groupOf("histogramPanel")) ? 1 : 0;
-        railGroups += (groupOf("navigatorPanel") == groupOf("infoPanel")) ? 1 : 0;
-        railGroups += (!groupOf("adjustmentsPanel").isEmpty()) ? 1 : 0;
+                      && groupOf("layersPanel") == groupOf("channelsPanel")
+                      && groupOf("layersPanel") == groupOf("pathsPanel")) ? 1 : 0;
         railGroups += (!groupOf("historyPanel").isEmpty()
-                      && groupOf("historyPanel") != groupOf("actionsPanel")) ? 1 : 0;
+                      && groupOf("historyPanel") != groupOf("propertiesPanel")) ? 1 : 0;
+        railGroups += (!groupOf("navigatorPanel").isEmpty()
+                      && groupOf("navigatorPanel") == groupOf("histogramPanel")
+                      && groupOf("navigatorPanel") == groupOf("infoPanel")) ? 1 : 0;
         ST_BEGIN("groups_grouped");
-        ST_PASS("groups grouped=%d/8", railGroups);
-        if (railGroups != 8) {
+        ST_PASS("groups grouped=%d/5", railGroups);
+        if (railGroups != 5) {
             ST_FAIL(61, "panel grouping wrong");
         }
 
@@ -2379,7 +2379,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             return !actual.isNull() && !expected.isNull()
                    && actual.pixmap(20, 20).toImage() == expected.pixmap(20, 20).toImage();
         };
-        auto* assetsColumn = frame.panelColumn();
+        const QList<pictura::PanelColumn*> railColumns = frame.panelColumns();
         const QStringList railTitles = {
             QStringLiteral("History"),
             QStringLiteral("Actions"),
@@ -2398,14 +2398,11 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         QString railMissing;
         for (int i = 0; i < railTitles.size(); ++i) {
             bool matched = false;
-            if (assetsColumn) {
-                for (pictura::PanelGroup* group : assetsColumn->groups()) {
-                    if (group
-                        && sameIcon(group->titleIconForTest(railTitles.at(i)),
-                                    pictura::icon(railIds.at(i)))) {
-                        matched = true;
-                        break;
-                    }
+            for (pictura::PanelColumn* column : railColumns) {
+                for (pictura::PanelGroup* group : column->groups()) {
+                    matched = matched || (group && sameIcon(
+                        group->titleIconForTest(railTitles.at(i)),
+                        pictura::icon(railIds.at(i))));
                 }
             }
             if (matched) {
@@ -2414,7 +2411,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
                 railMissing = railIds.at(i);
             }
         }
-        const bool railOk = assetsColumn && railIcons == railTitles.size();
+        const bool railOk = !railColumns.isEmpty() && railIcons == railTitles.size();
 
         const QStringList stripIds = {
             QStringLiteral("link"),           QStringLiteral("fx"),
@@ -3040,7 +3037,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // widget panel dragged over it resolves no in-column target and never
         // joins it. The tools column is a normal splitter pane (never a dock).
         pictura::PanelColumn* toolsAtomicColumn = frame.toolsColumn();
-        pictura::PanelColumn* toolsAtomicPrimary = frame.panelColumn();
+        pictura::PanelColumn* toolsAtomicPrimary = frame.columnForPanel(QStringLiteral("layersPanel"));
         bool toolsAtomicNoTab = false;
         bool toolsAtomicReject = false;
         if (toolsAtomicColumn && toolsAtomicPrimary) {
@@ -3091,7 +3088,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         // with its Qt::Popup flyout, the seven-item tab menu, minimize vs
         // collapse-to-icons, and the content-fit Tools panel. Exit codes
         // 120–124 and 130.
-        auto* panelColumnColumn = frame.panelColumn();
+        auto* panelColumnColumn = frame.restoreLegacyDefaultForTest();
 
         // m41_tabs (120): every group's tabs are North, a single-panel group
         // still has its one tab, and no group-title label widget exists.

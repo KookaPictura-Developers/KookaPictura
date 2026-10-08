@@ -158,6 +158,9 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
     }
     applyBrightness(state.brightnessLevel);
     applyPanelSession(state);
+    applyFreshSessionDefault(state);
+    const bool sessionHadLayout = !state.panelColumns.isEmpty() || !state.panelGroups.isEmpty();
+    initWorkspaces(sessionHadLayout);
     // Persist every column change through the same path as the Window toggles,
     // and route the tab menu's `Interface Options…` to the Interface pane.
     wirePanelColumn(panelColumn_);
@@ -1171,30 +1174,6 @@ void PicturaMainWindow::applyBrightness(int level)
     brightnessLevel_ = Theme::clampLevel(level);
     Theme::apply(brightnessLevel_);
     applyWorkspaceCanvasColor();
-}
-
-bool PicturaMainWindow::reorderDocumentsForTest()
-{
-    if (!tabs_ || !tabs_->tabBar()) {
-        return false;
-    }
-    newDocument(QStringLiteral("ReorderA"), 4, 3, QStringLiteral("rgb"), 8,
-                QStringLiteral("white"));
-    newDocument(QStringLiteral("ReorderB"), 4, 3, QStringLiteral("rgb"), 8,
-                QStringLiteral("white"));
-    const int from = docs_.size() - 2;
-    const int to = docs_.size() - 1;
-    if (from < 0) {
-        return false;
-    }
-    PictureView* a = viewAt(from);
-    PictureView* b = viewAt(to);
-    const QString nameA = documentName(from);
-    const bool activeBefore = viewAt(activeDocumentIndex()) == b;
-    tabs_->tabBar()->moveTab(from, to);
-    QCoreApplication::processEvents();
-    return activeBefore && a && b && viewAt(from) == b && viewAt(to) == a
-           && documentName(to) == nameA && viewAt(activeDocumentIndex()) == b;
 }
 
 } // namespace pictura

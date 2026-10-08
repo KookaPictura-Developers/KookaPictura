@@ -12,6 +12,7 @@
 #include <QtGui/QAction>
 #include <QtGui/QColor>
 #include <QtGui/QPixmap>
+#include <QtGui/QResizeEvent>
 #include <QtWidgets/QButtonGroup>
 #include <QtWidgets/QCheckBox>
 #include <QtWidgets/QComboBox>
@@ -71,8 +72,55 @@ OptionsBar::OptionsBar(ToolController* controller, QWidget* parent)
     }
     addWidget(stack_);
 
+    // The workspace switcher is a directly-positioned child pinned to the right
+    // edge (resizeEvent), not a toolbar item, so a wide tool page can never push
+    // it into the overflow `»`. The stack reserves right-side content margin so
+    // no tool page renders underneath it.
+    workspaceSwitcher_ = new QToolButton(this);
+    workspaceSwitcher_->setObjectName(QStringLiteral("workspaceSwitcher"));
+    workspaceSwitcher_->setPopupMode(QToolButton::MenuButtonPopup);
+    workspaceSwitcher_->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    workspaceSwitcher_->setAutoRaise(true);
+    workspaceSwitcher_->setFocusPolicy(Qt::NoFocus);
+    connect(workspaceSwitcher_, &QToolButton::clicked, workspaceSwitcher_,
+            [this]() { workspaceSwitcher_->showMenu(); });
+
     if (controller_) {
         showTool(controller_->activeTool());
+    }
+}
+
+void OptionsBar::resizeEvent(QResizeEvent* event)
+{
+    QToolBar::resizeEvent(event);
+    if (!workspaceSwitcher_) {
+        return;
+    }
+    constexpr int kMargin = 4;
+    const QSize hint = workspaceSwitcher_->sizeHint();
+    const int switcherWidth = qMin(hint.width(), qMax(0, width() - 2 * kMargin));
+    workspaceSwitcher_->setGeometry(width() - switcherWidth - kMargin,
+                                    (height() - hint.height()) / 2, switcherWidth,
+                                    hint.height());
+    if (stack_) {
+        const int reserve = qMax(0, width() - switcherWidth - 2 * kMargin);
+        if (stack_->maximumWidth() != reserve) {
+            stack_->setMaximumWidth(reserve);
+        }
+    }
+}
+
+void OptionsBar::setWorkspaceMenu(QMenu* menu)
+{
+    if (workspaceSwitcher_) {
+        workspaceSwitcher_->setMenu(menu);
+    }
+}
+
+void OptionsBar::setActiveWorkspace(const QString& name)
+{
+    if (workspaceSwitcher_) {
+        workspaceSwitcher_->setText(name);
     }
 }
 

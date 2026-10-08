@@ -211,7 +211,7 @@ void CharacterParagraphPanelsTest::menusTogglePanels()
     QVERIFY2(f.ok(), "type fixture");
     showFrame();
 
-    auto* column = frame.panelColumn();
+    auto* column = frame.columnForPanel(QStringLiteral("characterPanel"));
     QVERIFY(column);
     column->showPanel(QStringLiteral("characterPanel"), false);
     column->showPanel(QStringLiteral("paragraphPanel"), false);
@@ -262,7 +262,7 @@ void CharacterParagraphPanelsTest::optionsBarTogglesBoth()
     QVERIFY2(f.ok(), "type fixture");
     showFrame();
 
-    auto* column = frame.panelColumn();
+    auto* column = frame.columnForPanel(QStringLiteral("characterPanel"));
     QVERIFY(column);
     column->showPanel(QStringLiteral("characterPanel"), false);
     column->showPanel(QStringLiteral("paragraphPanel"), false);
