@@ -72,6 +72,18 @@ A full-size blend change in the GUI is now ~2 s steady with the GPU on: the
 composite ~1.05 s, then the whole-region copies — composite patch 0.08 s, display
 image 0.2 s, level 0 0.17 s, pyramid 0.19 s, canvas blit 0.21 s.
 
+### Follow-ups (fourth pass)
+
+- **No canvas image.** A document canvas holds its size, not a 1 GB image;
+  region blits only invalidate the crops (0.2 s → 0.02 ms on a full-size
+  region) and memory after opening the map fell from 6.3 GB to 5.2 GB. The
+  self-test's level-0 identity check draws the fallback from a visible-area
+  crop of level 0.
+- **GPU residency.** Layer sources and coverages are kept between composites,
+  keyed by plane stamps (`gpu/resident.rs`, 2 GB budget). A full-size blend
+  change's GPU composite: ~1.05 s → ~0.53 s; end to end ~1.6–2.0 s → ~1.2–1.3 s
+  with the GPU on.
+
 ## Why it was slow
 
 Every cost was a whole-plane copy or scan at a stroke boundary. Layer planes are
@@ -118,16 +130,10 @@ and rebuilt the whole canvas.
   the map, memory-bandwidth bound). Tile generation counters on the planes —
   photocraft's tiled copy-on-write storage — remove it and the hollow-anchor
   bookkeeping.
-- ponytail: the canvas still holds a full-resolution premultiplied image (1 GB
-  on the map) used by the navigator, the single-channel view and the blit path;
-  removing it means presenting those from pyramid crops and retiring the
-  self-test checks that compare the canvas image after blits.
 - Opening the map still takes ~25 s, most of it outside these paths (decode and
   import); not profiled here.
 - The owner kept the GPU path; it now beats the banded CPU compositor at every
-  size measured. Keeping layer sources resident on the GPU between composites
-  (photocraft's residency cache) would remove the re-upload of a layer whose
-  pixels did not change — a blend or opacity change uploads it again today.
+  size measured, and unchanged layers stay resident between composites.
 - A full-size layer's property change still copies the region through the
   composite, level 0, the display image and the canvas (~0.9 s on the map).
 - The Move tool still warms a whole-document preview for a movable layer on

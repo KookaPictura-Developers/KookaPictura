@@ -22,11 +22,15 @@
 - [x] 4.3 The Move tool warms only a movable layer.
 - [x] 4.4 Layer lock / colour label record without compositing; blend, opacity and fill repaint the layers' bounds; a type layer is bounded by its rect.
 - [x] 4.5 Banded CPU compositing; parallel canvas conversion; zero-page `Plane::build`; row-parallel pyramid shrink.
-- [ ] 4.6 Follow-up: present without a full-resolution canvas image.
+- [x] 4.6 Present without a full-resolution canvas image (`setDocument` / `replaceDocument`; `image()` built from level 0 on request).
 - [x] 4.7 Keep the GPU path (owner's decision): staging writes in parallel, zero-page readback, reused readback buffer; row-parallel region patches.
-- [ ] 4.8 Follow-up: GPU residency for unchanged layer sources.
+- [x] 4.8 GPU residency for unchanged layer sources and coverages, keyed by plane stamps.
 
 ## 5. Verification
 
 - [x] 5.1 Re-measure on the world map (profile + GUI); numbers in `design.md`.
 - [x] 5.2 Qt Test `tst_large_document`; `bash scripts/verify-fast.sh`; `openspec validate --all --strict`.
+
+## 6. Docs
+
+- [x] 6.1 `docs/dev/STATE.md`: record the large-image work.

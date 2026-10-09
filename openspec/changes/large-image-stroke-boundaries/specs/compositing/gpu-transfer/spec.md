@@ -22,3 +22,18 @@ composite SHALL keep matching the CPU oracle within ±1 LSB.
 - **WHEN** the `gpu_parity` suite runs with `PICTURA_GPU_BENCH=1` (4000²
   three-layer and over-the-1-D-limit documents)
 - **THEN** every composite matches the CPU within ±1 LSB
+
+### Requirement: Unchanged layer uploads stay resident
+
+The GPU compositor SHALL keep a layer's source and coverage uploads between
+composites, keyed by the stamps of the planes they were built from and by the
+geometry, under a byte budget with least-recently-used eviction. An upload whose
+planes carry no stamp SHALL NOT be kept or reused, so a written plane is always
+uploaded again.
+
+#### Scenario: Reused, never stale [gt_resident]
+
+- **WHEN** a stamped document is composited twice on the GPU, then a layer's
+  blend mode changes, then a plane is written without and with a fresh stamp
+- **THEN** the second composite reuses the uploads and every composite matches
+  the CPU within ±1 LSB

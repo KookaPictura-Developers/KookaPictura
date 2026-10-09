@@ -41,7 +41,9 @@ boundaries are still too slow afterwards.
   them. A stroke's start no longer depends on the document size.
 - The bridge records history from the live document by reference, and undo /
   redo / jump refresh only the restored region.
-- The canvas keeps its image when no frame was rebuilt (a `frame_revision`
+- A document canvas holds no full-resolution image: it knows the document by
+  its size and presents from pyramid crops; the canvas keeps its crops when no
+  frame was rebuilt (a `frame_revision`
   that only a whole-frame rebuild bumps), builds it once on open and on every
   core, and the Move tool no longer warms a preview for a Background it may not
   move. Dropping the canvas's full-resolution image altogether is the
@@ -54,7 +56,8 @@ boundaries are still too slow afterwards.
   and the view pyramid's shrink kernels run row-parallel.
 - GPU composites write layer sources and masks straight into staging memory in
   parallel, read back into one zeroed allocation, and reuse the readback
-  buffer; whole-region patches of the composite and level 0 run row-parallel.
+  buffer; unchanged layer uploads stay resident, keyed by plane stamps;
+  whole-region patches of the composite and level 0 run row-parallel.
 - The brush family's stroke start opens a paint-timing session, and an ignored
   profile (`large_document_stroke_profile`) measures every boundary at the
   world map's size.
