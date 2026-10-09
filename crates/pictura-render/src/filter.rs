@@ -67,24 +67,74 @@ enum Op<'a> {
     Adjustment(&'a Adjustment),
 }
 
-/// Whether rerunning `filter` over a grey copy of the alpha plane is a no-op.
+/// Whether `filter` leaves an unlocked layer's transparency exactly as found.
 ///
-/// The unlocked-layer alpha pass assumes a kernel that maps a flat 255 plane
-/// back to 255: blur, noise, and spatial kernels do. A kernel that depends on
-/// absolute channel values (HDR Toning), takes gradients (Glowing Edges), sums
-/// onto a darkening base (Lighting), or hashes pixel position (Diffuse) would
-/// instead corrupt a fully opaque layer's transparency, so their alpha plane is
-/// left exactly as found.
-/// ponytail: a real fix folds alpha into the working buffer so every kernel
-/// receives the fourth plane; until then, skip the pass for these kinds.
+/// The unlocked-layer alpha pass reruns the kernel over a grey copy of the
+/// alpha plane. That is right only for a kernel that moves, spreads, or ranks
+/// samples the same way whatever their value (blurs, distortions, rank
+/// filters, cell averages): a flat 255 plane comes back 255 and the layer edge
+/// moves with the colour. Every other kernel reads absolute values, replaces
+/// the planes, or adds onto them (Solarize, Clouds, Lens Flare, Find Edges,
+/// Add Noise, the artistic families), so rerunning it would rewrite opacity;
+/// those leave alpha bit-identical.
+/// ponytail: an allowlist on the call side. The real fix folds alpha into the
+/// working buffer so each kernel receives the fourth plane and decides itself.
 pub fn filter_preserves_opacity(filter: &Filter) -> bool {
-    matches!(
+    !matches!(
         filter,
-        Filter::HdrToning(_)
-            | Filter::GlowingEdges { .. }
-            | Filter::Lighting { .. }
-            | Filter::Diffuse { .. }
+        Filter::GaussianBlur { .. }
+            | Filter::BoxBlur { .. }
+            | Filter::MotionBlur { .. }
+            | Filter::RadialBlur { .. }
+            | Filter::Average
+            | Filter::Blur
+            | Filter::BlurMore
+            | Filter::SurfaceBlur { .. }
+            | Filter::Sharpen
+            | Filter::SharpenMore
+            | Filter::SharpenEdges
+            | Filter::UnsharpMask { .. }
+            | Filter::SmartSharpen { .. }
+            | Filter::Median { .. }
+            | Filter::Despeckle
+            | Filter::Maximum { .. }
+            | Filter::Minimum { .. }
+            | Filter::DustAndScratches { .. }
+            | Filter::Offset { .. }
+            | Filter::Mosaic { .. }
+            | Filter::Crystallize { .. }
+            | Filter::Fragment
+            | Filter::Twirl { .. }
+            | Filter::Pinch { .. }
+            | Filter::Spherize { .. }
+            | Filter::Ripple { .. }
+            | Filter::Wave { .. }
+            | Filter::PolarCoordinates { .. }
+            | Filter::Shear { .. }
+            | Filter::ZigZag { .. }
+            | Filter::OceanRipple { .. }
     )
+}
+
+/// The kernel the alpha pass runs for `filter`. Offset's exposed area takes
+/// the Background colour, which CS6's "Set to Background" paints opaque, so
+/// the alpha pass fills it with 255 rather than the colour's grey.
+/// ponytail: CS6's "Set to Transparent" has no slot in `Filter::Offset` yet.
+fn alpha_kernel(filter: &Filter) -> std::borrow::Cow<'_, Filter> {
+    match *filter {
+        Filter::Offset {
+            horizontal,
+            vertical,
+            wrap,
+            ..
+        } => std::borrow::Cow::Owned(Filter::Offset {
+            horizontal,
+            vertical,
+            wrap,
+            background: [255; 3],
+        }),
+        _ => std::borrow::Cow::Borrowed(filter),
+    }
 }
 
 fn apply_op_region(
@@ -169,9 +219,9 @@ fn apply_op_region(
 
     // A transparency lock preserves the alpha plane exactly and leaves fully
     // transparent pixels untouched; only opaque pixels take the filter colour.
-    // An unlocked layer takes the filter on its transparency too (CS6): run the
-    // same kernel over a grey copy of the alpha plane so per-plane kernels
-    // smear or alter the layer edge exactly as they do colour.
+    // An unlocked layer takes a moving kernel on its transparency too (CS6):
+    // run it over a grey copy of the alpha plane so the layer edge smears or
+    // moves exactly as the colour does (see `filter_preserves_opacity`).
     // ponytail: the alpha pass reruns the kernel on the CPU; fold it into the
     // working buffer once the kernels accept a fourth plane.
     let alpha_locked = layer_transparency_locked(layer);
@@ -192,7 +242,7 @@ fn apply_op_region(
                     for c in 0..3usize {
                         gray.data[c * n..c * n + n].copy_from_slice(alpha);
                     }
-                    pictura_filters::apply(filter, &mut gray)?;
+                    pictura_filters::apply(&alpha_kernel(filter), &mut gray)?;
                     Ok(gray.data[0..n].to_vec())
                 })
                 .transpose()?
@@ -638,9 +688,11 @@ mod tests {
         );
     }
 
-    #[test]
-    fn opacity_preserving_filters_leave_alpha_bit_identical() {
-        let filters = [
+    /// Kinds whose kernel reads absolute values, replaces the planes, or adds
+    /// onto them, so a rerun over alpha would rewrite opacity (#248).
+    fn value_kernels() -> Vec<Filter> {
+        use pictura_filters::{ContourEdge, LensType, NoiseDistribution, TileFill};
+        vec![
             Filter::GlowingEdges {
                 width: 2,
                 brightness: 6,
@@ -650,16 +702,142 @@ mod tests {
                 lighting: pictura_filters::Lighting::default(),
             },
             Filter::HdrToning(pictura_filters::HdrToningParams::default()),
+            Filter::Solarize,
+            Filter::Clouds {
+                color_a: [0; 3],
+                color_b: [255; 3],
+                starker: false,
+                seed: 7,
+            },
+            Filter::DifferenceClouds {
+                color_a: [0; 3],
+                color_b: [255; 3],
+                starker: false,
+                seed: 7,
+            },
+            Filter::Fibers {
+                variance: 16.0,
+                strength: 4.0,
+                color_a: [0; 3],
+                color_b: [255; 3],
+                seed: 7,
+            },
+            Filter::LensFlare {
+                brightness: 300.0,
+                center: (0.75, 0.5),
+                lens: LensType::Zoom,
+            },
+            Filter::TraceContour {
+                level: 128,
+                edge: ContourEdge::Upper,
+            },
+            Filter::Tiles {
+                count: 4,
+                offset: 30,
+                fill: TileFill::BackgroundColor,
+                foreground: [255; 3],
+                background: [0; 3],
+            },
+            Filter::FindEdges,
+            Filter::Emboss {
+                angle: 135.0,
+                height: 3.0,
+                amount: 100.0,
+            },
+            Filter::HighPass { radius: 4.0 },
+            Filter::AddNoise {
+                amount: 25.0,
+                distribution: NoiseDistribution::Uniform,
+                monochromatic: false,
+                seed: 7,
+            },
+        ]
+    }
+
+    /// The right half of `layer` fully transparent, the left half opaque.
+    fn half_clear(mut layer: Layer) -> Layer {
+        let w = layer.rect.width() as usize;
+        for c in &mut layer.channels {
+            if c.id == -1 {
+                for i in 0..c.data.len() {
+                    if i % w >= w / 2 {
+                        c.data[i] = 0;
+                    }
+                }
+            }
+        }
+        layer
+    }
+
+    #[test]
+    fn value_kernels_leave_alpha_bit_identical() {
+        for filter in value_kernels() {
+            for mut layer in [step_layer(16, 16, 255), half_clear(step_layer(16, 16, 255))] {
+                let alpha_before = chan(&layer, -1).to_vec();
+                apply_filter(&mut layer, &filter, None, false).unwrap();
+                assert_eq!(
+                    chan(&layer, -1),
+                    alpha_before.as_slice(),
+                    "{filter:?} must leave alpha bit-identical"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn moving_kernels_keep_an_opaque_layer_opaque() {
+        use pictura_filters::{PolarKind, RippleSize, ShearFill};
+        let filters = [
+            Filter::GaussianBlur { radius: 2.0 },
+            Filter::UnsharpMask {
+                amount: 150.0,
+                radius: 2.0,
+                threshold: 0,
+            },
+            Filter::Median { radius: 2 },
+            Filter::Mosaic { cell_size: 5 },
+            Filter::Twirl { angle: 90.0 },
+            Filter::Ripple {
+                amount: 200.0,
+                size: RippleSize::Medium,
+            },
+            Filter::PolarCoordinates {
+                kind: PolarKind::RectangularToPolar,
+            },
+            Filter::Shear {
+                curve: vec![(0.0, 0.0), (0.5, 0.4), (1.0, 0.0)],
+                fill: ShearFill::RepeatEdgePixels,
+            },
+            Filter::Offset {
+                horizontal: 2000,
+                vertical: 2000,
+                wrap: false,
+                background: [0; 3],
+            },
         ];
         for filter in filters {
             let mut layer = step_layer(16, 16, 255);
-            let alpha_before = chan(&layer, -1).to_vec();
             apply_filter(&mut layer, &filter, None, false).unwrap();
-            assert_eq!(
-                chan(&layer, -1),
-                alpha_before.as_slice(),
-                "{filter:?} must leave alpha bit-identical"
+            assert!(
+                chan(&layer, -1).iter().all(|&a| a == 255),
+                "{filter:?} made an opaque layer transparent"
             );
+        }
+    }
+
+    #[test]
+    fn offset_moves_the_layer_edge_and_fills_what_it_exposes_opaque() {
+        let mut layer = half_clear(step_layer(16, 16, 255));
+        let filter = Filter::Offset {
+            horizontal: 4,
+            vertical: 0,
+            wrap: false,
+            background: [0; 3],
+        };
+        apply_filter(&mut layer, &filter, None, false).unwrap();
+        let alpha = chan(&layer, -1);
+        for (x, expected) in [(0, 255), (3, 255), (4, 255), (11, 255), (12, 0), (15, 0)] {
+            assert_eq!(alpha[x], expected, "alpha at x = {x}");
         }
     }
 
