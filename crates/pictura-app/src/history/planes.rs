@@ -63,7 +63,8 @@ pub(super) fn plane_kinds(doc: &Document) -> Vec<PlaneKind> {
 }
 
 /// The changed tiles from `prev` to `next`, or `None` when the tracked-plane
-/// geometry (count, stride, or height) differs and a full state is needed.
+/// geometry (count, stride, or height) differs or a plane moved to another
+/// index (a layer reorder), and a full state is needed.
 ///
 /// A pair with the same nonzero stamp, or one allocation, is equal and skipped
 /// without a look at its bytes; every other pair is compared tile by tile on
@@ -77,6 +78,9 @@ pub(super) fn diff(prev: &Document, next: &Document) -> Option<Vec<PlaneDelta>> 
             .zip(&next_planes)
             .any(|(a, b)| a.0.len() != b.0.len() || a.1 != b.1 || a.2 != b.2)
     {
+        return None;
+    }
+    if planes_moved(&prev_planes, &next_planes) {
         return None;
     }
     let mut out = Vec::new();
@@ -96,6 +100,21 @@ pub(super) fn diff(prev: &Document, next: &Document) -> Option<Vec<PlaneDelta>> 
         }
     }
     Some(out)
+}
+
+/// Whether a stamped plane of `next` sits at a different index than the
+/// `prev` plane carrying its stamp. Stamps travel with a plane and are unique
+/// per plane, so this catches a reorder that keeps every count and size.
+fn planes_moved(prev: &[(Plane<u8>, usize, usize)], next: &[(Plane<u8>, usize, usize)]) -> bool {
+    let index: std::collections::HashMap<u64, usize> = prev
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| p.0.stamp() != 0)
+        .map(|(i, p)| (p.0.stamp(), i))
+        .collect();
+    next.iter()
+        .enumerate()
+        .any(|(i, p)| index.get(&p.0.stamp()).is_some_and(|&j| j != i))
 }
 
 fn known_equal(a: &Plane<u8>, b: &Plane<u8>) -> bool {
@@ -232,6 +251,14 @@ pub(super) fn private_copy(source: &mut Document) -> Document {
         p.set_stamp(stamps[index]);
         index += 1;
     });
+    copy
+}
+
+/// A copy of `doc` sharing no tracked plane with it, so neither side's next
+/// write copies a whole plane.
+pub(crate) fn detached_copy(doc: &Document) -> Document {
+    let mut copy = doc.clone();
+    each_plane_mut(&mut copy, &mut |p, _, _| *p = copy_plane(p));
     copy
 }
 

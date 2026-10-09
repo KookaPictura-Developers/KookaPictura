@@ -4,7 +4,7 @@ mod purge;
 use super::helpers::clamp_region;
 use super::helpers_composite::{crop_planar, into_rgba_frame, premultiplied_display_image};
 use super::{qobject, PictureViewRust};
-use crate::history::{History, Restored, Snapshot};
+use crate::history::{detached_copy, History, Restored, Snapshot};
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QImage, QString};
@@ -154,8 +154,14 @@ impl qobject::PictureView {
     }
 
     pub fn history_add_snapshot(mut self: Pin<&mut Self>, label: &QString) -> bool {
+        // The named state gets planes of its own: one shared with the live
+        // document would make the next dab copy a whole plane.
         let Some(snapshot) = self.snapshot() else {
             return false;
+        };
+        let snapshot = Snapshot {
+            doc: detached_copy(&snapshot.doc),
+            ..snapshot
         };
         self.as_mut()
             .rust_mut()
@@ -184,7 +190,7 @@ impl qobject::PictureView {
             return false;
         };
         let mut rust = self.as_mut().rust_mut();
-        rust.doc = Some(snapshot.doc);
+        rust.doc = Some(detached_copy(&snapshot.doc));
         rust.selection = snapshot.selection;
         rust.content_revision = rust.content_revision.wrapping_add(1);
         rust.stroke = None;

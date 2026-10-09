@@ -4,11 +4,11 @@ use pictura_select::Selection;
 mod planes;
 mod styles;
 
-pub(crate) use planes::copy_plane;
 use planes::{
     adopt_metadata, apply_tiles, diff, hollow, plane_kinds, planes_agree, private_copy,
     stamp_agreed, tile_rect, Dir, PlaneDelta, PlaneKind,
 };
+pub(crate) use planes::{copy_plane, detached_copy};
 pub use styles::{
     create_character_style, create_paragraph_style, delete_character_style, delete_paragraph_style,
     edit_character_style, edit_paragraph_style,

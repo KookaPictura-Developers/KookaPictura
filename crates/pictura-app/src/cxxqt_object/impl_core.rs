@@ -876,6 +876,7 @@ impl super::PictureViewRust {
         self.selection = None;
         self.history = History::default();
         self.stroke = None;
+        self.stroke_base = None;
         self.stroke_label.clear();
         self.active_layer = None;
         self.move_base = None;

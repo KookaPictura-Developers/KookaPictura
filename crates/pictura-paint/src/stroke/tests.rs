@@ -866,3 +866,18 @@ fn a_stroke_refuses_a_layer_restructured_under_it() {
     stroke.cancel(&mut doc);
     assert!(doc == before, "a refused stroke touched the document");
 }
+
+#[test]
+fn a_stroke_refuses_a_target_moved_under_it() {
+    let mut doc = textured_doc();
+    let mut stroke = Stroke::begin_at(&doc, "0", StrokeConfig::default()).expect("begin");
+    let r = &mut doc.layers[0].rect;
+    (r.left, r.right) = (r.left + 5, r.right + 5);
+    let before = doc.clone();
+    assert!(
+        !stroke.sample(&mut doc, sample(40.0, 40.0)),
+        "painted a moved layer"
+    );
+    stroke.cancel(&mut doc);
+    assert!(doc == before, "a refused stroke touched the document");
+}

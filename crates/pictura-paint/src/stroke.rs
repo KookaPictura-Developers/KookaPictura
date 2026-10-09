@@ -81,6 +81,8 @@ struct Saved {
     planes: [Option<Vec<u8>>; 4],
     tiles: Vec<bool>,
     columns: i32,
+    /// The target layer's bounds when the stroke began.
+    rect: PsdRect,
     width: i32,
     height: i32,
 }
@@ -99,6 +101,7 @@ impl Saved {
             planes,
             tiles: vec![false; (columns * rows) as usize],
             columns,
+            rect: layer.rect,
             width,
             height,
         }
@@ -141,12 +144,11 @@ impl Saved {
         }
     }
 
-    /// Whether `layer` still has the planes this stroke began on. A document
-    /// restructured under a live stroke is refused rather than indexed out of
-    /// bounds.
+    /// Whether `layer` still has the planes and bounds this stroke began on. A
+    /// document restructured or a target moved under a live stroke is refused
+    /// rather than painted at stale coordinates or indexed out of bounds.
     fn fits(&self, layer: &Layer, ch: PlaneIndex) -> bool {
-        layer.rect.width().max(0) == self.width
-            && layer.rect.height().max(0) == self.height
+        layer.rect == self.rect
             && self
                 .planes
                 .iter()

@@ -690,18 +690,18 @@ impl qobject::PictureView {
 
     pub fn end_paint(mut self: Pin<&mut Self>) -> bool {
         let t0 = Instant::now();
-        let (stroke, label, preview) = {
+        let (stroke, label, preview, base) = {
             let mut rust = self.as_mut().rust_mut();
             // The commit refresh covers the stroke's whole extent, so it
             // supersedes any region still pending; it runs before `record`.
             rust.clear_pending_present();
             rust.gpu_stroke = None;
             rust.gpu_placer = None;
-            rust.stroke_base = None;
             (
                 rust.stroke.take(),
                 rust.stroke_label.clone(),
                 rust.preview.take(),
+                rust.stroke_base.take(),
             )
         };
         let ok = match stroke {
@@ -730,6 +730,11 @@ impl qobject::PictureView {
                 paint_timing::record("commit_finish", t.elapsed());
                 match finished {
                     None => {
+                        // A stroke that changed nothing leaves no history state,
+                        // so a Background it layered goes back to a Background.
+                        if let Some(base) = base {
+                            self.as_mut().rust_mut().doc = Some(base);
+                        }
                         self.as_mut().recomposite();
                         false
                     }

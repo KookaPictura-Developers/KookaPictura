@@ -976,3 +976,22 @@ fn live_restores_match_a_full_snapshot_history() {
         }
     }
 }
+
+#[test]
+fn undoing_a_reorder_of_equal_layers_reports_the_whole_document() {
+    let (w, h) = (40u32, 30u32);
+    let mut live = doc(w, h, 3);
+    live.layers = vec![model_layer("a", w, h, 1), model_layer("b", w, h, 90)];
+    let mut selection: Option<Selection> = None;
+    let mut history = History::default();
+    history.capture_live(&mut live, &selection, "Open");
+    let open = live.clone();
+
+    live.layers.swap(0, 1);
+    history.capture_live(&mut live, &selection, "Reorder");
+    assert_eq!(history.anchor_count(), 2, "a reorder starts a new segment");
+
+    let restored = history.undo_live(&mut live, &mut selection);
+    assert_eq!(restored, Some(Restored::Everywhere));
+    assert!(live == open, "undo restores the original order");
+}

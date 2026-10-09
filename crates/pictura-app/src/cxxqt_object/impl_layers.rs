@@ -855,15 +855,24 @@ impl qobject::PictureView {
         let refs = as_str_slice(&owned);
         let (changed, region) = match self.as_mut().rust_mut().doc.as_mut() {
             Some(doc) => {
+                // Only a layer whose compositing inputs moved reaches the
+                // repaint, so a skipped or unchanged group cannot unbound it.
+                let compositing = |doc: &Document, path: &str| {
+                    pictura_render::resolve_path(doc, path)
+                        .map(|layer| (layer.blend, layer.opacity, layer.fill))
+                };
+                let before: Vec<_> = refs.iter().map(|path| compositing(doc, path)).collect();
                 let changed = op(doc, &refs);
                 // `None`: unbounded; `Some(None)`: no pixel to repaint.
-                let region =
-                    refs.iter()
-                        .try_fold(None, |union: Option<pictura_core::PsdRect>, path| {
-                            let rect = pictura_render::resolve_path(doc, path)
-                                .and_then(layer_visibility_region)?;
-                            Some(Some(union.map_or(rect, |u| union_rect(u, rect))))
-                        });
+                let region = refs
+                    .iter()
+                    .zip(before)
+                    .filter(|(path, before)| compositing(doc, path) != *before)
+                    .try_fold(None, |union: Option<pictura_core::PsdRect>, (path, _)| {
+                        let rect = pictura_render::resolve_path(doc, path)
+                            .and_then(layer_visibility_region)?;
+                        Some(Some(union.map_or(rect, |u| union_rect(u, rect))))
+                    });
                 (changed, if repaint { region } else { Some(None) })
             }
             None => (0, None),
