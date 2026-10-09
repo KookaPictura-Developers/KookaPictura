@@ -118,12 +118,14 @@ fn anisotropic_smooths_the_grain_but_keeps_the_edge() {
 
 #[test]
 fn diffusing_is_the_same_every_time() {
-    let run = || {
-        let mut pm = edged();
-        diffuse(&mut pm, DiffuseMode::Normal);
-        pm
-    };
-    assert_eq!(run().as_bytes(), run().as_bytes());
+    crate::photorust::with_seed(0, || {
+        let run = || {
+            let mut pm = edged();
+            diffuse(&mut pm, DiffuseMode::Normal);
+            pm
+        };
+        assert_eq!(run().as_bytes(), run().as_bytes());
+    });
 }
 
 #[test]
@@ -519,12 +521,14 @@ fn level_based_stands_the_bright_tiles_tallest() {
 /// commit behind it agree — the same rule Diffuse follows.
 #[test]
 fn random_heights_are_the_same_every_time() {
-    let run = || {
-        let mut pm = scene();
-        extrude(&mut pm, ExtrudeOptions::default());
-        pm
-    };
-    assert_eq!(run().as_bytes(), run().as_bytes());
+    crate::photorust::with_seed(0, || {
+        let run = || {
+            let mut pm = scene();
+            extrude(&mut pm, ExtrudeOptions::default());
+            pm
+        };
+        assert_eq!(run().as_bytes(), run().as_bytes());
+    });
 }
 
 /// The grid rarely divides the picture evenly, and the tick box says what
@@ -699,9 +703,11 @@ fn more_tiles_cut_the_picture_finer() {
 /// an undo/redo replay lands every tile where it was the first time.
 #[test]
 fn tiles_fall_the_same_way_every_time() {
-    let first = tiled_flat(TileFill::BackgroundColor);
-    let second = tiled_flat(TileFill::BackgroundColor);
-    assert_eq!(first.as_bytes(), second.as_bytes());
+    crate::photorust::with_seed(0, || {
+        let first = tiled_flat(TileFill::BackgroundColor);
+        let second = tiled_flat(TileFill::BackgroundColor);
+        assert_eq!(first.as_bytes(), second.as_bytes());
+    });
 }
 
 #[test]
@@ -953,11 +959,13 @@ fn flat_ground_is_left_alone() {
 /// the same way it did the first time.
 #[test]
 fn the_wind_blows_the_same_way_every_time() {
-    let mut first = block();
-    wind(&mut first, WindMethod::Stagger, true);
-    let mut second = block();
-    wind(&mut second, WindMethod::Stagger, true);
-    assert_eq!(first.as_bytes(), second.as_bytes());
+    crate::photorust::with_seed(0, || {
+        let mut first = block();
+        wind(&mut first, WindMethod::Stagger, true);
+        let mut second = block();
+        wind(&mut second, WindMethod::Stagger, true);
+        assert_eq!(first.as_bytes(), second.as_bytes());
+    });
 }
 
 #[test]

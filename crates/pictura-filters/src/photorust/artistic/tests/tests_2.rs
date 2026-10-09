@@ -297,11 +297,13 @@ fn the_grain_in_the_light_is_coloured() {
 /// exposes the same frame.
 #[test]
 fn the_same_picture_takes_the_same_grain_twice() {
-    let mut first = ramp();
-    film_grain(&mut first, 8, 10, 5);
-    let mut second = ramp();
-    film_grain(&mut second, 8, 10, 5);
-    assert_eq!(first.as_bytes(), second.as_bytes());
+    crate::photorust::with_seed(0, || {
+        let mut first = ramp();
+        film_grain(&mut first, 8, 10, 5);
+        let mut second = ramp();
+        film_grain(&mut second, 8, 10, 5);
+        assert_eq!(first.as_bytes(), second.as_bytes());
+    });
 }
 
 #[test]

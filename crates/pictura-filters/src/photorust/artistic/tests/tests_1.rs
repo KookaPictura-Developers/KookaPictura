@@ -107,11 +107,13 @@ fn pressure_lays_more_colour() {
 /// draws the same strokes.
 #[test]
 fn the_same_picture_is_drawn_the_same_way_twice() {
-    let mut first = half_detailed();
-    colored_pencil(&mut first, 6, 8, 25, Rgba8::WHITE);
-    let mut second = half_detailed();
-    colored_pencil(&mut second, 6, 8, 25, Rgba8::WHITE);
-    assert_eq!(first.as_bytes(), second.as_bytes());
+    crate::photorust::with_seed(0, || {
+        let mut first = half_detailed();
+        colored_pencil(&mut first, 6, 8, 25, Rgba8::WHITE);
+        let mut second = half_detailed();
+        colored_pencil(&mut second, 6, 8, 25, Rgba8::WHITE);
+        assert_eq!(first.as_bytes(), second.as_bytes());
+    });
 }
 
 /// A wider pencil is a coarser hatch — the same drawing in fewer, bigger
@@ -382,11 +384,13 @@ fn texture_is_the_body_of_the_paint() {
 /// paints on the same one.
 #[test]
 fn the_same_picture_is_painted_the_same_way_twice() {
-    let mut first = two_noisy_fields();
-    dry_brush(&mut first, 4, 8, 2);
-    let mut second = two_noisy_fields();
-    dry_brush(&mut second, 4, 8, 2);
-    assert_eq!(first.as_bytes(), second.as_bytes());
+    crate::photorust::with_seed(0, || {
+        let mut first = two_noisy_fields();
+        dry_brush(&mut first, 4, 8, 2);
+        let mut second = two_noisy_fields();
+        dry_brush(&mut second, 4, 8, 2);
+        assert_eq!(first.as_bytes(), second.as_bytes());
+    });
 }
 
 #[test]

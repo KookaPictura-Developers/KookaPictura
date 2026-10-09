@@ -184,17 +184,19 @@ fn texturizer_invert_turns_the_surface_inside_out() {
 
 #[test]
 fn stained_glass_is_deterministic() {
-    let run = || {
-        let mut px = Pixmap::new(90, 70);
-        for y in 0..70 {
-            for x in 0..90 {
-                px.set(x, y, Rgba8::new((x * 3) as u8, (y * 3) as u8, 90, 255));
+    crate::photorust::with_seed(0, || {
+        let run = || {
+            let mut px = Pixmap::new(90, 70);
+            for y in 0..70 {
+                for x in 0..90 {
+                    px.set(x, y, Rgba8::new((x * 3) as u8, (y * 3) as u8, 90, 255));
+                }
             }
-        }
-        stained_glass(&mut px, 6, 3, 4, Rgba8::BLACK);
-        px
-    };
-    assert_eq!(run().as_bytes(), run().as_bytes());
+            stained_glass(&mut px, 6, 3, 4, Rgba8::BLACK);
+            px
+        };
+        assert_eq!(run().as_bytes(), run().as_bytes());
+    });
 }
 
 #[test]
@@ -324,23 +326,25 @@ fn craquelure_depth_deepens_the_relief() {
 
 #[test]
 fn craquelure_is_deterministic_and_leaves_alpha_alone() {
-    let mut a = Pixmap::filled(48, 48, Rgba8::new(120, 140, 160, 77));
-    a.fill_rect(
-        crate::photorust::pixmap::Rect::new(4, 4, 8, 8),
-        Rgba8::new(20, 20, 20, 200),
-    );
-    let before = a.clone();
-    let mut b = a.clone();
-    craquelure(&mut a, 15, 6, 9);
-    craquelure(&mut b, 15, 6, 9);
-    assert_eq!(a.as_bytes(), b.as_bytes());
-    let alpha = |pm: &Pixmap| {
-        pm.as_bytes()
-            .chunks_exact(4)
-            .map(|p| p[3])
-            .collect::<Vec<_>>()
-    };
-    assert_eq!(alpha(&a), alpha(&before));
+    crate::photorust::with_seed(0, || {
+        let mut a = Pixmap::filled(48, 48, Rgba8::new(120, 140, 160, 77));
+        a.fill_rect(
+            crate::photorust::pixmap::Rect::new(4, 4, 8, 8),
+            Rgba8::new(20, 20, 20, 200),
+        );
+        let before = a.clone();
+        let mut b = a.clone();
+        craquelure(&mut a, 15, 6, 9);
+        craquelure(&mut b, 15, 6, 9);
+        assert_eq!(a.as_bytes(), b.as_bytes());
+        let alpha = |pm: &Pixmap| {
+            pm.as_bytes()
+                .chunks_exact(4)
+                .map(|p| p[3])
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(alpha(&a), alpha(&before));
+    });
 }
 
 #[test]
@@ -626,33 +630,35 @@ fn grain_speckle_and_sprinkles_throw_the_swatches() {
 
 #[test]
 fn grain_is_deterministic_and_leaves_alpha_alone() {
-    use GrainType::*;
-    for kind in [
-        Regular, Soft, Sprinkles, Clumped, Contrasty, Enlarged, Stippled, Horizontal, Vertical,
-        Speckle,
-    ] {
-        let mut a = Pixmap::filled(48, 48, Rgba8::new(120, 140, 160, 77));
-        let before = a.clone();
-        let mut b = a.clone();
-        grain(&mut a, 60, 60, kind, Rgba8::BLACK, Rgba8::WHITE);
-        grain(&mut b, 60, 60, kind, Rgba8::BLACK, Rgba8::WHITE);
-        assert_eq!(a.as_bytes(), b.as_bytes(), "{kind:?}");
-        let alpha = |pm: &Pixmap| {
-            pm.as_bytes()
-                .chunks_exact(4)
-                .map(|p| p[3])
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(alpha(&a), alpha(&before), "{kind:?}");
-    }
-    grain(
-        &mut Pixmap::new(0, 0),
-        40,
-        50,
-        GrainType::Regular,
-        Rgba8::BLACK,
-        Rgba8::WHITE,
-    );
+    crate::photorust::with_seed(0, || {
+        use GrainType::*;
+        for kind in [
+            Regular, Soft, Sprinkles, Clumped, Contrasty, Enlarged, Stippled, Horizontal, Vertical,
+            Speckle,
+        ] {
+            let mut a = Pixmap::filled(48, 48, Rgba8::new(120, 140, 160, 77));
+            let before = a.clone();
+            let mut b = a.clone();
+            grain(&mut a, 60, 60, kind, Rgba8::BLACK, Rgba8::WHITE);
+            grain(&mut b, 60, 60, kind, Rgba8::BLACK, Rgba8::WHITE);
+            assert_eq!(a.as_bytes(), b.as_bytes(), "{kind:?}");
+            let alpha = |pm: &Pixmap| {
+                pm.as_bytes()
+                    .chunks_exact(4)
+                    .map(|p| p[3])
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(alpha(&a), alpha(&before), "{kind:?}");
+        }
+        grain(
+            &mut Pixmap::new(0, 0),
+            40,
+            50,
+            GrainType::Regular,
+            Rgba8::BLACK,
+            Rgba8::WHITE,
+        );
+    });
 }
 /// Contrasty is contrasty at the slider's flat middle: a dark sheet goes
 /// darker and a light one lighter than Regular leaves them.
@@ -794,20 +800,22 @@ fn mosaic_tiles_keep_the_picture_on_the_tiles() {
 
 #[test]
 fn mosaic_tiles_is_deterministic_and_leaves_alpha_alone() {
-    let mut a = Pixmap::filled(48, 48, Rgba8::new(120, 140, 160, 77));
-    let before = a.clone();
-    let mut b = a.clone();
-    mosaic_tiles(&mut a, 12, 3, 9);
-    mosaic_tiles(&mut b, 12, 3, 9);
-    assert_eq!(a.as_bytes(), b.as_bytes());
-    let alpha = |pm: &Pixmap| {
-        pm.as_bytes()
-            .chunks_exact(4)
-            .map(|p| p[3])
-            .collect::<Vec<_>>()
-    };
-    assert_eq!(alpha(&a), alpha(&before));
-    mosaic_tiles(&mut Pixmap::new(0, 0), 12, 3, 9);
+    crate::photorust::with_seed(0, || {
+        let mut a = Pixmap::filled(48, 48, Rgba8::new(120, 140, 160, 77));
+        let before = a.clone();
+        let mut b = a.clone();
+        mosaic_tiles(&mut a, 12, 3, 9);
+        mosaic_tiles(&mut b, 12, 3, 9);
+        assert_eq!(a.as_bytes(), b.as_bytes());
+        let alpha = |pm: &Pixmap| {
+            pm.as_bytes()
+                .chunks_exact(4)
+                .map(|p| p[3])
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(alpha(&a), alpha(&before));
+        mosaic_tiles(&mut Pixmap::new(0, 0), 12, 3, 9);
+    });
 }
 /// At CS6's defaults the tiles are flat and the grout thin, so most of
 /// the picture comes through as it was: tiles rounded into domes, or
@@ -910,21 +918,23 @@ fn patchwork_casts_shadow_below_a_raised_square() {
 
 #[test]
 fn patchwork_is_deterministic_and_leaves_alpha_alone() {
-    let mut a = Pixmap::filled(47, 31, Rgba8::new(120, 140, 160, 77));
-    let before = a.clone();
-    let mut b = a.clone();
-    patchwork(&mut a, 4, 8);
-    patchwork(&mut b, 4, 8);
-    assert_eq!(a.as_bytes(), b.as_bytes());
-    let alpha = |pm: &Pixmap| {
-        pm.as_bytes()
-            .chunks_exact(4)
-            .map(|p| p[3])
-            .collect::<Vec<_>>()
-    };
-    assert_eq!(alpha(&a), alpha(&before));
-    patchwork(&mut Pixmap::new(0, 0), 4, 8);
-    patchwork(&mut Pixmap::filled(3, 3, Rgba8::WHITE), 0, 25);
+    crate::photorust::with_seed(0, || {
+        let mut a = Pixmap::filled(47, 31, Rgba8::new(120, 140, 160, 77));
+        let before = a.clone();
+        let mut b = a.clone();
+        patchwork(&mut a, 4, 8);
+        patchwork(&mut b, 4, 8);
+        assert_eq!(a.as_bytes(), b.as_bytes());
+        let alpha = |pm: &Pixmap| {
+            pm.as_bytes()
+                .chunks_exact(4)
+                .map(|p| p[3])
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(alpha(&a), alpha(&before));
+        patchwork(&mut Pixmap::new(0, 0), 4, 8);
+        patchwork(&mut Pixmap::filled(3, 3, Rgba8::WHITE), 0, 25);
+    });
 }
 /// The joint between two squares follows the step between them, as
 /// CS6's does: where a pale square stands over a dark one below it, the

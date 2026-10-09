@@ -403,12 +403,14 @@ fn a_coarser_grain_means_fewer_specks() {
 
 #[test]
 fn mezzotint_is_deterministic() {
-    let run = || {
-        let mut px = many_colours(64);
-        mezzotint(&mut px, MezzotintType::ShortStrokes);
-        px
-    };
-    assert_eq!(run().as_bytes(), run().as_bytes());
+    crate::photorust::with_seed(0, || {
+        let run = || {
+            let mut px = many_colours(64);
+            mezzotint(&mut px, MezzotintType::ShortStrokes);
+            px
+        };
+        assert_eq!(run().as_bytes(), run().as_bytes());
+    });
 }
 
 #[test]
@@ -631,12 +633,14 @@ fn a_larger_cell_makes_larger_dabs() {
 
 #[test]
 fn pointillize_is_deterministic() {
-    let run = || {
-        let mut px = many_colours(96);
-        pointillize(&mut px, 7, Rgba8::WHITE);
-        px
-    };
-    assert_eq!(run().as_bytes(), run().as_bytes());
+    crate::photorust::with_seed(0, || {
+        let run = || {
+            let mut px = many_colours(96);
+            pointillize(&mut px, 7, Rgba8::WHITE);
+            px
+        };
+        assert_eq!(run().as_bytes(), run().as_bytes());
+    });
 }
 
 #[test]
@@ -798,17 +802,19 @@ fn the_cells_are_not_square_tiles() {
 
 #[test]
 fn crystallize_is_deterministic() {
-    // The seeds are jittered from a hash of their own coordinates rather
-    // than from a running random source, because undo and redo replay the
-    // filter and a crystal that came out differently each time could not
-    // be undone.
-    let source = many_colours(96);
-    let run = || {
-        let mut px = source.clone();
-        crystallize(&mut px, 9);
-        px
-    };
-    assert_eq!(run().as_bytes(), run().as_bytes());
+    crate::photorust::with_seed(0, || {
+        // The seeds are jittered from a hash of their own coordinates rather
+        // than from a running random source, because undo and redo replay the
+        // filter and a crystal that came out differently each time could not
+        // be undone.
+        let source = many_colours(96);
+        let run = || {
+            let mut px = source.clone();
+            crystallize(&mut px, 9);
+            px
+        };
+        assert_eq!(run().as_bytes(), run().as_bytes());
+    });
 }
 
 #[test]
