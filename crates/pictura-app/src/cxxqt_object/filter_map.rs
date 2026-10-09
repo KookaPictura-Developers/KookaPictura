@@ -11,8 +11,8 @@
 
 use pictura_filters::{
     BrushType, ContourEdge, DiffuseMode, ExtrudeType, Filter, GrainType, HalftoneType, LensType,
-    LightDirection, LightType, Lighting, MezzotintType, NoiseDistribution, PolarKind, Quality,
-    RadialMethod, RippleSize, SharpenRemove, ShearFill, SpherizeMode, StrokeDirection,
+    Light, LightDirection, LightType, Lighting, MezzotintType, NoiseDistribution, PolarKind,
+    Quality, RadialMethod, RippleSize, SharpenRemove, ShearFill, SpherizeMode, StrokeDirection,
     TextureChannel, TextureOptions, TextureSurface, TileFill, TonalFade, WaveType, WindMethod,
     ZigZagStyle,
 };
@@ -187,6 +187,53 @@ const DIFFUSE_MODES: [DiffuseMode; 4] = [
     DiffuseMode::Anisotropic,
 ];
 
+/// Lighting Effects' slots: the rig (colorize r/g/b, exposure, gloss, metallic,
+/// ambience, texture, height), then per light: type, visible, colour r/g/b,
+/// intensity, hotspot, centre x/y, angle, size, width, elevation. The arity
+/// table lists a one-light rig; any whole number of lights up to the cap maps.
+pub(super) const LIGHTING_RIG_SLOTS: usize = 9;
+pub(super) const LIGHTING_LIGHT_SLOTS: usize = 13;
+
+fn lighting(params: &[f64]) -> Option<Lighting> {
+    if params.is_empty() {
+        return Some(Lighting::default());
+    }
+    let light_slots = params.len().checked_sub(LIGHTING_RIG_SLOTS)?;
+    let count = light_slots / LIGHTING_LIGHT_SLOTS;
+    if count == 0 || count > pictura_filters::MAX_LIGHTS || light_slots % LIGHTING_LIGHT_SLOTS != 0
+    {
+        return None;
+    }
+    let d = Light::default();
+    let light = |s: &[f64; LIGHTING_LIGHT_SLOTS]| Light {
+        kind: pick(&LIGHT_TYPES, s, 0, 0),
+        on: flag(s, 1, true),
+        color: rgb(s, 2, d.color),
+        intensity: f(s, 5, 0.0) as f32,
+        hotspot: f(s, 6, 0.0) as f32,
+        center: (f(s, 7, 0.0) as f32, f(s, 8, 0.0) as f32),
+        angle: f(s, 9, 0.0) as f32,
+        size: f(s, 10, 0.0) as f32,
+        width: f(s, 11, 0.0) as f32,
+        elevation: f(s, 12, 0.0) as f32,
+    };
+    Some(Lighting {
+        colorize: rgb(params, 0, [255, 255, 255]),
+        exposure: f(params, 3, 0.0) as f32,
+        gloss: f(params, 4, 0.0) as f32,
+        metallic: f(params, 5, 0.0) as f32,
+        ambience: f(params, 6, 0.0) as f32,
+        texture: pick(&TEXTURE_CHANNELS, params, 7, 0),
+        height: f(params, 8, 0.0) as f32,
+        lights: params[LIGHTING_RIG_SLOTS..]
+            .as_chunks::<LIGHTING_LIGHT_SLOTS>()
+            .0
+            .iter()
+            .map(light)
+            .collect(),
+    })
+}
+
 /// Every supported kind and its exact slot count. This is the guard that
 /// keeps the Rust mapping and `cpp/filter_commands.cpp` in lock-step.
 pub(super) const FILTER_ARITIES: &[(&str, usize)] = &[
@@ -234,7 +281,10 @@ pub(super) const FILTER_ARITIES: &[(&str, usize)] = &[
     ("difference-clouds", 8),
     ("fibers", 9),
     ("lens-flare", 4),
-    ("lighting-effects", 19),
+    (
+        "lighting-effects",
+        LIGHTING_RIG_SLOTS + LIGHTING_LIGHT_SLOTS,
+    ),
     ("colored-pencil", 4),
     ("cutout", 3),
     ("dry-brush", 4),
@@ -598,27 +648,9 @@ pub(super) fn filter_from_kind_params(kind: &str, params: &[f64]) -> Option<Filt
                 lens: pick(&LENS_TYPES, params, 3, 0),
             }
         }
-        "lighting-effects" => {
-            arity!(params, 19);
-            Filter::Lighting {
-                lighting: Lighting {
-                    kind: pick(&LIGHT_TYPES, params, 0, 0),
-                    color: rgb(params, 1, [255, 255, 255]),
-                    intensity: f(params, 4, 25.0) as f32,
-                    hotspot: f(params, 5, 44.0) as f32,
-                    colorize: rgb(params, 6, [255, 255, 255]),
-                    ambience: f(params, 9, 0.0) as f32,
-                    exposure: f(params, 10, 0.0) as f32,
-                    gloss: f(params, 11, 0.0) as f32,
-                    metallic: f(params, 12, 0.0) as f32,
-                    texture: pick(&TEXTURE_CHANNELS, params, 13, 0),
-                    height: f(params, 14, 50.0) as f32,
-                    center: (f(params, 15, 0.5) as f32, f(params, 16, 0.5) as f32),
-                    size: f(params, 17, 0.45) as f32,
-                    angle: f(params, 18, 45.0) as f32,
-                },
-            }
-        }
+        "lighting-effects" => Filter::Lighting {
+            lighting: lighting(params)?,
+        },
         "colored-pencil" => {
             arity!(params, 4);
             Filter::ColoredPencil {

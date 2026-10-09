@@ -25,7 +25,7 @@ pub mod sharpen;
 mod stylize;
 
 pub use hdr_toning::HdrToningParams;
-pub use render::{LensType, LightType, Lighting, TextureChannel};
+pub use render::{LensType, Light, LightType, Lighting, TextureChannel, MAX_LIGHTS};
 pub use stylize::DiffuseMode;
 
 #[derive(Debug, thiserror::Error)]

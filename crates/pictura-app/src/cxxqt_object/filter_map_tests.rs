@@ -143,3 +143,46 @@ fn multi_slot_offsets_decode_correctly() {
         })
     );
 }
+
+#[test]
+fn lighting_maps_a_rig_of_any_size_up_to_the_cap() {
+    let rig = [255.0, 200.0, 100.0, 10.0, 20.0, 30.0, 40.0, 2.0, 60.0];
+    let spot = [
+        0.0, 1.0, 255.0, 0.0, 0.0, 35.0, 69.0, 0.25, 0.75, -35.0, 0.6, 0.3, 50.0,
+    ];
+    let infinite = [
+        2.0, 0.0, 0.0, 0.0, 255.0, -50.0, 0.0, 0.5, 0.5, 90.0, 0.2, 0.2, 30.0,
+    ];
+    let params: Vec<f64> = [&rig[..], &spot[..], &infinite[..]].concat();
+    let Some(Filter::Lighting { lighting }) = filter_from_kind_params("lighting-effects", &params)
+    else {
+        panic!("a two-light rig must map");
+    };
+    assert_eq!(lighting.colorize, [255, 200, 100]);
+    assert_eq!(lighting.texture, TextureChannel::Green);
+    assert_eq!(lighting.height, 60.0);
+    assert_eq!(lighting.lights.len(), 2);
+    let (first, second) = (lighting.lights[0], lighting.lights[1]);
+    assert_eq!(first.kind, LightType::Spot);
+    assert_eq!(first.color, [255, 0, 0]);
+    assert_eq!((first.center, first.width), ((0.25, 0.75), 0.3));
+    assert_eq!(second.kind, LightType::Infinite);
+    assert!(!second.on);
+    assert_eq!((second.angle, second.elevation), (90.0, 30.0));
+
+    let mut partial = params.clone();
+    partial.pop();
+    assert!(filter_from_kind_params("lighting-effects", &partial).is_none());
+    let full: Vec<f64> = rig
+        .iter()
+        .chain(
+            spot.iter()
+                .cycle()
+                .take(spot.len() * pictura_filters::MAX_LIGHTS),
+        )
+        .copied()
+        .collect();
+    assert!(filter_from_kind_params("lighting-effects", &full).is_some());
+    let over: Vec<f64> = full.iter().chain(spot.iter()).copied().collect();
+    assert!(filter_from_kind_params("lighting-effects", &over).is_none());
+}
