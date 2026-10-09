@@ -2,18 +2,21 @@
 
 ## Purpose
 Merge Down, Merge Layers, Merge Visible, Merge Clipping Mask, Flatten Image, New Layer and Group, and Background handling.
+
 ## Requirements
+
 ### Requirement: Merge Down and Merge Layers
 
-The system SHALL provide one selection-dependent merge command bound to
-`Ctrl+E`. With exactly one layer selected it SHALL perform **Merge Down**, and
-with more than one selected layer it SHALL perform **Merge Layers**. The merge
-SHALL validate before mutating: the merge target (the lower layer for Merge
-Down, the bottommost selected layer for Merge Layers) MUST NOT be an adjustment
-or fill-content layer, and Merge Down MUST have a layer directly below the
-selected layer. Merge Down SHALL require exactly one selected layer and MUST be
-refused when there is nothing below it. A refused merge MUST leave the document
-unchanged and MUST NOT add a history state.
+The system SHALL provide one selection-dependent merge command **Merge Layers**
+bound to `Ctrl+E`. With more than one selected layer it SHALL perform **Merge
+Layers**, and with exactly one selected layer it SHALL perform **Merge Down**.
+A separate `Layer > Merge Down` command SHALL expose Merge Down directly for the
+active layer. The merge SHALL validate before mutating: the merge target (the
+lower layer for Merge Down, the bottommost selected layer for Merge Layers)
+MUST NOT be an adjustment or fill-content layer, and Merge Down MUST have a
+layer directly below the selected layer. Merge Down SHALL require exactly one
+selected layer and MUST be refused when there is nothing below it. A refused
+merge MUST leave the document unchanged and MUST NOT add a history state.
 
 The command SHALL composite the inputs in stacking order through the document
 compositor over the union of their content rectangles, apply each input's mask
@@ -43,6 +46,13 @@ and record exactly one undo state.
 - **THEN** the selected layers are replaced by one pixel layer at the topmost
   selected position whose pixels equal their composite and whose blend mode and
   opacity are `Normal` and `255`
+
+#### Scenario: The distinct Merge Down leaf is available
+
+- **WHEN** a pixel layer sits directly above a raster layer and `Layer > Merge
+  Down` is chosen
+- **THEN** the pair is merged even though only one layer is selected, and the
+  change is one undo step
 
 #### Scenario: An adjustment target is refused
 
@@ -344,14 +354,23 @@ decoded colour across the layer rect; a gradient fill SHALL bake the generated
 five-kind ramp with opaque alpha across the layer rect; a pattern fill SHALL
 bake the pattern the document's `Patt` resource tiles over the layer rect (with
 the pattern's own alpha, or the grey placeholder when the referenced pattern is
-absent or was skipped as non-8-bit/malformed). `Rasterize Layer` SHALL rasterize the active layer only when
-it is a fill-content layer, and SHALL otherwise refuse without changing the
-document. `Rasterize All Layers` SHALL rasterize every fill-content layer in the
-document. The `Type`, `Shape`, `Vector Mask`, `Smart Object`, `Video`, and `3D`
-variants SHALL remain visible and disabled, with a documented reason that those
-layer kinds do not exist in the model. A rasterization whose content is not
-decodable SHALL be disabled and SHALL refuse without changing the document, and
-every applied rasterization SHALL recomposite and record exactly one undo state.
+absent or was skipped as non-8-bit/malformed). `Shape` SHALL be implemented: a
+shape layer (a solid fill cut to a `vmsk` vector mask) SHALL have its rendered
+appearance — the fill cut to the outline, plus its stroke — baked into ordinary
+pixels, and its shape/vector definition dropped (the solid-fill adjustment, the
+`vmsk` vector mask, the live-shape `vogk` block, and the stroke effect), while
+keeping its name, opacity, fill, blend mode, and layer mask. Its rect SHALL grow
+when an effect (an outside or centered stroke) paints past it, so the baked
+pixels cover the whole rendered appearance. `Rasterize
+Layer` SHALL rasterize the active layer only when it is a fill-content layer,
+and SHALL otherwise refuse without changing the document. `Rasterize All
+Layers` SHALL rasterize every fill-content layer and every shape layer in the
+document. The `Type`, `Vector Mask`, `Smart Object`, `Video`, and `3D` variants
+SHALL remain visible and disabled, with a documented reason that those layer
+kinds do not exist or are handled elsewhere. A rasterization whose content is
+not decodable SHALL be disabled and SHALL refuse without changing the document,
+and every applied rasterization SHALL recomposite and record exactly one undo
+state.
 
 #### Scenario: Fill Content becomes pixels
 
@@ -388,10 +407,24 @@ every applied rasterization SHALL recomposite and record exactly one undo state.
 - **THEN** the layer becomes a pixel layer holding the grey placeholder and
   the change is one undo step
 
+#### Scenario: A shape layer rasterizes to pixels
+
+- **WHEN** Rasterize Shape runs on a shape layer
+- **THEN** the layer's fill cut to its outline (and its stroke) is baked into
+  the layer's pixels, its fill/adjustment, vector mask, live-shape, and stroke
+  data are dropped, its appearance is unchanged when recomposited, and the
+  change is one undo step
+
+#### Scenario: Rasterize Shape refuses a non-shape
+
+- **WHEN** Rasterize Shape runs on a pixel, group, adjustment, type, or
+  Background layer
+- **THEN** the document is unchanged and no undo state is recorded
+
 #### Scenario: A kind-less variant stays disabled
 
 - **WHEN** the Rasterize submenu is shown
-- **THEN** Type, Shape, Vector Mask, Smart Object, Video, and 3D are visible but
+- **THEN** Type, Vector Mask, Smart Object, Video, and 3D are visible but
   disabled, and their reason is documented
 
 #### Scenario: Rasterize Layer refuses a non-fill layer
@@ -448,3 +481,205 @@ leave the layer invisible after commit.
 - **THEN** the selection and copy operate on the layer's content and are not
   refused
 
+### Requirement: Arrange layers within the container
+
+The system SHALL provide the `Layer > Arrange` commands **Bring to Front**,
+**Bring Forward**, **Send Backward**, and **Send to Back**. Each SHALL move the
+active layer within its own container only — never into a sibling container or
+a group — where the top of the stack is the front. Bring to Front SHALL move
+the layer to the top of its container, Bring Forward SHALL move it one position
+towards the front, Send Backward SHALL move it one position towards the back,
+and Send to Back SHALL move it to the bottom of its container. A move that
+would leave the layer in its current position SHALL be refused and record no
+history state, and the command SHALL be disabled when no move is possible. The
+Background layer and a fully-locked layer MUST NOT reorder. Every applied
+arrange SHALL recomposite and record exactly one undo state.
+
+#### Scenario: Bring to Front moves the active layer to the top
+
+- **WHEN** a layer is selected in a container with other layers above it and
+  Bring to Front runs
+- **THEN** the layer is the topmost node of its container, the relative order of
+  the other nodes is unchanged, and the change is one undo step
+
+#### Scenario: Send to Back moves the active layer to the bottom
+
+- **WHEN** a layer is selected and Send to Back runs
+- **THEN** the layer is the bottom-most node of its container and the change is
+  one undo step
+
+#### Scenario: Bring Forward and Send Backward move one position
+
+- **WHEN** Bring Forward runs on a layer with a node above it
+- **THEN** the layer and that node swap positions, and Send Backward performs
+  the inverse swap
+
+#### Scenario: A boundary move is refused and disabled
+
+- **WHEN** the active layer is already at the front and Bring Forward or Bring
+  to Front is invoked
+- **THEN** the command is disabled, the document is unchanged, and no history
+  state is recorded
+
+#### Scenario: The Background does not reorder
+
+- **WHEN** the Background layer is the active layer and any Arrange command runs
+- **THEN** the command is disabled and the document is unchanged
+
+### Requirement: Reverse selected layers
+
+The system SHALL provide `Layer > Arrange > Reverse`, which SHALL reverse the
+stacking order of the selected layers. The selection MUST contain at least two
+layers that share one container and occupy a contiguous run of positions in
+that container; otherwise the command SHALL be refused, the document SHALL be
+unchanged, and no history state SHALL be recorded. The command MUST refuse when
+any selected layer is the Background or is fully locked. A successful reverse
+SHALL recomposite and record exactly one undo state.
+
+#### Scenario: A contiguous run reverses in place
+
+- **WHEN** three adjacent layers in one container are selected and Reverse runs
+- **THEN** their order within the run is reversed, the nodes before and after
+  the run keep their positions, and the change is one undo step
+
+#### Scenario: A non-contiguous selection is refused
+
+- **WHEN** the selected layers share a container but are not contiguous
+- **THEN** the command is refused, the document is unchanged, and no history
+  state is recorded
+
+#### Scenario: A cross-container selection is refused
+
+- **WHEN** the selected layers span more than one container and Reverse runs
+- **THEN** the command is refused, the document is unchanged, and no history
+  state is recorded
+
+### Requirement: Delete Layer
+
+The system SHALL provide a `Layer > Delete Layer` command that deletes every
+selected layer. The Background and fully-locked layers MUST NOT be deleted. A
+selected node whose ancestor is also selected SHALL be deleted once, with its
+ancestor. When at least one layer is deleted the command SHALL recomposite and
+record exactly one undo state; when nothing is deletable it SHALL record no
+history state. The command SHALL be disabled when no document is open or no
+layer is selected.
+
+#### Scenario: Delete removes the selected layers
+
+- **WHEN** one or more ordinary layers are selected and Delete Layer runs
+- **THEN** those layers are removed and the removal is one undo step
+
+#### Scenario: The Background is not deletable
+
+- **WHEN** the only selected layer is the Background and Delete Layer runs
+- **THEN** the command is disabled, the document is unchanged, and no history
+  state is recorded
+
+### Requirement: Merge Down as a distinct command
+
+The system SHALL provide a distinct `Layer > Merge Down` command that merges
+the active layer with the layer directly below it within the same container,
+reusing the document compositor and the Merge Down rules (raster target, a
+layer must exist below, one undo state). This leaf SHALL be separate from the
+`Layer > Merge Layers` command; `Ctrl+E` SHALL remain bound to Merge Layers.
+Merge Down SHALL be disabled when the active layer has no layer directly below
+it or either layer is an adjustment or fill-content layer.
+
+#### Scenario: Merge Down is reachable as its own leaf
+
+- **WHEN** the `Layer` menu is opened with a pixel layer sitting directly above
+  another pixel layer
+- **THEN** `Merge Down` is present, enabled, and distinct from `Merge Layers`
+
+#### Scenario: Merge Down replaces the pair in place
+
+- **WHEN** Merge Down runs on a pixel layer with a raster layer directly below
+- **THEN** the two layers are replaced by one pixel layer at the lower layer's
+  position that inherits the lower layer's name, blend mode, and opacity, and
+  the change is one undo step
+
+#### Scenario: Merge Down is disabled without a layer below
+
+- **WHEN** the bottom-most layer of the stack is the active layer
+- **THEN** Merge Down is disabled and the document is unchanged
+
+### Requirement: Stamp Visible and Stamp Selected
+
+The system SHALL provide `Layer > Stamp Visible` and `Layer > Stamp Selected`,
+which composite the currently eye-visible (respecting ancestor visibility) or
+selected layers respectively into a NEW raster pixel layer inserted directly
+above the active layer. The source layers MUST be left intact — the command is
+non-destructive and MUST NOT remove, merge, or hide any existing layer. Each
+command SHALL refuse, without changing the document and without recording
+history, when the active layer does not resolve, when no input layer is
+eligible, or (for Stamp Visible) when the active layer is hidden. A successful
+stamp SHALL recomposite and record exactly one undo state.
+
+#### Scenario: Stamp Visible adds one layer and keeps the originals
+
+- **WHEN** a document has several visible layers and Stamp Visible runs with an
+  active layer
+- **THEN** exactly one new raster layer is inserted directly above the active
+  layer whose pixels equal the composite of the visible layers, and every
+  original layer still exists and is unchanged
+
+#### Scenario: A hidden layer is excluded and survives
+
+- **WHEN** a hidden layer is present and Stamp Visible runs
+- **THEN** the hidden layer is not part of the composite and remains in place
+  unchanged
+
+#### Scenario: Stamp Selected composites only the selection
+
+- **WHEN** two layers are selected and Stamp Selected runs
+- **THEN** one new raster layer above the active layer holds the composite of
+  just those selected layers and both originals remain
+
+#### Scenario: A hidden active layer is refused for Stamp Visible
+
+- **WHEN** the active layer is hidden and Stamp Visible is invoked
+- **THEN** the command is disabled, the document is unchanged, and no history
+  state is recorded
+
+#### Scenario: A stamp is one undo step
+
+- **WHEN** the user undoes a stamp
+- **THEN** the added layer is removed and the prior layer tree and pixels are
+  restored
+
+### Requirement: Copy and Paste Shape Attributes
+
+The system SHALL provide `Copy Shape Attributes` and `Paste Shape Attributes`
+for shape layers. Copy SHALL capture a shape layer's fill and stroke
+appearance: whether the fill is on and its colour, and whether the stroke is on
+with its colour, width, and alignment. Paste SHALL apply the captured
+appearance to a shape layer, replacing its fill and stroke; a target that is not
+a shape layer MUST be refused, leaving it unchanged and adding no history state.
+Copy SHALL NOT change the document and SHALL add no history state. Paste that
+changes the layer SHALL recomposite and record exactly one undo state; a paste
+that changes nothing SHALL add no history state. Both SHALL be reachable from
+the `Layer` menu and from the Layers row context menu for a shape layer.
+
+#### Scenario: Copy then paste transfers fill and stroke
+
+- **WHEN** Copy Shape Attributes runs on a shape layer with a fill and a
+  stroke, and Paste Shape Attributes then runs on a different shape layer
+- **THEN** the target's fill colour and stroke colour, width, and alignment
+  equal the source's, and the paste is one undo step
+
+#### Scenario: Pasting onto a non-shape is refused
+
+- **WHEN** Paste Shape Attributes runs with a pixel, group, adjustment, type, or
+  Background layer as the target
+- **THEN** the target is unchanged and no history state is recorded
+
+#### Scenario: Copying a shape changes nothing
+
+- **WHEN** Copy Shape Attributes runs on a shape layer
+- **THEN** the document is unchanged and no history state is recorded
+
+#### Scenario: A paste with no change adds no history
+
+- **WHEN** Paste Shape Attributes applies the same fill and stroke the target
+  already has
+- **THEN** the layer is unchanged and no history state is recorded

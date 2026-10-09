@@ -27,11 +27,6 @@ int rowForPath(PictureView* view, const QString& path)
     return -1;
 }
 
-bool reddish(const QColor& color)
-{
-    return color.red() > color.green() + 20 && color.red() > color.blue() + 20;
-}
-
 bool nearWhite(const QColor& color)
 {
     return color.red() > 0xF0 && color.green() > 0xF0 && color.blue() > 0xF0;
@@ -204,48 +199,9 @@ int runLayersRound3Checks(PicturaMainWindow& frame)
         frame.closeDocument(doc, false);
     }
 
-    // lpr_label_eye_tint (357): a color label tints only the eye toggle; no
-    // opaque swatch is painted after the name.
-    {
-        const bool created = frame.newDocument(QStringLiteral("LabelEyeTint"), 8, 8,
-                                               QStringLiteral("rgb"), 8,
-                                               QStringLiteral("white"));
-        PictureView* view = frame.activeView();
-        if (!created || !view) {
-            return pictura::selfTest().fail(357, "label tint fixture");
-        }
-        const int doc = frame.activeDocumentIndex();
-        panel->setView(view);
-        panel->setOptionsForTest(2, 1, false);
-        const QString path = view->add_layer_in(QString());
-        view->set_layer_name_path(path, QStringLiteral("A"));
-        const bool colored = view->set_layer_color(path.toInt(), 1);
-        panel->selectPaths(QStringList{}, QString());
-        panel->refresh();
-        const QImage image = panel->rowImageForTest(path);
-        const QRect eye = panel->rowEyeRectForTest(path);
-        int tintedEye = 0;
-        int pureRedOutside = 0;
-        for (int y = 0; y < image.height(); ++y) {
-            for (int x = 0; x < image.width(); ++x) {
-                const QColor color = image.pixelColor(x, y);
-                if (eye.contains(x, y)) {
-                    if (reddish(color)) {
-                        ++tintedEye;
-                    }
-                } else if (color.red() == 255 && color.green() == 0 && color.blue() == 0) {
-                    ++pureRedOutside;
-                }
-            }
-        }
-        ST_BEGIN("lpr_label_eye_tint");
-        ST_PASS("lpr_label_eye_tint colored=%d eyePixels=%d swatchPixels=%d", colored ? 1 : 0,
-                tintedEye, pureRedOutside);
-        if (!colored || tintedEye <= 0 || pureRedOutside != 0) {
-            return pictura::selfTest().fail(357, "eye-only color label tint");
-        }
-        frame.closeDocument(doc, false);
-    }
+    // The color-label eye-tint check (retired, was exit code 357) now lives in
+    // the Qt Test suite (`tst_layers_panel::layerSurfaceCompleteness`), which
+    // also asserts the new label chip.
 
     // lpr_highlight_clip (358): the selection highlight changes the content but
     // not the eye column, which is repainted with the base colour.

@@ -15,9 +15,13 @@ impl qobject::PictureView {
             let Some(doc) = rust.doc.as_ref() else {
                 return false;
             };
-            rust.selection
-                .as_ref()
-                .map(|selection| selection_to_mask(selection, doc))
+            if !rust.use_default_masks {
+                None
+            } else {
+                rust.selection
+                    .as_ref()
+                    .map(|selection| selection_to_mask(selection, doc))
+            }
         };
         let Some(layer) = adjustment_layer(&kind.to_string(), mask) else {
             return false;

@@ -7,6 +7,8 @@
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/adjustment_edit.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/clipping.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/impl_layers/layer_masks.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/impl_layers/vector_masks.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/image_adjust/image_mode.cxxqt.h"
 
 #include <QtCore/QTimer>
@@ -157,8 +159,169 @@ PropertiesPanel::PropertiesPanel(QWidget* parent)
     layout->addWidget(footer_);
 
     layerPage_ = new QWidget(stack_);
-    info_ = new QFormLayout(layerPage_);
+    auto* layerPageLayout = new QVBoxLayout(layerPage_);
+    layerPageLayout->setContentsMargins(0, 0, 0, 0);
+    info_ = new QFormLayout();
+    layerPageLayout->addLayout(info_);
+
+    // Mask section: shown only when the active layer carries a layer mask. The
+    // parameter rows are placeholders until the model stores them.
+    maskSection_ = new QWidget(layerPage_);
+    auto* maskLayout = new QVBoxLayout(maskSection_);
+    maskLayout->setContentsMargins(0, 8, 0, 0);
+    auto* maskTitle = new QLabel(QStringLiteral("Mask"), maskSection_);
+    QFont maskBold = maskTitle->font();
+    maskBold.setBold(true);
+    maskTitle->setFont(maskBold);
+    maskLayout->addWidget(maskTitle);
+    maskLayout->addWidget(new QLabel(QStringLiteral("Layer Mask"), maskSection_));
+    auto* maskButtons = new QHBoxLayout();
+    const auto maskButton = [this, maskButtons](const QString& iconId, const QString& tip,
+                                                const QString& name) {
+        QToolButton* button = footerButton(maskSection_, iconId, tip, name);
+        maskButtons->addWidget(button);
+        return button;
+    };
+    maskEnable_ = maskButton(QStringLiteral("layers.eyeOn"), QStringLiteral("Enable the layer mask"),
+                             QStringLiteral("propertiesMaskEnable"));
+    maskDisable_ = maskButton(QStringLiteral("layers.eyeOff"),
+                              QStringLiteral("Disable the layer mask"),
+                              QStringLiteral("propertiesMaskDisable"));
+    maskLink_ = maskButton(QStringLiteral("layers.link"), QStringLiteral("Link the layer mask"),
+                           QStringLiteral("propertiesMaskLink"));
+    maskUnlink_ = maskButton(QStringLiteral("layers.link"), QStringLiteral("Unlink the layer mask"),
+                             QStringLiteral("propertiesMaskUnlink"));
+    maskDelete_ = maskButton(QStringLiteral("layers.delete"),
+                             QStringLiteral("Delete the layer mask"),
+                             QStringLiteral("propertiesMaskDelete"));
+    maskApply_ = maskButton(QStringLiteral("layers.mask"), QStringLiteral("Apply the layer mask"),
+                            QStringLiteral("propertiesMaskApply"));
+    maskButtons->addStretch(1);
+    maskLayout->addLayout(maskButtons);
+    const auto maskStub = [this, maskLayout](const QString& label) {
+        auto* row = new QLabel(QStringLiteral("%1 — not implemented yet").arg(label), maskSection_);
+        row->setEnabled(false);
+        row->setToolTip(QStringLiteral("%1 — not implemented yet").arg(label));
+        maskLayout->addWidget(row);
+    };
+    maskStub(QStringLiteral("Density"));
+    maskStub(QStringLiteral("Feather"));
+    maskStub(QStringLiteral("Invert"));
+    maskSection_->hide();
+    layerPageLayout->addWidget(maskSection_);
+
+    // Vector Mask section: shown only when the active layer carries a vector
+    // mask. Density/Feather are placeholders until the model stores them.
+    vectorMaskSection_ = new QWidget(layerPage_);
+    auto* vectorLayout = new QVBoxLayout(vectorMaskSection_);
+    vectorLayout->setContentsMargins(0, 8, 0, 0);
+    auto* vectorTitle = new QLabel(QStringLiteral("Vector Mask"), vectorMaskSection_);
+    QFont vectorBold = vectorTitle->font();
+    vectorBold.setBold(true);
+    vectorTitle->setFont(vectorBold);
+    vectorLayout->addWidget(vectorTitle);
+    auto* vectorButtons = new QHBoxLayout();
+    const auto vectorButton = [this, vectorButtons](const QString& iconId, const QString& tip,
+                                                    const QString& name) {
+        QToolButton* button = footerButton(vectorMaskSection_, iconId, tip, name);
+        vectorButtons->addWidget(button);
+        return button;
+    };
+    vectorMaskEnable_ = vectorButton(QStringLiteral("layers.eyeOn"),
+                                     QStringLiteral("Enable the vector mask"),
+                                     QStringLiteral("propertiesVectorMaskEnable"));
+    vectorMaskDisable_ = vectorButton(QStringLiteral("layers.eyeOff"),
+                                      QStringLiteral("Disable the vector mask"),
+                                      QStringLiteral("propertiesVectorMaskDisable"));
+    vectorMaskLink_ = vectorButton(QStringLiteral("layers.link"),
+                                   QStringLiteral("Link the vector mask"),
+                                   QStringLiteral("propertiesVectorMaskLink"));
+    vectorMaskUnlink_ = vectorButton(QStringLiteral("layers.link"),
+                                     QStringLiteral("Unlink the vector mask"),
+                                     QStringLiteral("propertiesVectorMaskUnlink"));
+    vectorMaskDelete_ = vectorButton(QStringLiteral("layers.delete"),
+                                     QStringLiteral("Delete the vector mask"),
+                                     QStringLiteral("propertiesVectorMaskDelete"));
+    vectorMaskRasterize_ = vectorButton(QStringLiteral("layers.mask"),
+                                        QStringLiteral("Rasterize the vector mask"),
+                                        QStringLiteral("propertiesVectorMaskRasterize"));
+    vectorButtons->addStretch(1);
+    vectorLayout->addLayout(vectorButtons);
+    const auto vectorStub = [this, vectorLayout](const QString& label) {
+        auto* row =
+            new QLabel(QStringLiteral("%1 — not implemented yet").arg(label), vectorMaskSection_);
+        row->setEnabled(false);
+        row->setToolTip(QStringLiteral("%1 — not implemented yet").arg(label));
+        vectorLayout->addWidget(row);
+    };
+    vectorStub(QStringLiteral("Density"));
+    vectorStub(QStringLiteral("Feather"));
+    vectorMaskSection_->hide();
+    layerPageLayout->addWidget(vectorMaskSection_);
+
     stack_->addWidget(layerPage_);
+
+    connect(maskEnable_, &QToolButton::clicked, this, [this]() {
+        if (view_ && layer_mask_set_enabled(*view_, true)) {
+            refresh();
+        }
+    });
+    connect(maskDisable_, &QToolButton::clicked, this, [this]() {
+        if (view_ && layer_mask_set_enabled(*view_, false)) {
+            refresh();
+        }
+    });
+    connect(maskLink_, &QToolButton::clicked, this, [this]() {
+        if (view_ && layer_mask_set_linked(*view_, true)) {
+            refresh();
+        }
+    });
+    connect(maskUnlink_, &QToolButton::clicked, this, [this]() {
+        if (view_ && layer_mask_set_linked(*view_, false)) {
+            refresh();
+        }
+    });
+    connect(maskDelete_, &QToolButton::clicked, this, [this]() {
+        if (view_ && layer_mask_delete(*view_)) {
+            refresh();
+        }
+    });
+    connect(maskApply_, &QToolButton::clicked, this, [this]() {
+        if (view_ && layer_mask_apply(*view_)) {
+            refresh();
+        }
+    });
+
+    connect(vectorMaskEnable_, &QToolButton::clicked, this, [this]() {
+        if (view_ && vector_mask_set_enabled(*view_, true)) {
+            refresh();
+        }
+    });
+    connect(vectorMaskDisable_, &QToolButton::clicked, this, [this]() {
+        if (view_ && vector_mask_set_enabled(*view_, false)) {
+            refresh();
+        }
+    });
+    connect(vectorMaskLink_, &QToolButton::clicked, this, [this]() {
+        if (view_ && vector_mask_set_linked(*view_, true)) {
+            refresh();
+        }
+    });
+    connect(vectorMaskUnlink_, &QToolButton::clicked, this, [this]() {
+        if (view_ && vector_mask_set_linked(*view_, false)) {
+            refresh();
+        }
+    });
+    connect(vectorMaskDelete_, &QToolButton::clicked, this, [this]() {
+        if (view_ && vector_mask_delete(*view_)) {
+            refresh();
+        }
+    });
+    connect(vectorMaskRasterize_, &QToolButton::clicked, this, [this]() {
+        if (view_ && vector_mask_rasterize(*view_)) {
+            refresh();
+        }
+    });
 
     commitTimer_ = new QTimer(this);
     commitTimer_->setSingleShot(true);
@@ -336,6 +499,16 @@ void PropertiesPanel::setPage(int index)
 
 QString PropertiesPanel::resolutionForTest() const { return resolution_->text(); }
 
+bool PropertiesPanel::maskSectionVisibleForTest() const
+{
+    return maskSection_ && maskSection_->isVisibleTo(this);
+}
+
+bool PropertiesPanel::vectorMaskSectionVisibleForTest() const
+{
+    return vectorMaskSection_ && vectorMaskSection_->isVisibleTo(this);
+}
+
 void PropertiesPanel::setView(PictureView* view)
 {
     if (view != view_) {
@@ -462,6 +635,8 @@ void PropertiesPanel::showLayer(int row)
     info_->addRow(QStringLiteral("Locks:"),
                   new QLabel(locks.isEmpty() ? QStringLiteral("None") : locks.join(QStringLiteral(", ")),
                              layerPage_));
+    maskSection_->setVisible(view_->layer_row_has_mask(row));
+    vectorMaskSection_->setVisible(layer_row_has_vector_mask(*view_, row));
 }
 
 void PropertiesPanel::showAdjustment(const QStringList& page)

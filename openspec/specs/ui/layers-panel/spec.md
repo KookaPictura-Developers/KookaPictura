@@ -239,19 +239,50 @@ frozen layers asset set: `layers.link` (Link Layers), `layers.fx` (Layer Style),
 `layers.mask` (Add Layer Mask), `layers.fillAdjustment` (New Fill / Adjustment
 Layer), `layers.group` (New Group), `layers.newLayer` (New Layer), and
 `layers.delete` (Delete). The buttons SHALL keep their text labels, and adding
-an icon SHALL NOT change what each button does. Buttons whose operation is not
-yet implemented (link, fx, mask) SHALL be shown disabled until their operation
-lands.
+an icon SHALL NOT change what each button does. The **Add Layer Mask** button
+SHALL be active: a click SHALL add a `reveal-selection` mask when a selection
+exists and a `reveal-all` mask otherwise, and an `Alt`-click SHALL add a
+`hide-all` mask, each through the layer-mask bridge and each one undoable step.
+The **Layer Style** (`fx`) button SHALL be active: a click SHALL open the Layer
+Style dialog on Blending Options for the active layer when that layer can carry
+a style, and an `Alt`-click SHALL toggle all effects through the layer-style
+bridge in one undoable step. The **Link Layers** button SHALL be shown disabled
+until its operation lands.
 
 #### Scenario: The implemented strip buttons carry icons
 
 - **WHEN** the Layers panel is shown
-- **THEN** its fill/adjustment, group, new-layer, and delete buttons each carry their documented icon
+- **THEN** its mask, fx, fill/adjustment, group, new-layer, and delete buttons each carry their documented icon
 
 #### Scenario: A deferred button is disabled
 
-- **WHEN** the Layers panel is shown before the link, fx, or mask operation exists
-- **THEN** that button is disabled
+- **WHEN** the Layers panel is shown before the link operation exists
+- **THEN** the link button is disabled
+
+#### Scenario: The mask button adds a mask [lmk_strip]
+
+- **WHEN** the user clicks the Add Layer Mask strip button with no selection
+- **THEN** a reveal-all mask is added to the active layer in one undoable step
+
+#### Scenario: The mask button respects a selection [lmk_strip_sel]
+
+- **WHEN** the user clicks the Add Layer Mask strip button while a selection exists
+- **THEN** a reveal-selection mask is added to the active layer in one undoable step
+
+#### Scenario: Alt-clicking the mask button hides all [lmk_strip_alt]
+
+- **WHEN** the user `Alt`-clicks the Add Layer Mask strip button
+- **THEN** a hide-all mask is added to the active layer in one undoable step
+
+#### Scenario: The fx button opens Blending Options
+
+- **WHEN** the user clicks the Layer Style strip button with an active layer that can carry a style
+- **THEN** the Layer Style dialog opens on Blending Options for that layer
+
+#### Scenario: Alt-clicking the fx button toggles all effects
+
+- **WHEN** the user `Alt`-clicks the Layer Style strip button
+- **THEN** every layer's effects are shown when any were hidden and hidden when any were shown, as one undoable step
 
 ### Requirement: Layer tree projection and paths
 
@@ -288,18 +319,29 @@ without panicking and without changing the document.
 The system SHALL draw each row with a delegate that paints, in CS6 order, the
 visibility toggle, the thumbnail (a folder glyph for a group), the name, a
 clipping-mask indicator for a clipped layer, the clipping indentation and base
-underline, the layer-mask thumbnail when a mask is present, and an
-adjustment/style badge when adjustment content is present. A layer whose lock
+underline, the layer-mask thumbnail when a mask is present, an adjustment badge
+when adjustment content is present, a layer-style `fx` badge when the layer
+carries a layer style (an `lfx2` or legacy `lrFX` block), and a compact
+**`Blend If` text chip** when the layer's advanced blending is customised — a
+non-default `Blend If` view, or a raw `blending_ranges` block present without a
+typed view. The chip SHALL be a text-only badge (no icon asset) drawn in the
+row's right-edge badge run left of the `fx` and lock badges, and its advance
+SHALL be reserved by the same right-edge walk that lays out the mask thumbnails
+and the name rect so nothing overlaps. A layer whose lock
 state has any flag set SHALL also show a lock badge at the right side of its
 row; an unlocked layer SHALL show none. The visibility toggle SHALL be an eye
 icon (`layers.eyeOn`/`layers.eyeOff`) drawn slightly inset from the panel's left
 edge and at the same x for every row, independent of nesting depth; the nesting
 indentation SHALL apply to the thumbnail and name, not to the visibility toggle.
 A layer whose color label is not `None` SHALL tint the **visibility toggle's own
-background** (`eyeRect`) with that label color behind the eye glyph, and the
-delegate SHALL NOT paint a color swatch after the name; the tint SHALL keep the
-eye glyph and any selection highlight legible, and the label color elsewhere on
-the row SHALL fall back to the row background. A group with at least one child
+background** (`eyeRect`) with that label color behind the eye glyph, and SHALL
+additionally paint a small color-label **chip** — a short bar of the label
+color, one row tall — at the start of the row content immediately before the
+thumbnail, with the thumbnail and name laid out after the chip so no rect
+overlaps; the tint SHALL keep the eye glyph and any selection highlight legible,
+and the label color elsewhere on the row SHALL fall back to the row background.
+The chip is a paint-only affordance and SHALL NOT alter hit-testing beyond the
+thumbnail and name rects accounting for it. A group with at least one child
 SHALL show a disclosure icon — right when collapsed, down when expanded — at its
 indented position, and clicking that icon SHALL expand or collapse the group. A
 **regular (non-group) layer's thumbnail SHALL be drawn over a cached two-tone
@@ -308,14 +350,18 @@ glyph and no checkerboard. **Every thumbnail SHALL carry a 1 px black outline**,
 and **when exactly one layer is active** (the same singular active-layer
 resolution tool edits use) its thumbnail SHALL additionally show white 1 px
 corner brackets drawn one pixel outside the outline; with zero or multiple active
-layers no brackets are drawn. Row typography SHALL derive from the layer: a
-`background` layer's name SHALL be italic/cursive, every other name normal, and
-a layer that is a member of the frame's link set or a placed/external smart
-object SHALL be underlined through the new `LayerRowLinkedRole` and
-`LayerRowPlacedRole` projections. The delegate SHALL report a row height of at
-least **28 px** through one named constant used by both `sizeHint` and the
-vertical centring math. If an expected icon asset is unavailable, the delegate
-SHALL omit that badge while keeping the row legible rather than fail.
+layers no brackets are drawn. A layer whose row reports the smart-object
+projection SHALL paint the `layers.kindSmartObject` badge on the thumbnail's
+lower-right corner, whether the smart object is embedded or placed/external; the
+badge SHALL be omitted when the asset is missing. Row typography SHALL derive
+from the layer: a `background` layer's name SHALL be italic/cursive, every other
+name normal, and a layer that is a member of the frame's link set or a
+placed/external smart object SHALL be underlined through the new
+`LayerRowLinkedRole` and `LayerRowPlacedRole` projections. The delegate SHALL
+report a row height of at least **28 px** through one named constant used by both
+`sizeHint` and the vertical centring math. If an expected icon asset is
+unavailable, the delegate SHALL omit that badge while keeping the row legible
+rather than fail.
 
 #### Scenario: The visibility toggle is an eye icon [lpr_eye]
 
@@ -333,13 +379,30 @@ SHALL omit that badge while keeping the row legible rather than fail.
 
 - **WHEN** a layer with a non-`None` color label is shown
 - **THEN** the eye toggle's background is filled with that label color behind
-  the eye glyph, no swatch is painted after the name, and the rest of the row
-  background is unchanged
+  the eye glyph and a chip of the same color is painted at the row content edge
+  before the thumbnail, and the rest of the row background is unchanged
+
+#### Scenario: The label chip sits before the thumbnail [lpr_label_chip]
+
+- **WHEN** a labeled row is shown
+- **THEN** the chip is drawn between the disclosure/clipping glyph and the
+  thumbnail, and the thumbnail's left edge follows the chip so the two do not
+  overlap
 
 #### Scenario: An unlabeled layer has no gutter tint [lpr_label_tint_none]
 
 - **WHEN** a layer with color label `None` is shown
-- **THEN** its eye gutter uses the normal row background
+- **THEN** its eye gutter uses the normal row background and no chip is painted
+
+#### Scenario: A smart object shows the badge [lpr_smart_badge]
+
+- **WHEN** an embedded or placed smart-object layer is shown
+- **THEN** its thumbnail draws the smart-object badge on the lower-right corner
+
+#### Scenario: A non-smart layer shows no smart badge [lpr_smart_badge_absent]
+
+- **WHEN** an ordinary pixel layer is shown
+- **THEN** no smart-object badge is drawn on its thumbnail
 
 #### Scenario: A group shows a disclosure icon [lpr_chevron]
 
@@ -399,6 +462,33 @@ SHALL omit that badge while keeping the row legible rather than fail.
 
 - **WHEN** the adjustment badge's icon asset is missing
 - **THEN** the row is still drawn and the badge is simply omitted
+
+#### Scenario: A styled layer shows the fx badge
+
+- **WHEN** a layer that carries a layer style is shown
+- **THEN** its row draws the `layers.fx` badge at its right edge beside the lock
+  and mask badges, and a layer with no style draws no fx badge
+
+#### Scenario: A customised Blend If shows the badge [lpr_blendif_badge]
+
+- **WHEN** a layer whose advanced blending is customised (its Blend If view is
+  not the full `(0, 65535)` default, or a raw `blending_ranges` block is
+  present without a typed view) is shown
+- **THEN** its row draws a compact `Blend If` text chip in the right-edge badge
+  run, and the name elides before the chip so no rect overlaps
+
+#### Scenario: A default Blend If shows no badge [lpr_blendif_badge_absent]
+
+- **WHEN** a layer with no Blend If view and no `blending_ranges` block, or one
+  whose every range is the full default, is shown
+- **THEN** no `Blend If` chip is drawn on its row and the name keeps the full
+  right-edge run
+
+#### Scenario: A raw blending-ranges block without a typed view still badges [lpr_blendif_raw]
+
+- **WHEN** a layer carries a non-empty `blending_ranges` block that cannot be
+  parsed into a typed Blend If view
+- **THEN** its row still draws the `Blend If` chip
 
 ### Requirement: Multi-selection edits and refusals
 
@@ -517,19 +607,26 @@ visible row, the commit SHALL occur without wrapping.
 
 The system SHALL provide a `Panel Options…` dialog from the panel menu with a
 thumbnail size (`None`, `Small`, `Medium`, `Large`), thumbnail contents
-(`Entire Document`, `Layer Bounds`), and an `Expand New Effects` toggle. The
-defaults SHALL be `Medium`, `Entire Document`, and enabled respectively, and the
-three values SHALL persist in the session store, with an older or missing value
-loading the default. Thumbnail contents SHALL be resolved when the thumbnail is
-built: `Layer Bounds` fills the thumbnail from the layer's own bounds, while
-`Entire Document` places the layer's content at its document position scaled
-into a document-sized thumbnail. `Expand New Effects` SHALL have no visible
-effect until effect rows exist.
+(`Entire Document`, `Layer Bounds`), an `Expand New Effects` toggle, an
+`Add "copy" to Copied Layers and Groups` toggle, and a `Use Default Masks on
+Fill Layers` toggle. The defaults SHALL be `Medium`, `Entire Document`, and
+enabled for the three toggles respectively, and all five values SHALL persist in
+the session store, with an older or missing value loading the default. Thumbnail
+contents SHALL be resolved when the thumbnail is built: `Layer Bounds` fills the
+thumbnail from the layer's own bounds, while `Entire Document` places the
+layer's content at its document position scaled into a document-sized thumbnail.
+`Expand New Effects` SHALL have no visible effect until effect rows exist. When
+`Add "copy"` is enabled, a duplicated layer or group SHALL be named
+`"<name> copy"`; when disabled, the copy SHALL keep the original's name. When
+`Use Default Masks` is enabled and a selection is active, a fill or adjustment
+layer created from the panel or the `Layer > New Fill/Adjustment Layer` menu SHALL
+receive that selection as a layer mask; when disabled, the new layer SHALL have
+no mask.
 
 #### Scenario: Defaults on a fresh install [m39_options]
 
 - **WHEN** the panel options are read with no saved session values
-- **THEN** the thumbnail size is Medium, the thumbnail contents is Entire Document, and Expand New Effects is enabled
+- **THEN** the thumbnail size is Medium, the thumbnail contents is Entire Document, Expand New Effects is enabled, Add "copy" is enabled, and Use Default Masks is enabled
 
 #### Scenario: Thumbnail contents changes the thumbnail [m39_options]
 
@@ -538,29 +635,79 @@ effect until effect rows exist.
 
 #### Scenario: Options persist [m39_options]
 
-- **WHEN** the user changes the thumbnail size and expands-new-effects setting and the session is saved and reloaded
-- **THEN** the panel restores those values
+- **WHEN** the user changes any panel-option value and the session is saved and reloaded
+- **THEN** the panel restores those values, including Add "copy" and Use Default Masks
+
+#### Scenario: The copy toggle names a duplicate [lpo_copy_name]
+
+- **WHEN** `Add "copy"` is enabled and a layer named `Base` is duplicated
+- **THEN** the copy is named `Base copy`
+
+#### Scenario: Disabling the copy toggle keeps the source name [lpo_copy_name_off]
+
+- **WHEN** `Add "copy"` is disabled and a layer named `Base` is duplicated
+- **THEN** the copy keeps the name `Base`
+
+#### Scenario: A fill layer takes the selection as a default mask [lpo_default_mask]
+
+- **WHEN** `Use Default Masks` is enabled, a selection is active, and a fill or adjustment layer is created
+- **THEN** the created layer carries a layer mask derived from the selection
+
+#### Scenario: A fill layer created without the option has no mask [lpo_default_mask_off]
+
+- **WHEN** `Use Default Masks` is disabled, a selection is active, and a fill or adjustment layer is created
+- **THEN** the created layer has no layer mask
 
 ### Requirement: Panel and row menus
 
 The system SHALL provide a panel menu and a row context menu. The panel menu
 SHALL offer `Panel Options…`, New Layer, New Group, Duplicate Layer(s), Delete
-Layer(s), Group Layers, Ungroup Layers, Move Layer Up, and Move Layer Down. The
-row context menu SHALL offer those row commands plus Rename and a color-label
-submenu containing `None`, `Red`, `Orange`, `Yellow`, `Green`, `Blue`, `Violet`,
-and `Gray`. For pixel and smart-object rows the row context menu SHALL also
-offer `Export As…` and `Quick Export as PNG`; those two entries SHALL be absent
-or disabled on group, adjustment, and type rows. Right-clicking the visibility
-toggle SHALL offer show/hide this layer only and show/hide all. The bottom action
-strip SHALL remain exactly the CS6 seven buttons, so Move Up/Down SHALL NOT
-appear in the strip. Commands that M39 does not implement SHALL NOT be shown in
-these menus.
+Layer(s), Group Layers, Ungroup Layers, Move Layer Up, and Move Layer Down;
+commands the system does not yet implement SHALL appear disabled with a
+`— not implemented yet` tooltip rather than being hidden.
+
+The row context menu SHALL be assembled **per layer kind**. Each kind (pixel,
+background, group, adjustment, type, shape, smart object) SHALL be offered the
+commands that apply to it, and SHALL NOT be offered commands that do not apply
+(for example, a group or adjustment row SHALL NOT offer `Export As…` or `Quick
+Export as PNG`, and a group row SHALL NOT offer `Fill`-related content). Every
+applicable command that is not yet implemented SHALL still appear, rendered
+disabled, carrying a `— not implemented yet` tooltip, so that implementing a
+command enables an existing row rather than adding one. The commands common to
+every kind SHALL include Rename and a color-label submenu containing `None`,
+`Red`, `Orange`, `Yellow`, `Green`, `Blue`, `Violet`, and `Gray`.
+
+A shape row SHALL, in addition to the common commands, offer **Copy Shape
+Attributes**, **Paste Shape Attributes**, and **Rasterize Shape**, each wired to
+the shape bridge and acting on that row. A shape row SHALL be resolved by its
+shape-layer projection (a fill cut to a vector mask), not by its adjustment
+kind, so it is not offered the adjustment-only `Edit Adjustment…` row.
+
+A smart-object row SHALL, in addition to the common and pixel commands, offer
+**Reset Transform**, **Convert to Layers**, and **New Smart Object via Copy**,
+each wired to the smart-object bridge and acting on that row. Reset Transform
+and Convert to Layers SHALL be enabled only when the row's embedded source
+parses as a PSD/PSB document; New Smart Object via Copy SHALL be enabled for a
+non-group, non-adjustment `Embedded` smart object with a payload. A non-smart
+row SHALL NOT offer these rows. Each applied action SHALL be one undoable step.
+
+For a pixel row the menu SHALL offer **Add Layer Mask**, **Delete Layer Mask**,
+**Enable Layer Mask**, and **Disable Layer Mask**, each wired to the layer-mask
+bridge: Add Layer Mask SHALL add a `reveal-selection` mask when a selection
+exists and a `reveal-all` mask otherwise; Delete Layer Mask SHALL remove the
+mask; and Enable/Disable Layer Mask SHALL set the mask's enabled state. Each
+applied action SHALL be one undoable step.
+
+Right-clicking the visibility toggle SHALL offer show/hide this layer only and
+show/hide all. The bottom action strip SHALL remain exactly the CS6 seven
+buttons, so Move Up/Down SHALL NOT appear in the strip.
 
 #### Scenario: The panel menu contains the wired commands [m39_menus]
 
 - **WHEN** the panel menu is opened
 - **THEN** it contains Panel Options, New Layer, New Group, Duplicate, Delete,
-  Group, Ungroup, Move Up, and Move Down, and no unimplemented command
+  Group, Ungroup, Move Up, and Move Down; commands that are not yet implemented
+  are shown disabled with the `— not implemented yet` tooltip
 
 #### Scenario: The row menu sets a color label [m39_menus]
 
@@ -592,6 +739,65 @@ these menus.
 
 - **WHEN** the user opens the row menu for a type layer
 - **THEN** it does not offer Export As… or Quick Export as PNG
+
+#### Scenario: A shape row offers its shape commands
+
+- **WHEN** the user opens the row menu for a shape layer
+- **THEN** it contains Copy Shape Attributes, Paste Shape Attributes, and
+  Rasterize Shape, enabled and wired to the shape bridge
+
+#### Scenario: A shape row is not offered the adjustment edit
+
+- **WHEN** the user opens the row menu for a shape layer
+- **THEN** it does not contain Edit Adjustment…
+
+#### Scenario: A smart-object row offers its smart-object commands [lpr_smart_rows]
+
+- **WHEN** the user opens the row menu for a smart-object layer
+- **THEN** it contains Reset Transform, Convert to Layers, and New Smart Object
+  via Copy, enabled and wired to the smart-object bridge
+
+#### Scenario: A plain pixel row omits the smart-object commands
+
+- **WHEN** the user opens the row menu for a plain pixel layer
+- **THEN** it does not contain Reset Transform, Convert to Layers, or New Smart
+  Object via Copy
+
+#### Scenario: A pixel row offers its full command set
+
+- **WHEN** the user opens the row menu for a pixel layer
+- **THEN** it contains the common commands, the color-label submenu, `Export
+  As…`, `Quick Export as PNG`, and the pixel-applicable mask, style, clipping,
+  smart-object, and rasterize commands — each either enabled or disabled with a
+  tooltip when not yet implemented
+
+#### Scenario: The row menu adds and deletes a mask [lmk_rowmenu]
+
+- **WHEN** the user picks Add Layer Mask for a pixel row, then Delete Layer Mask
+- **THEN** a mask is added and then removed from the active layer, each in one undo step
+
+#### Scenario: The row menu toggles mask enablement [lmk_rowmenu_enable]
+
+- **WHEN** the user picks Enable Layer Mask or Disable Layer Mask for a masked layer
+- **THEN** the mask's disabled bit is cleared or set in one undo step
+
+#### Scenario: A group row omits content commands
+
+- **WHEN** the user opens the row menu for a group row
+- **THEN** it does not offer `Export As…`, `Quick Export as PNG`, or fill
+  commands, and it offers `Ungroup Layers`
+
+#### Scenario: A type row offers rasterize
+
+- **WHEN** the user opens the row menu for a type layer
+- **THEN** it offers `Rasterize Type`
+
+#### Scenario: An unimplemented applicable command is disabled, not absent
+
+- **WHEN** the user opens the row menu for a kind and a command applies to that
+  kind but is not yet implemented
+- **THEN** the command is present, disabled, and shows the `— not implemented
+  yet` tooltip
 
 ### Requirement: Layer row tooltips
 
@@ -1146,3 +1352,256 @@ gutter separator SHALL stay 1 px.
 - **WHEN** a layer row is shown
 - **THEN** the content column begins 2 px to the right of the visibility gutter,
   with the gutter separator still 1 px
+
+### Requirement: Layer mask row indicators
+
+When a layer row carries a layer mask, the delegate SHALL draw a link glyph
+between the layer thumbnail and the mask thumbnail when that mask is linked to
+its layer, and SHALL draw a red cross over the mask thumbnail when the mask is
+disabled. When a row carries a vector mask, the delegate SHALL likewise draw a
+vector-mask thumbnail with its own link glyph when linked and red cross when
+disabled. Clicking a mask's link glyph SHALL toggle that mask's linked state,
+and `Shift`-clicking a mask thumbnail SHALL toggle that mask's enabled state,
+through the matching bridge; those clicks SHALL be consumed so they do not start
+a rename, select another row, or begin a drag. The model SHALL expose the
+per-row mask and vector-mask linked and disabled states through roles populated
+from the bridge.
+
+#### Scenario: A linked mask shows the link glyph [lmk_row_link]
+
+- **WHEN** a row whose mask is linked is shown
+- **THEN** a link glyph is drawn between the layer and mask thumbnails
+
+#### Scenario: A disabled mask shows a red cross [lmk_row_disabled]
+
+- **WHEN** a row whose mask is disabled is shown
+- **THEN** a red cross is drawn over the mask thumbnail
+
+#### Scenario: Clicking the link glyph unlinks the mask [lmk_row_link_click]
+
+- **WHEN** the user clicks the link glyph on a linked mask row
+- **THEN** the mask is unlinked in one undoable step
+
+#### Scenario: Shift-clicking the mask thumbnail disables it [lmk_row_shift]
+
+- **WHEN** the user `Shift`-clicks the mask thumbnail of an enabled mask
+- **THEN** the mask is disabled in one undoable step
+
+#### Scenario: A vector mask shows its own indicator [vmk_row_vector]
+
+- **WHEN** a row whose vector mask is linked and enabled is shown
+- **THEN** a vector-mask thumbnail is drawn alongside the layer thumbnail with
+  its link glyph
+
+#### Scenario: A disabled vector mask shows a red cross [vmk_row_vector_disabled]
+
+- **WHEN** a row whose vector mask is disabled is shown
+- **THEN** a red cross is drawn over the vector-mask thumbnail
+
+#### Scenario: Clicking the vector link glyph unlinks it [vmk_row_vector_link_click]
+
+- **WHEN** the user clicks the vector-mask link glyph on a linked row
+- **THEN** the vector mask is unlinked in one undoable step
+
+#### Scenario: Shift-clicking the vector thumbnail disables it [vmk_row_vector_shift]
+
+- **WHEN** the user `Shift`-clicks the vector-mask thumbnail of an enabled vector mask
+- **THEN** the vector mask is disabled in one undoable step
+
+### Requirement: Fill / Adjustment creation menu
+
+The Layers panel's New Fill / Adjustment strip button SHALL open a menu whose
+Fill group offers Solid Color… and Gradient…, a Pattern… entry that is present
+but disabled with the `— not implemented yet` tooltip until pattern authoring
+exists, and whose Adjustment group lists all sixteen CS6 adjustment kinds.
+Choosing an adjustment kind SHALL create that adjustment layer through the
+bridge. The Fill and Adjustment groups SHALL be separated as in CS6.
+
+#### Scenario: The menu lists every adjustment kind
+
+- **WHEN** the New Fill / Adjustment menu is opened
+- **THEN** it contains an entry for each of the sixteen adjustment kinds, each enabled, and the choosing creates the matching layer
+
+#### Scenario: Pattern stays disabled until authoring exists
+
+- **WHEN** the New Fill / Adjustment menu is opened before pattern authoring exists
+- **THEN** the Pattern… entry is present, disabled, and carries the `— not implemented yet` tooltip
+
+### Requirement: Layer Content Options opens the fill / adjustment editor
+
+`Layer > Layer Content Options…` SHALL be enabled only when the current layer is
+a fill or adjustment layer. Invoking it SHALL show the Properties panel and
+refresh it so it reflects that layer. For any other current layer the command
+SHALL be disabled and invoking it SHALL do nothing.
+
+#### Scenario: The command opens Properties for an adjustment layer
+
+- **WHEN** an adjustment or fill layer is current and `Layer Content Options…` is invoked
+- **THEN** the Properties panel is shown and reflects that layer
+
+#### Scenario: The command is disabled for other layers
+
+- **WHEN** the current layer is a pixel, type, group, or Background layer
+- **THEN** `Layer Content Options…` is disabled and invoking it does nothing
+
+### Requirement: Type and shape forced locks
+
+The Layers panel lock strip SHALL show Lock Transparency and Lock Image forced on
+for a type or shape layer, and SHALL NOT allow either to be deselected. The two
+toggle buttons SHALL be disabled while such a layer is the current row so a click
+cannot clear them, and the layer's reported lock state SHALL include those two
+bits so the strip renders them checked. The engine SHALL enforce the same rule:
+a request that would clear the Transparency or Image lock on a type or shape
+layer SHALL leave those bits set (clearing any other requested bit such as
+Position still succeeds) and SHALL record no history state when nothing changed.
+
+#### Scenario: A shape layer shows the forced locks
+
+- **WHEN** a shape layer becomes the current row
+- **THEN** the Lock Transparency and Lock Image toggles are checked and are
+  disabled so they cannot be deselected
+
+#### Scenario: A type layer shows the forced locks
+
+- **WHEN** a type layer becomes the current row
+- **THEN** the Lock Transparency and Lock Image toggles are checked and are
+  disabled so they cannot be deselected
+
+#### Scenario: The bridge refuses to clear a forced bit
+
+- **WHEN** the lock bridge is asked to clear Transparency or Image on a type or
+  shape layer
+- **THEN** the bit stays set, no history state is recorded, and the layer is
+  otherwise unchanged
+
+### Requirement: Vector mask commands
+
+The system SHALL provide `Layer ▸ Vector Mask` leaves for Reveal All, Hide All,
+Current Path, Delete, Enable, Disable, Link, and Unlink, and a
+`Layer ▸ Rasterize ▸ Vector Mask` leaf, each registered as implemented with a
+frozen command id and wired to the vector-mask bridge over the active layer,
+each applied action one undoable step. Add-style leaves SHALL be enabled when a
+document exists and the active layer has no vector mask; Current Path SHALL also
+require a non-empty work path; Delete, Enable, Disable, Link, Unlink, and
+Rasterize SHALL be enabled only when the active layer has a vector mask.
+
+#### Scenario: The add leaves light up without a vector mask [vmk_menu_add]
+
+- **WHEN** a document's active layer has no vector mask
+- **THEN** Reveal All and Hide All are enabled and Delete, Enable, Disable, Link,
+  Unlink, and Rasterize are disabled
+
+#### Scenario: The mask leaves light up with a vector mask [vmk_menu_present]
+
+- **WHEN** the active layer carries a vector mask
+- **THEN** Delete, Enable, Disable, Link, Unlink, and Rasterize are enabled and
+  Reveal All and Hide All are disabled
+
+#### Scenario: Current Path needs a work path [vmk_menu_current]
+
+- **WHEN** the document has no work path
+- **THEN** Current Path is disabled
+
+#### Scenario: Reveal All adds and Delete removes through the menu [vmk_menu_dispatch]
+
+- **WHEN** the user dispatches Reveal All and then Delete for the active layer
+- **THEN** a vector mask is added and then removed, each in one undoable step
+
+#### Scenario: Rasterize consumes the vector mask [vmk_menu_rasterize]
+
+- **WHEN** the user dispatches Rasterize Vector Mask for a layer with a vector mask
+- **THEN** the layer carries a layer mask instead and one undoable step is recorded
+
+### Requirement: Smart Filter layer-menu commands
+
+The Layers menu SHALL expose `Layer > Smart Filter > Clear Smart Filters` with
+the stable id `layer.smartFilters.clear`, alongside the Disable Filter Mask and
+Delete Filter Mask leaves. Clear Smart Filters SHALL be enabled only when the
+current layer carries at least one smart filter, and dispatching it SHALL clear
+the current smart object's filter stack through the document operations. The
+Disable Filter Mask and Delete Filter Mask leaves SHALL remain disabled until
+filter-mask decoding lands.
+
+#### Scenario: Clear is enabled only for a smart object with filters
+
+- **WHEN** the current layer is a smart object with one or more smart filters
+- **THEN** Clear Smart Filters is enabled, and it is disabled for a non-smart layer or a smart object with no filters
+
+#### Scenario: Dispatching Clear empties the current stack
+
+- **WHEN** Clear Smart Filters is dispatched on the current smart object
+- **THEN** the layer reports no smart filters and the panel's Smart Filters row disappears
+
+#### Scenario: The mask leaves stay disabled
+
+- **WHEN** the current layer is a smart object with filters but no decoded filter mask
+- **THEN** Disable Filter Mask and Delete Filter Mask are disabled
+
+### Requirement: Layer style panel integration
+
+The Layers panel SHALL be the surface that reaches the layer-style feature. A
+row double-click outside the name and the eye/mask controls SHALL open the Layer
+Style dialog on Blending Options for that layer when the layer can carry a style
+(`layer_style_can_edit`), and SHALL do nothing otherwise. The row context menu
+SHALL offer **Blending Options…**, **Copy Layer Style**, **Paste Layer Style**,
+and **Clear Layer Style** as implemented commands: Blending Options SHALL appear
+for pixel, background, group, and type rows and SHALL be enabled only where the
+layer can carry a style; Copy and Clear SHALL be enabled when the row's layer
+carries a style; Paste SHALL be enabled when the app-wide style clipboard is
+non-empty. Choosing a command SHALL act on the row's layer through the
+layer-style bridge and SHALL record through the bridge's own history.
+
+An `Alt`-click on a styled-or-adjustment row's right-edge `fx` region SHALL
+toggle every layer's effects through `layer_style_set_all_visible`, showing
+them when all were hidden and hiding them when any were shown, as one undoable
+step.
+
+The filter row's **Effect** dimension SHALL be enabled and SHALL list the ten
+effect keys from `layer_style_effect_names()`; selecting an effect SHALL match
+the rows whose layer carries that effect (and, as with the other dimensions,
+their ancestors), and a row whose layer does not carry it SHALL be filtered out.
+
+#### Scenario: A double-click opens Blending Options
+
+- **WHEN** a pixel layer row is double-clicked outside its name and its eye/mask controls
+- **THEN** the Layer Style dialog opens on Blending Options for that layer
+
+#### Scenario: A background double-click does not open a style
+
+- **WHEN** the Background row is double-clicked outside its name
+- **THEN** the Background conversion path runs and no Layer Style dialog opens
+
+#### Scenario: The style rows report their enablement
+
+- **WHEN** the row menu is opened for a pixel layer that carries a color overlay and has a copied style available
+- **THEN** Blending Options, Copy Layer Style, Paste Layer Style, and Clear Layer Style are all enabled
+
+#### Scenario: An unstyled pixel row disables Copy and Clear
+
+- **WHEN** the row menu is opened for a pixel layer with no layer style
+- **THEN** Blending Options is enabled and Copy Layer Style, Paste Layer Style, and Clear Layer Style are disabled
+
+#### Scenario: An adjustment row omits the style rows
+
+- **WHEN** the row menu is opened for an adjustment layer
+- **THEN** it does not offer Blending Options, Copy Layer Style, Paste Layer Style, or Clear Layer Style
+
+#### Scenario: The row menu clears a row's style
+
+- **WHEN** Clear Layer Style is chosen for a pixel row that carries a style
+- **THEN** the row's style is removed in one undoable step and its fx badge disappears
+
+#### Scenario: Alt-clicking the fx region toggles all effects
+
+- **WHEN** the user `Alt`-clicks the fx badge of a styled row while effects are shown
+- **THEN** every layer's effects are hidden in one undoable step, and a second `Alt`-click shows them again
+
+#### Scenario: The Effect dimension matches styled rows
+
+- **WHEN** the filter uses the Effect dimension with an effect a layer carries
+- **THEN** that layer's row is shown and rows without the effect are hidden
+
+#### Scenario: The Effect dimension lists the effect keys
+
+- **WHEN** the filter's Effect dimension is selected
+- **THEN** its choices are the ten effect keys from the layer-style effect list

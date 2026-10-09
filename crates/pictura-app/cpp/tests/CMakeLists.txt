@@ -37,6 +37,7 @@ set(PICTURA_QT_TESTS
     tst_print
     tst_image_adjustments
     tst_layers_smart_filters
+    tst_smart_object_actions
     tst_edit_shortcuts
     tst_workspaces
     tst_zoom_tool

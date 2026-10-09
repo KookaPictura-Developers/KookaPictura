@@ -6,6 +6,12 @@ use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QImage, QString, QStringList};
 use pictura_core::{BlendMode, ColorLabel, Document, Layer};
 
+mod layer_masks;
+mod layers_surface;
+mod matting;
+mod smart_object_actions;
+mod vector_masks;
+
 impl qobject::PictureView {
     pub fn layer_count(&self) -> i32 {
         self.rust()
@@ -124,18 +130,23 @@ impl qobject::PictureView {
     }
 
     pub fn set_layer_lock(mut self: Pin<&mut Self>, i: i32, flag: &QString, on: bool) -> bool {
-        let Some(bit) = lock_bit(flag.to_string().as_str()) else {
+        let Some(mut bit) = lock_bit(flag.to_string().as_str()) else {
             return false;
         };
-        // ponytail: no type/shape layers yet, so nothing forces a lock;
-        // the "cannot unlock a forced lock" rule is M37's.
         self.as_mut().mutate_meta(i, "Lock", |layer, background| {
             if background {
-                false
-            } else {
-                layer.lock = layer.lock.with(bit, on);
-                true
+                return false;
             }
+            // CS6 forces Transparency and Image on for type and shape layers,
+            // so an unlock request keeps them set; other bits still clear.
+            if !on && pictura_render::has_forced_locks(layer) {
+                bit &= !(pictura_core::LockFlags::TRANSPARENCY | pictura_core::LockFlags::PIXELS);
+            }
+            if bit == 0 {
+                return false;
+            }
+            layer.lock = layer.lock.with(bit, on);
+            true
         })
     }
 
@@ -238,8 +249,15 @@ impl qobject::PictureView {
     }
 
     pub fn duplicate_layer(mut self: Pin<&mut Self>, index: i32) -> i32 {
+        let add_copy = self.rust().add_copy;
         let created = match self.as_mut().rust_mut().doc.as_mut() {
-            Some(doc) => pictura_render::duplicate_layer(doc, index),
+            Some(doc) => {
+                let created = pictura_render::duplicate_layer(doc, index);
+                if created >= 0 && !add_copy {
+                    doc.layers[created as usize].name = doc.layers[index as usize].name.clone();
+                }
+                created
+            }
             None => -1,
         };
         if created >= 0 {
@@ -339,8 +357,13 @@ impl qobject::PictureView {
     }
 
     pub fn layer_row_lock(&self, i: i32) -> i32 {
-        self.row_at(i)
-            .map_or(0, |(_, _, _, layer)| layer.lock.bits() as i32)
+        self.row_at(i).map_or(0, |(_, _, _, layer)| {
+            let mut bits = layer.lock.bits();
+            if pictura_render::has_forced_locks(layer) {
+                bits |= pictura_core::LockFlags::TRANSPARENCY | pictura_core::LockFlags::PIXELS;
+            }
+            bits as i32
+        })
     }
 
     pub fn layer_row_color(&self, i: i32) -> i32 {
@@ -647,10 +670,23 @@ impl qobject::PictureView {
     }
 
     pub fn duplicate_layers(mut self: Pin<&mut Self>, paths: &QStringList) -> QStringList {
+        let add_copy = self.rust().add_copy;
         let owned = list_of_strings(paths);
         let refs = as_str_slice(&owned);
         let created = match self.as_mut().rust_mut().doc.as_mut() {
-            Some(doc) => pictura_render::duplicate_paths(doc, &refs),
+            Some(doc) => {
+                let created = pictura_render::duplicate_paths(doc, &refs);
+                if !add_copy {
+                    for path in &created {
+                        if let Some(layer) = pictura_render::resolve_path_mut(doc, path) {
+                            if let Some(stripped) = layer.name.strip_suffix(" copy") {
+                                layer.name = stripped.to_string();
+                            }
+                        }
+                    }
+                }
+                created
+            }
             None => Vec::new(),
         };
         if !created.is_empty() {

@@ -5,6 +5,8 @@
 #include "layers_panel_internal.h"
 #include "percent_field.h"
 
+#include "pictura_app/src/cxxqt_object/impl_layers/layers_surface.cxxqt.h"
+
 #include <QtCore/QCoreApplication>
 #include <QtCore/QMetaObject>
 #include <QtCore/QMimeData>
@@ -26,6 +28,7 @@
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QMenu>
+#include <QtWidgets/QToolButton>
 #include <QtWidgets/QSlider>
 #include <QtWidgets/QStyle>
 #include <QtWidgets/QStyleOptionViewItem>
@@ -145,6 +148,26 @@ void LayersPanel::setOptionsForTest(int size, int contents, bool expand)
     persistOptions();
 }
 
+bool LayersPanel::addCopyOnDuplicateForTest() const
+{
+    return addCopyOnDuplicate_;
+}
+
+bool LayersPanel::useDefaultMasksOnFillForTest() const
+{
+    return useDefaultMasksOnFill_;
+}
+
+void LayersPanel::setOptionFlagsForTest(bool addCopy, bool useDefaultMasks)
+{
+    addCopyOnDuplicate_ = addCopy;
+    useDefaultMasksOnFill_ = useDefaultMasks;
+    if (view_) {
+        set_layers_panel_options(*view_, addCopyOnDuplicate_, useDefaultMasksOnFill_);
+    }
+    persistOptions();
+}
+
 QStringList LayersPanel::rowMenuTextsForTest(const QString& kind)
 {
     QMenu menu;
@@ -156,6 +179,112 @@ QStringList LayersPanel::rowMenuTextsForTest(const QString& kind)
         }
     }
     return texts;
+}
+
+bool LayersPanel::rowMenuEnabledForTest(const QString& kind, const QString& text)
+{
+    QMenu menu;
+    populateRowMenu(menu, QString(), 0, kind);
+    for (QAction* action : menu.actions()) {
+        if (!action->isSeparator() && action->text() == text) {
+            return action->isEnabled();
+        }
+    }
+    return false;
+}
+
+QString LayersPanel::rowMenuToolTipForTest(const QString& kind, const QString& text)
+{
+    QMenu menu;
+    populateRowMenu(menu, QString(), 0, kind);
+    for (QAction* action : menu.actions()) {
+        if (!action->isSeparator() && action->text() == text) {
+            return action->toolTip();
+        }
+    }
+    return QString();
+}
+
+QStringList LayersPanel::shapeRowMenuTextsForTest()
+{
+    QMenu menu;
+    populateRowMenu(menu, QString(), 0, QStringLiteral("adjustment"), true);
+    QStringList texts;
+    for (QAction* action : menu.actions()) {
+        if (!action->isSeparator()) {
+            texts.push_back(action->text());
+        }
+    }
+    return texts;
+}
+
+bool LayersPanel::shapeRowMenuEnabledForTest(const QString& text)
+{
+    QMenu menu;
+    populateRowMenu(menu, QString(), 0, QStringLiteral("adjustment"), true);
+    for (QAction* action : menu.actions()) {
+        if (!action->isSeparator() && action->text() == text) {
+            return action->isEnabled();
+        }
+    }
+    return false;
+}
+
+QStringList LayersPanel::smartRowMenuTextsForTest()
+{
+    QMenu menu;
+    populateRowMenu(menu, QString(), 0, QStringLiteral("pixel"), false, true);
+    QStringList texts;
+    for (QAction* action : menu.actions()) {
+        if (!action->isSeparator()) {
+            texts.push_back(action->text());
+        }
+    }
+    return texts;
+}
+
+bool LayersPanel::lockToggleEnabledForTest(int flag) const
+{
+    QToolButton* button = nullptr;
+    switch (flag) {
+    case 0:
+        button = lockTransparency_;
+        break;
+    case 1:
+        button = lockPixels_;
+        break;
+    case 2:
+        button = lockPosition_;
+        break;
+    case 3:
+        button = lockAll_;
+        break;
+    default:
+        return false;
+    }
+    return button && button->isEnabled();
+}
+
+bool LayersPanel::lockToggleCheckedForTest(int flag) const
+{
+    QToolButton* button = nullptr;
+    switch (flag) {
+    case 0:
+        button = lockTransparency_;
+        break;
+    case 1:
+        button = lockPixels_;
+        break;
+    case 2:
+        button = lockPosition_;
+        break;
+    case 3:
+        button = lockAll_;
+        break;
+    default:
+        return false;
+    }
+    return button && button->isChecked();
 }
 
 QStringList LayersPanel::colorLabelTextsForTest()
@@ -291,6 +420,100 @@ void LayersPanel::setFilterAttributeForTest(const QString& attr, bool enabled)
 int LayersPanel::filterDimensionForTest() const
 {
     return filterBar_ ? filterBar_->dimensionIndexForTest() : -1;
+}
+
+bool LayersPanel::rowHasStyleForTest(const QString& path) const
+{
+    return model_ && model_->indexForPath(path).data(HasLayerStyleRole).toBool();
+}
+
+QRect LayersPanel::rowFxRectForTest(const QString& path) const
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || !delegate_ || !tree_) {
+        return {};
+    }
+    const QRect vr = tree_->visualRect(index);
+    return delegate_->fxRect(QRect(0, 0, vr.width(), vr.height()), index);
+}
+
+void LayersPanel::altClickRowFxForTest(const QString& path)
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || !delegate_ || !tree_) {
+        return;
+    }
+    const QRect vr = tree_->visualRect(index);
+    const QRect fx = delegate_->fxRect(vr, index);
+    if (fx.isEmpty()) {
+        return;
+    }
+    const QPoint at = fx.center();
+    QMouseEvent press(QEvent::MouseButtonPress, at, tree_->viewport()->mapToGlobal(at),
+                      Qt::LeftButton, Qt::LeftButton, Qt::AltModifier);
+    QApplication::sendEvent(tree_->viewport(), &press);
+}
+
+bool LayersPanel::rowHasBlendIfForTest(const QString& path) const
+{
+    return model_ && model_->indexForPath(path).data(HasBlendIfRole).toBool();
+}
+
+QRect LayersPanel::rowBlendIfRectForTest(const QString& path) const
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || !delegate_ || !tree_) {
+        return {};
+    }
+    const QRect vr = tree_->visualRect(index);
+    return delegate_->blendIfRect(QRect(0, 0, vr.width(), vr.height()), index);
+}
+
+QStringList LayersPanel::rowMenuTextsForPathForTest(const QString& path)
+{
+    const QModelIndex index = model_ ? model_->indexForPath(path) : QModelIndex();
+    QMenu menu;
+    populateRowMenu(menu, path, index.data(ColorRole).toInt(), index.data(KindRole).toString(),
+                    index.data(LayerRowShapeRole).toBool(),
+                    index.data(SmartObjectRole).toBool());
+    QStringList texts;
+    for (QAction* action : menu.actions()) {
+        if (!action->isSeparator()) {
+            texts.push_back(action->text());
+        }
+    }
+    return texts;
+}
+
+bool LayersPanel::rowMenuEnabledForPathForTest(const QString& path, const QString& text)
+{
+    const QModelIndex index = model_ ? model_->indexForPath(path) : QModelIndex();
+    QMenu menu;
+    populateRowMenu(menu, path, index.data(ColorRole).toInt(), index.data(KindRole).toString(),
+                    index.data(LayerRowShapeRole).toBool(),
+                    index.data(SmartObjectRole).toBool());
+    for (QAction* action : menu.actions()) {
+        if (!action->isSeparator() && action->text() == text) {
+            return action->isEnabled();
+        }
+    }
+    return false;
+}
+
+bool LayersPanel::performRowActionForTest(const QString& id, const QString& path)
+{
+    return performRowAction(id, path);
+}
+
+void LayersPanel::setFilterEffectForTest(const QString& effect, bool enabled)
+{
+    LayerFilter filter = filterBar_ ? filterBar_->filter() : LayerFilter{};
+    filter.enabled = enabled;
+    filter.effect = effect;
+    if (filterBar_) {
+        filterBar_->setFilter(filter);
+    }
+    applyFilter(filter);
 }
 
 bool LayersPanel::headerOrderOkForTest() const
@@ -693,7 +916,15 @@ bool LayersPanel::ctrlClickThumbnailForTest(const QString& path)
 
 bool LayersPanel::inlineEditorOpenForTest() const
 {
-    return tree_ && tree_->viewport()->findChild<QLineEdit*>() != nullptr;
+    if (!tree_) {
+        return false;
+    }
+    for (QLineEdit* editor : tree_->viewport()->findChildren<QLineEdit*>()) {
+        if (editor->isVisible()) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool LayersPanel::rootDropEnabledForTest() const
@@ -755,6 +986,99 @@ bool LayersPanel::rowLinkedForTest(const QString& path) const
     return model_ && model_->indexForPath(path).data(LayerRowLinkedRole).toBool();
 }
 
+bool LayersPanel::rowMaskLinkedForTest(const QString& path) const
+{
+    return model_ && model_->indexForPath(path).data(MaskLinkedRole).toBool();
+}
+
+bool LayersPanel::rowMaskDisabledForTest(const QString& path) const
+{
+    return model_ && model_->indexForPath(path).data(MaskDisabledRole).toBool();
+}
+
+bool LayersPanel::clickLinkGlyphForTest(const QString& path)
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || !delegate_ || !tree_) {
+        return false;
+    }
+    const QRect glyph = delegate_->linkGlyphRect(tree_->visualRect(index), index);
+    if (glyph.isEmpty()) {
+        return false;
+    }
+    const QPoint at = glyph.center();
+    QMouseEvent press(QEvent::MouseButtonPress, at, tree_->viewport()->mapToGlobal(at),
+                      Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(tree_->viewport(), &press);
+    return true;
+}
+
+bool LayersPanel::shiftClickMaskThumbnailForTest(const QString& path)
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || !delegate_ || !tree_) {
+        return false;
+    }
+    const QRect mask = delegate_->maskThumbRect(tree_->visualRect(index), index);
+    if (mask.isEmpty()) {
+        return false;
+    }
+    const QPoint at = mask.center();
+    QMouseEvent press(QEvent::MouseButtonPress, at, tree_->viewport()->mapToGlobal(at),
+                      Qt::LeftButton, Qt::LeftButton, Qt::ShiftModifier);
+    QCoreApplication::sendEvent(tree_->viewport(), &press);
+    return true;
+}
+
+bool LayersPanel::rowHasVectorMaskForTest(const QString& path) const
+{
+    return model_ && model_->indexForPath(path).data(HasVectorMaskRole).toBool();
+}
+
+bool LayersPanel::rowVectorMaskLinkedForTest(const QString& path) const
+{
+    return model_ && model_->indexForPath(path).data(VectorMaskLinkedRole).toBool();
+}
+
+bool LayersPanel::rowVectorMaskDisabledForTest(const QString& path) const
+{
+    return model_ && model_->indexForPath(path).data(VectorMaskDisabledRole).toBool();
+}
+
+bool LayersPanel::clickVectorLinkGlyphForTest(const QString& path)
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || !delegate_ || !tree_) {
+        return false;
+    }
+    const QRect glyph = delegate_->vectorLinkGlyphRect(tree_->visualRect(index), index);
+    if (glyph.isEmpty()) {
+        return false;
+    }
+    const QPoint at = glyph.center();
+    QMouseEvent press(QEvent::MouseButtonPress, at, tree_->viewport()->mapToGlobal(at),
+                      Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(tree_->viewport(), &press);
+    return true;
+}
+
+bool LayersPanel::shiftClickVectorMaskThumbnailForTest(const QString& path)
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || !delegate_ || !tree_) {
+        return false;
+    }
+    const QRect mask = delegate_->vectorMaskThumbRect(tree_->visualRect(index), index);
+    if (mask.isEmpty()) {
+        return false;
+    }
+    const QPoint at = mask.center();
+    QMouseEvent press(QEvent::MouseButtonPress, at, tree_->viewport()->mapToGlobal(at),
+                      Qt::LeftButton, Qt::LeftButton, Qt::ShiftModifier);
+    QCoreApplication::sendEvent(tree_->viewport(), &press);
+    return true;
+}
+
 bool LayersPanel::rowPlacedForTest(const QString& path) const
 {
     return model_ && model_->indexForPath(path).data(LayerRowPlacedRole).toBool();
@@ -788,6 +1112,38 @@ bool LayersPanel::clickSmartFilterEyeForTest(const QString& path)
 bool LayersPanel::rowShapeForTest(const QString& path) const
 {
     return model_ && model_->indexForPath(path).data(LayerRowShapeRole).toBool();
+}
+
+bool LayersPanel::rowSmartObjectForTest(const QString& path) const
+{
+    return model_ && model_->indexForPath(path).data(SmartObjectRole).toBool();
+}
+
+QColor LayersPanel::rowLabelChipColorForTest(const QString& path) const
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || !delegate_ || !tree_) {
+        return {};
+    }
+    const QRect vr = tree_->visualRect(index);
+    if (vr.width() <= 4 || vr.height() <= 2) {
+        return {};
+    }
+    QImage image(vr.size(), QImage::Format_ARGB32_Premultiplied);
+    image.fill(tree_->palette().color(QPalette::Base));
+    QPainter painter(&image);
+    QStyleOptionViewItem option;
+    option.rect = QRect(0, 0, vr.width(), vr.height());
+    option.palette = tree_->palette();
+    option.widget = tree_;
+    option.state = QStyle::State_Enabled;
+    delegate_->paint(&painter, option, index);
+    painter.end();
+    const QRect chip = delegate_->labelChipRect(option.rect, index);
+    if (chip.isEmpty()) {
+        return {};
+    }
+    return image.pixelColor(chip.left() + 1, chip.center().y());
 }
 
 bool LayersPanel::rowNameItalicForTest(const QString& path) const

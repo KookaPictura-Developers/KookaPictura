@@ -71,6 +71,10 @@ SessionState loadSession()
     state.layersThumbContents = obj.value(QStringLiteral("layersThumbContents")).toInt(0);
     state.layersExpandNewEffects =
         obj.value(QStringLiteral("layersExpandNewEffects")).toBool(true);
+    state.layersAddCopyOnDuplicate =
+        obj.value(QStringLiteral("layersAddCopyOnDuplicate")).toBool(true);
+    state.layersUseDefaultMasksOnFill =
+        obj.value(QStringLiteral("layersUseDefaultMasksOnFill")).toBool(true);
     state.toolsColumns =
         obj.value(QStringLiteral("toolsColumns")).toInt(1) == 2 ? 2 : 1;
     state.useShiftKeyForToolSwitch =
@@ -129,6 +133,8 @@ bool saveSession(const SessionState& state)
     obj.insert(QStringLiteral("layersThumbSize"), state.layersThumbSize);
     obj.insert(QStringLiteral("layersThumbContents"), state.layersThumbContents);
     obj.insert(QStringLiteral("layersExpandNewEffects"), state.layersExpandNewEffects);
+    obj.insert(QStringLiteral("layersAddCopyOnDuplicate"), state.layersAddCopyOnDuplicate);
+    obj.insert(QStringLiteral("layersUseDefaultMasksOnFill"), state.layersUseDefaultMasksOnFill);
     obj.insert(QStringLiteral("toolsColumns"), state.toolsColumns);
     obj.insert(QStringLiteral("useShiftKeyForToolSwitch"), state.useShiftKeyForToolSwitch);
     obj.insert(QStringLiteral("confirmLiveShapeToPath"), state.confirmLiveShapeToPath);

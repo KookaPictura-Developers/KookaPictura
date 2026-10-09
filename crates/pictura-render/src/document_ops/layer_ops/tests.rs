@@ -484,6 +484,47 @@ fn color_skips_background_applies_to_locked() {
 }
 
 #[test]
+fn lock_group_layers_locks_descendants_only() {
+    let mut doc = sample_doc();
+    // Group 1 is layer index 2 with one child at path "2/0".
+    assert_eq!(lock_group_layers(&mut doc, "2"), 1);
+    assert!(doc.layers[2].children[0].lock.is_all());
+    assert_eq!(
+        doc.layers[2].lock.bits(),
+        0,
+        "the group node itself is untouched"
+    );
+    assert_eq!(
+        lock_group_layers(&mut doc, "0"),
+        0,
+        "a non-group has no descendants"
+    );
+    assert_eq!(
+        lock_group_layers(&mut doc, "9"),
+        0,
+        "an unknown path is refused"
+    );
+}
+
+#[test]
+fn lock_group_layers_covers_nested_descendants() {
+    let mut inner = empty_group("Inner");
+    inner.children.push(pixel_layer("deep", 4, 4, 1));
+    let mut outer = empty_group("Outer");
+    outer.children.push(pixel_layer("mid", 4, 4, 2));
+    outer.children.push(inner);
+    let mut doc = doc_with(vec![outer]);
+    assert_eq!(lock_group_layers(&mut doc, "0"), 3);
+    assert!(
+        !doc.layers[0].lock.is_all(),
+        "the outer group is not locked"
+    );
+    assert!(doc.layers[0].children[0].lock.is_all());
+    assert!(doc.layers[0].children[1].lock.is_all());
+    assert!(doc.layers[0].children[1].children[0].lock.is_all());
+}
+
+#[test]
 fn delete_skips_background_and_locked() {
     let mut doc = sample_doc();
     assert_eq!(delete_paths(&mut doc, &["0", "1"]), 0);
@@ -1073,4 +1114,161 @@ fn add_group_full_ignores_fill_clipping_and_neutral_fill() {
     assert_eq!(group.fill, 255, "groups ignore fill");
     assert!(!group.clipping, "groups ignore clipping");
     assert!(group.channels.is_empty());
+}
+
+#[test]
+fn arrange_moves_within_container_and_refuses_edges() {
+    fn names(doc: &Document) -> Vec<&str> {
+        doc.layers.iter().map(|l| l.name.as_str()).collect()
+    }
+    let layers = || {
+        vec![
+            pixel_layer("bottom", 4, 4, 0),
+            pixel_layer("middle", 4, 4, 1),
+            pixel_layer("top", 4, 4, 2),
+        ]
+    };
+
+    let mut doc = doc_with(layers());
+    assert!(arrange_path(&mut doc, "0", Arrange::Front));
+    assert_eq!(names(&doc), ["middle", "top", "bottom"]);
+
+    let mut doc = doc_with(layers());
+    assert!(arrange_path(&mut doc, "2", Arrange::Back));
+    assert_eq!(names(&doc), ["top", "bottom", "middle"]);
+
+    let mut doc = doc_with(layers());
+    assert!(arrange_path(&mut doc, "0", Arrange::Forward));
+    assert_eq!(names(&doc), ["middle", "bottom", "top"]);
+
+    let mut doc = doc_with(layers());
+    assert!(arrange_path(&mut doc, "2", Arrange::Backward));
+    assert_eq!(names(&doc), ["bottom", "top", "middle"]);
+
+    // The front layer cannot move further forward; the command is disabled.
+    let mut doc = doc_with(layers());
+    assert!(!arrange_path(&mut doc, "2", Arrange::Forward));
+    assert!(!can_arrange_path(&doc, "2", Arrange::Forward));
+    assert!(can_arrange_path(&doc, "0", Arrange::Front));
+}
+
+#[test]
+fn arrange_refuses_background_and_locked() {
+    let mut doc = doc_with(vec![
+        pixel_layer("Background", 4, 4, 0),
+        locked_layer("locked"),
+        pixel_layer("normal", 4, 4, 3),
+    ]);
+    let before = doc.clone();
+    assert!(!arrange_path(&mut doc, "0", Arrange::Front));
+    assert!(!can_arrange_path(&doc, "0", Arrange::Front));
+    assert!(!arrange_path(&mut doc, "1", Arrange::Front));
+    assert!(!can_arrange_path(&doc, "1", Arrange::Front));
+    assert_eq!(doc, before, "Background and locked nodes do not reorder");
+
+    assert!(arrange_path(&mut doc, "2", Arrange::Back));
+    assert_eq!(doc.layers[0].name, "normal");
+}
+
+#[test]
+fn arrange_stays_within_the_group() {
+    let mut group = empty_group("Group 1");
+    group.children.push(pixel_layer("c0", 4, 4, 0));
+    group.children.push(pixel_layer("c1", 4, 4, 1));
+    let mut doc = doc_with(vec![pixel_layer("outer", 4, 4, 2), group]);
+
+    assert!(arrange_path(&mut doc, "1/0", Arrange::Front));
+    assert_eq!(doc.layers[1].children[1].name, "c0");
+    assert_eq!(
+        doc.layers[0].name, "outer",
+        "the layer did not leave its group"
+    );
+}
+
+#[test]
+fn reverse_flips_a_contiguous_run_and_refuses_otherwise() {
+    let mut doc = doc_with(vec![
+        pixel_layer("a", 4, 4, 0),
+        pixel_layer("b", 4, 4, 1),
+        pixel_layer("c", 4, 4, 2),
+        pixel_layer("d", 4, 4, 3),
+    ]);
+    assert!(reverse_paths(&mut doc, &["0", "1", "2"]));
+    let names: Vec<&str> = doc.layers.iter().map(|l| l.name.as_str()).collect();
+    assert_eq!(names, ["c", "b", "a", "d"]);
+
+    let before = doc.clone();
+    assert!(!reverse_paths(&mut doc, &["0", "2"]), "non-contiguous");
+    assert_eq!(doc, before);
+    assert!(!reverse_paths(&mut doc, &["0"]), "fewer than two nodes");
+    assert!(!reverse_paths(&mut doc, &["0", "9"]), "only one resolves");
+    assert_eq!(doc, before);
+}
+
+#[test]
+fn reverse_refuses_cross_container_and_background() {
+    let mut group = empty_group("Group 1");
+    group.children.push(pixel_layer("child", 4, 4, 1));
+    let mut doc = doc_with(vec![pixel_layer("outer", 4, 4, 0), group]);
+    let before = doc.clone();
+    assert!(!reverse_paths(&mut doc, &["0", "1/0"]), "cross-container");
+    assert_eq!(doc, before);
+
+    let mut doc = doc_with(vec![
+        pixel_layer("Background", 4, 4, 0),
+        pixel_layer("b", 4, 4, 1),
+    ]);
+    let before = doc.clone();
+    assert!(!reverse_paths(&mut doc, &["0", "1"]), "Background refuses");
+    assert_eq!(doc, before);
+}
+
+#[test]
+fn forced_locks_refuse_clearing_transparency_and_image() {
+    use pictura_core::shape::{outline_in_box, ShapeKind, ShapeOptions};
+    let mut doc = Document::new(20, 20, ColorMode::Rgb, BitDepth::Eight);
+    let square = outline_in_box(
+        ShapeOptions::new(ShapeKind::Rectangle, 0.0, 3),
+        (2.0, 2.0, 8.0, 8.0),
+    )
+    .unwrap();
+    let shape = add_shape_layer(&mut doc, "", [0, 0, 255, 255], "Rectangle", &square, None);
+
+    // A shape forces the two bits: turning them on works, clearing is refused.
+    assert_eq!(
+        set_lock_paths(&mut doc, &[&shape], LockFlags::TRANSPARENCY, true),
+        1
+    );
+    assert_eq!(
+        set_lock_paths(&mut doc, &[&shape], LockFlags::TRANSPARENCY, false),
+        0
+    );
+    assert!(resolve_path(&doc, &shape)
+        .unwrap()
+        .lock
+        .contains(LockFlags::TRANSPARENCY));
+
+    // Position is not forced and clears normally.
+    assert_eq!(
+        set_lock_paths(&mut doc, &[&shape], LockFlags::POSITION, true),
+        1
+    );
+    assert_eq!(
+        set_lock_paths(&mut doc, &[&shape], LockFlags::POSITION, false),
+        1
+    );
+
+    // A type layer starts with the two bits set and cannot clear them.
+    let text = crate::add_type_layer(
+        &mut doc,
+        "",
+        &pictura_core::TypeSpec::new("Aa", "Liberation Sans", 20.0),
+    );
+    assert_eq!(
+        set_lock_paths(&mut doc, &[&text], LockFlags::TRANSPARENCY, false),
+        0
+    );
+    let layer = resolve_path(&doc, &text).unwrap();
+    assert!(layer.lock.contains(LockFlags::TRANSPARENCY));
+    assert!(layer.lock.contains(LockFlags::PIXELS));
 }

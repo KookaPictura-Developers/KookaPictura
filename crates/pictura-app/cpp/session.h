@@ -18,6 +18,8 @@ struct SessionState {
     int layersThumbSize = 2;         // 0 None / 1 Small / 2 Medium / 3 Large
     int layersThumbContents = 0;     // 0 Entire Document / 1 Layer Bounds
     bool layersExpandNewEffects = true;
+    bool layersAddCopyOnDuplicate = true;   // name a duplicate "<name> copy"
+    bool layersUseDefaultMasksOnFill = true;  // fill/adjustment takes selection mask
     int toolsColumns = 1;            // 1 or 2; out-of-range loads the default
     bool useShiftKeyForToolSwitch = true;
     bool confirmLiveShapeToPath = true;  // off after "Don't show again"

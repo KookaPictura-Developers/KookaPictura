@@ -10,6 +10,7 @@
 #include "session.h"
 
 #include "pictura_app/src/cxxqt_object/paths.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/shapes.cxxqt.h"
 
 #include <QtCore/QTimer>
 #include <QtGui/QKeyEvent>
@@ -150,6 +151,7 @@ private slots:
     void createDialogs();
     void lineAndCustomShape();
     void optionsBar();
+    void shapeLayerActions();
 
 private:
     pictura::test::ScopedStateHome stateHome_;
@@ -665,6 +667,66 @@ void ShapeToolsTest::optionsBar()
     auto* line = type->menu()->findChild<QComboBox*>(QStringLiteral("optionsShapeStrokeLine"));
     QVERIFY(line != nullptr);
     QCOMPARE(line->itemData(1, Qt::UserRole - 1).toInt(), 0);
+}
+
+// Copy/Paste Shape Attributes transfers a shape's fill and stroke to another
+// shape layer (and refuses a non-shape); Rasterize Shape bakes the shape and
+// drops its vector definition.
+void ShapeToolsTest::shapeLayerActions()
+{
+    pictura::PicturaMainWindow& frame = *window_;
+    QImage seed(32, 32, QImage::Format_RGB32);
+    seed.fill(Qt::white);
+    Fixture f(frame, seed, QStringLiteral("pictura_shape_actions"));
+    QVERIFY2(f.ok(), "shape actions fixture");
+    pictura::PictureView* view = f.view;
+
+    pictura::ShapeSpec a{};
+    a.kind = 0;
+    a.boxed = true;
+    a.x0 = 2;
+    a.y0 = 2;
+    a.x1 = 12;
+    a.y1 = 12;
+    a.stroke = true;
+    a.stroke_color = 0xff00ff00u;
+    a.stroke_width = 2;
+    a.stroke_align = 0;
+    const QString shapeA = pictura::shape_add_layer(*view, a, 0xffff0000u);
+    QVERIFY(!shapeA.isEmpty());
+    view->set_active_layer(shapeA);
+
+    pictura::ShapeSpec b{};
+    b.kind = 0;
+    b.boxed = true;
+    b.x0 = 16;
+    b.y0 = 16;
+    b.x1 = 26;
+    b.y1 = 26;
+    const QString shapeB = pictura::shape_add_layer(*view, b, 0xff0000ffu);
+    QVERIFY(!shapeB.isEmpty());
+
+    QVERIFY(pictura::shape_copy_attributes(*view, shapeA));
+    view->set_active_layer(shapeB);
+    QVERIFY(pictura::shape_paste_attributes(*view, shapeB));
+
+    const ::rust::Vec<double> info = pictura::shape_active(*view);
+    QCOMPARE(info.size(), std::size_t(8));
+    QCOMPARE(info[3], double(0xffff0000u));
+    QCOMPARE(info[4], 1.0);
+    QCOMPARE(info[5], double(0xff00ff00u));
+    QCOMPARE(info[6], 2.0);
+    QCOMPARE(info[7], 0.0);
+
+    const int plain = view->add_layer(-1);
+    QVERIFY(plain >= 0);
+    QVERIFY(!pictura::shape_paste_attributes(*view, QString::number(plain)));
+
+    QVERIFY(pictura::shape_is_shape(*view, shapeB));
+    QVERIFY(pictura::shape_rasterize(*view, shapeB));
+    QVERIFY(!pictura::shape_is_shape(*view, shapeB));
+    QVERIFY(!view->layer_is_fill_content(shapeB));
+    QCOMPARE(view->sample_argb(21, 21), 0xffff0000u);
 }
 
 QTEST_MAIN(ShapeToolsTest)

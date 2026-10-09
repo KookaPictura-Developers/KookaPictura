@@ -384,6 +384,8 @@ void PicturaMainWindow::registerHandlers()
     wireLayerStyleMenu();
     wireImageAdjustments();
     wireLayerAdjustments();
+    wireLayerContentOptions();
+    wireLayerArrangeStamp();
 
     // M37: layer creation and grouping. Layer…/Group… open the modal dialog,
     // whose accept step places the node above the selection; Group from Layers…
@@ -512,6 +514,71 @@ void PicturaMainWindow::registerHandlers()
         return view && view->has_document() && !path.isEmpty()
             && view->can_merge_clipping_mask(path);
     });
+
+    // Layer Mask authoring; the bridge acts on the active layer.
+    const auto addLayerMask = [this](const QString& kind) {
+        PictureView* view = activeView();
+        if (view && layer_mask_add(*view, kind)) {
+            refresh();
+        }
+    };
+    const auto enableWhenNoMask = [this](const char* id) {
+        registry_->setEnabledProvider(id, [this]() {
+            PictureView* view = activeView();
+            return view && view->has_document() && !layer_mask_present(*view);
+        });
+    };
+    const auto enableWhenMask = [this](const char* id) {
+        registry_->setEnabledProvider(id, [this]() {
+            PictureView* view = activeView();
+            return view && view->has_document() && layer_mask_present(*view);
+        });
+    };
+    registry_->setHandler(command_ids::LayerMaskRevealAll,
+                          [addLayerMask]() { addLayerMask(QStringLiteral("reveal-all")); });
+    registry_->setHandler(command_ids::LayerMaskHideAll,
+                          [addLayerMask]() { addLayerMask(QStringLiteral("hide-all")); });
+    registry_->setHandler(command_ids::LayerMaskRevealSelection,
+                          [addLayerMask]() { addLayerMask(QStringLiteral("reveal-selection")); });
+    registry_->setHandler(command_ids::LayerMaskHideSelection,
+                          [addLayerMask]() { addLayerMask(QStringLiteral("hide-selection")); });
+    registry_->setHandler(command_ids::LayerMaskFromTransparency, [addLayerMask]() {
+        addLayerMask(QStringLiteral("from-transparency"));
+    });
+    enableWhenNoMask(command_ids::LayerMaskRevealAll);
+    enableWhenNoMask(command_ids::LayerMaskHideAll);
+    enableWhenNoMask(command_ids::LayerMaskFromTransparency);
+    registry_->setEnabledProvider(command_ids::LayerMaskRevealSelection, [this]() {
+        PictureView* view = activeView();
+        return view && view->has_document() && view->has_selection()
+            && !layer_mask_present(*view);
+    });
+    registry_->setEnabledProvider(command_ids::LayerMaskHideSelection, [this]() {
+        PictureView* view = activeView();
+        return view && view->has_document() && view->has_selection()
+            && !layer_mask_present(*view);
+    });
+    const auto simpleMaskAction = [this, enableWhenMask](const char* id, auto action) {
+        registry_->setHandler(id, [this, action]() {
+            PictureView* view = activeView();
+            if (view && action(*view)) {
+                refresh();
+            }
+        });
+        enableWhenMask(id);
+    };
+    simpleMaskAction(command_ids::LayerMaskDelete,
+                     [](PictureView& view) { return layer_mask_delete(view); });
+    simpleMaskAction(command_ids::LayerMaskApply,
+                     [](PictureView& view) { return layer_mask_apply(view); });
+    simpleMaskAction(command_ids::LayerMaskEnable,
+                     [](PictureView& view) { return layer_mask_set_enabled(view, true); });
+    simpleMaskAction(command_ids::LayerMaskDisable,
+                     [](PictureView& view) { return layer_mask_set_enabled(view, false); });
+    simpleMaskAction(command_ids::LayerMaskLink,
+                     [](PictureView& view) { return layer_mask_set_linked(view, true); });
+    simpleMaskAction(command_ids::LayerMaskUnlink,
+                     [](PictureView& view) { return layer_mask_set_linked(view, false); });
 
     registry_->setHandler(command_ids::LayerFlattenImage, [this]() {
         PictureView* view = activeView();
@@ -769,6 +836,11 @@ void PicturaMainWindow::registerHandlers()
         return false;
     });
 
+    wireShapeLayerActions();
+    wireVectorMaskActions();
+    wireMattingActions();
+    wireAdvancedSmartObjectActions();
+
     // Smart Objects. Convert to Smart Object needs the current layer to be a
     // raster pixel layer (not a group, adjustment, Background, or already a
     // smart object).
@@ -805,6 +877,8 @@ void PicturaMainWindow::registerHandlers()
                           });
     registry_->setEnabledProvider(command_ids::FilterConvertForSmartFilters,
                                   [currentSmartPath]() { return !currentSmartPath().isEmpty(); });
+
+    wireSmartFilterActions();
 
     const auto currentRasterizableSmartPath = [this]() -> QString {
         PictureView* view = activeView();

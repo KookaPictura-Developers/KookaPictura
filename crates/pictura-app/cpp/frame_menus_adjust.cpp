@@ -5,6 +5,7 @@
 
 #include "adjustment_dialog.h"
 #include "hdr_toning_dialog.h"
+#include "layer_adjustments.h"
 #include "replace_color_dialog.h"
 
 #include "pictura_app/src/cxxqt_object/filter_tools.cxxqt.h"
@@ -44,34 +45,6 @@ constexpr Entry kDirect[] = {
     {"invert", "Invert"},           {"desaturate", "Desaturate"},
     {"equalize", "Equalize"},       {"auto-tone", "Auto Tone"},
     {"auto-contrast", "Auto Contrast"}, {"auto-color", "Auto Color"},
-};
-
-// The sixteen CS6 Layer > New Adjustment Layer kinds, in menu order. `ellipsis`
-// follows the same split as Image > Adjustments: Invert has no options, so it
-// creates silently; every other kind opens its dialog.
-struct LayerAdjustment {
-    const char* kind;
-    const char* leaf;
-    bool ellipsis;
-};
-
-constexpr LayerAdjustment kLayerAdjustments[] = {
-    {"brightness-contrast", "Brightness/Contrast", true},
-    {"levels", "Levels", true},
-    {"curves", "Curves", true},
-    {"exposure", "Exposure", true},
-    {"vibrance", "Vibrance", true},
-    {"hue-saturation", "Hue/Saturation", true},
-    {"color-balance", "Color Balance", true},
-    {"black-white", "Black & White", true},
-    {"photo-filter", "Photo Filter", true},
-    {"channel-mixer", "Channel Mixer", true},
-    {"color-lookup", "Color Lookup", true},
-    {"invert", "Invert", false},
-    {"posterize", "Posterize", true},
-    {"threshold", "Threshold", true},
-    {"gradient-map", "Gradient Map", true},
-    {"selective-color", "Selective Color", true},
 };
 
 } // namespace
@@ -205,6 +178,41 @@ void PicturaMainWindow::wireLayerAdjustments()
         });
         registry_->setEnabledProvider(id, ready);
     }
+}
+
+// Layer > Layer Content Options opens the active fill/adjustment layer's
+// Properties page. It is enabled only for a layer carrying an adjustment block,
+// which covers both adjustment and fill layers.
+void PicturaMainWindow::wireLayerContentOptions()
+{
+    const auto currentAdjustmentPath = [this]() -> QString {
+        PictureView* view = activeView();
+        const QString path = layersPanel_ ? layersPanel_->currentPath() : QString();
+        if (!view || path.isEmpty()) {
+            return QString();
+        }
+        for (int i = 0; i < view->layer_row_count(); ++i) {
+            if (view->layer_row_path(i) == path) {
+                return view->layer_row_has_adjustment(i) ? path : QString();
+            }
+        }
+        return QString();
+    };
+    const QString id = QString::fromLatin1(command_ids::LayerContentOptions);
+    registry_->setImplemented(id, true);
+    registry_->setHandler(id, [this, currentAdjustmentPath]() {
+        if (currentAdjustmentPath().isEmpty()) {
+            return;
+        }
+        if (panelColumn_) {
+            panelColumn_->showPanel(QStringLiteral("propertiesPanel"), true);
+        }
+        if (propertiesPanel_) {
+            propertiesPanel_->refresh();
+        }
+    });
+    registry_->setEnabledProvider(
+        id, [currentAdjustmentPath]() { return !currentAdjustmentPath().isEmpty(); });
 }
 
 } // namespace pictura

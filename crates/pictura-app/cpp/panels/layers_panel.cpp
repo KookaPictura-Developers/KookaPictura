@@ -2,16 +2,22 @@
 #include "dialogs.h"
 
 #include "layer_new_dialog.h"
+#include "layer_style_dialog.h"
 #include "layers_filter_bar.h"
 #include "layers_filter_proxy.h"
 #include "layers_panel_internal.h"
 
 #include "icons.h"
+#include "layer_adjustments.h"
 #include "percent_field.h"
 #include "session.h"
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/clipping.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/impl_layers/layer_masks.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/impl_layers/layers_surface.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/impl_layers/vector_masks.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/layer_style.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/layers_smart_filters.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/shapes.cxxqt.h"
 
@@ -121,6 +127,8 @@ LayersPanel::LayersPanel(QWidget* parent)
     thumbSizeIndex_ = qBound(0, session.layersThumbSize, 3);
     thumbContents_ = qBound(0, session.layersThumbContents, 1);
     expandNewEffects_ = session.layersExpandNewEffects;
+    addCopyOnDuplicate_ = session.layersAddCopyOnDuplicate;
+    useDefaultMasksOnFill_ = session.layersUseDefaultMasksOnFill;
     thumbEntireDocument_ = thumbContents_ == 0;
 
     filterBar_ = new LayerFilterBar(body);
@@ -246,19 +254,39 @@ LayersPanel::LayersPanel(QWidget* parent)
         return button;
     };
 
-    // CS6 strip order. Link/fx/mask have icons but no behaviour yet, so they
-    // stay disabled rather than pretending.
+    // CS6 strip order. Link has an icon but no behaviour yet, so it stays
+    // disabled rather than pretending; fx opens Blending Options.
     auto* linkButton =
         stripIconButton(QStringLiteral("layersStripLink"), QStringLiteral("layers.link"));
     linkButton->setEnabled(false);
     linkButton->setToolTip(tr("Link Layers — not implemented yet"));
     auto* fxButton = stripIconButton(QStringLiteral("layersStripFx"), QStringLiteral("layers.fx"));
-    fxButton->setEnabled(false);
-    fxButton->setToolTip(tr("Layer Style — not implemented yet"));
+    fxButton->setToolTip(tr("Layer Style — click opens Blending Options; "
+                            "Alt-click toggles all effects"));
+    connect(fxButton, &QToolButton::clicked, this, [this] {
+        if (!view_) {
+            return;
+        }
+        if (QApplication::keyboardModifiers().testFlag(Qt::AltModifier)) {
+            layer_style_set_all_visible(*view_, !layer_style_any_visible(*view_, true));
+        } else {
+            openLayerStyle(currentPath());
+        }
+    });
     auto* maskButton =
         stripIconButton(QStringLiteral("layersStripMask"), QStringLiteral("layers.mask"));
-    maskButton->setEnabled(false);
-    maskButton->setToolTip(tr("Add Layer Mask — not implemented yet"));
+    maskButton->setToolTip(tr("Add Layer Mask — click adds a mask for the selection "
+                              "(or Reveal All); Alt-click adds Hide All"));
+    connect(maskButton, &QToolButton::clicked, this, [this] {
+        if (!view_) {
+            return;
+        }
+        const QString kind =
+            (QApplication::keyboardModifiers() & Qt::AltModifier) ? QStringLiteral("hide-all")
+            : view_->has_selection() ? QStringLiteral("reveal-selection")
+                                     : QStringLiteral("reveal-all");
+        layer_mask_add(*view_, kind);
+    });
 
     auto* addButton = stripIconButton(QStringLiteral("layersStripFillAdjustment"),
                                       QStringLiteral("layers.fillAdjustment"));
@@ -279,16 +307,16 @@ LayersPanel::LayersPanel(QWidget* parent)
             view_->add_gradient_fill();
         }
     });
+    // ponytail: pattern authoring needs a pattern preset/library and a picker;
+    // the engine renders a PtFl layer but has no encoder or pattern source.
+    QAction* patternFill = menu->addAction(tr("Pattern…"));
+    patternFill->setEnabled(false);
+    patternFill->setToolTip(tr("Pattern Fill — not implemented yet"));
     menu->addSeparator();
-    const QStringList kinds = {
-        QStringLiteral("invert"),
-        QStringLiteral("posterize"),
-        QStringLiteral("threshold"),
-        QStringLiteral("brightness-contrast"),
-        QStringLiteral("hue-saturation"),
-    };
-    for (const QString& kind : kinds) {
-        QAction* action = menu->addAction(kind);
+    for (const LayerAdjustment& entry : kLayerAdjustments) {
+        const QString leaf = QString::fromUtf8(entry.leaf);
+        QAction* action = menu->addAction(entry.ellipsis ? leaf + QStringLiteral("…") : leaf);
+        const QString kind = QString::fromLatin1(entry.kind);
         connect(action, &QAction::triggered, this, [this, kind] {
             if (view_) {
                 view_->add_adjustment(kind);
@@ -416,6 +444,7 @@ void LayersPanel::setView(PictureView* view)
     model_->setView(view);
     tree_->setDragSource(view);
     if (view_) {
+        set_layers_panel_options(*view_, addCopyOnDuplicate_, useDefaultMasksOnFill_);
         viewConnection_ = connect(view_, &PictureView::changed, this, [this] {
             QTimer::singleShot(0, this, [this] { refresh(); });
         });
@@ -442,6 +471,7 @@ void LayersPanel::refresh()
         const int documentWidth = view_->document_width();
         const int documentHeight = view_->document_height();
         rows.reserve(count);
+        const QStringList styleEffectNames = layer_style_effect_names();
         for (int i = 0; i < count; ++i) {
             LayerRow row;
             row.path = view_->layer_row_path(i);
@@ -464,10 +494,28 @@ void LayersPanel::refresh()
             row.documentWidth = documentWidth;
             row.documentHeight = documentHeight;
             row.shape = shape_row_is_shape(*view_, i);
+            row.smartObject = layer_row_is_smart_object(*view_, i);
+            row.hasStyle = layer_row_has_style(*view_, i);
+            row.hasBlendIf = layer_row_has_blend_if(*view_, i);
+            if (row.hasStyle) {
+                for (const QString& name : styleEffectNames) {
+                    if (layer_style_value(*view_, row.path,
+                                          name + QStringLiteral(".exists"))
+                        == 1.0) {
+                        row.styleEffects.push_back(name);
+                    }
+                }
+            }
             row.thumbnail = row.shape
                 ? shape_row_thumbnail(*view_, i, thumbSize)
                 : view_->layer_row_thumbnail(i, thumbSize, thumbEntireDocument_);
             row.maskThumbnail = view_->layer_row_mask_thumbnail(i, thumbSize);
+            row.maskLinked = layer_row_mask_linked(*view_, i);
+            row.maskDisabled = layer_row_mask_disabled(*view_, i);
+            row.hasVectorMask = layer_row_has_vector_mask(*view_, i);
+            row.vectorMaskThumbnail = layer_row_vector_mask_thumbnail(*view_, i, thumbSize);
+            row.vectorMaskLinked = layer_row_vector_mask_linked(*view_, i);
+            row.vectorMaskDisabled = layer_row_vector_mask_disabled(*view_, i);
             rows.push_back(std::move(row));
         }
         // Display-only Smart Filters rows: a group header under each filtered
@@ -709,6 +757,52 @@ bool LayersPanel::eventFilter(QObject* watched, QEvent* event)
                     return true;
                 }
             }
+            // The mask's own controls: Shift-click the mask thumbnail toggles
+            // its enabled bit; a click on the link glyph toggles its linkage.
+            // Both are consumed so they never rename, select, or start a drag.
+            if (index.isValid() && view_) {
+                const QString rowPath = pathForProxyIndex(index);
+                const QRect vr = tree_->visualRect(index);
+                const QRect maskThumb = delegate_->maskThumbRect(vr, index);
+                if (!maskThumb.isEmpty() && maskThumb.contains(pos)) {
+                    if (mouse->modifiers() & Qt::ShiftModifier) {
+                        layer_mask_set_enabled_path(*view_, rowPath,
+                                                    index.data(MaskDisabledRole).toBool());
+                    }
+                    return true;
+                }
+                const QRect linkGlyph = delegate_->linkGlyphRect(vr, index);
+                if (!linkGlyph.isEmpty() && linkGlyph.contains(pos)) {
+                    layer_mask_set_linked_path(*view_, rowPath,
+                                               !index.data(MaskLinkedRole).toBool());
+                    return true;
+                }
+                // The vector mask's own controls, mirroring the layer mask.
+                const QRect vectorThumb = delegate_->vectorMaskThumbRect(vr, index);
+                if (!vectorThumb.isEmpty() && vectorThumb.contains(pos)) {
+                    if (mouse->modifiers() & Qt::ShiftModifier) {
+                        vector_mask_set_enabled_path(
+                            *view_, rowPath, index.data(VectorMaskDisabledRole).toBool());
+                    }
+                    return true;
+                }
+                const QRect vectorLink = delegate_->vectorLinkGlyphRect(vr, index);
+                if (!vectorLink.isEmpty() && vectorLink.contains(pos)) {
+                    vector_mask_set_linked_path(*view_, rowPath,
+                                                !index.data(VectorMaskLinkedRole).toBool());
+                    return true;
+                }
+            }
+            // An Alt-click on a row's fx badge toggles every layer's effects,
+            // CS6's Show/Hide All Effects (a plain click leaves it to selection).
+            if (index.isValid() && view_ && (mouse->modifiers() & Qt::AltModifier)) {
+                const QRect fx = delegate_->fxRect(tree_->visualRect(index), index);
+                if (!fx.isEmpty() && fx.contains(pos)) {
+                    layer_style_set_all_visible(*view_,
+                                                !layer_style_any_visible(*view_, true));
+                    return true;
+                }
+            }
             // Alt-click on the line between two rows (outside the eye column)
             // clips the upper layer to the lower, or releases it, as CS6 does.
             if (index.isValid() && (mouse->modifiers() & Qt::AltModifier)
@@ -778,6 +872,15 @@ bool LayersPanel::eventFilter(QObject* watched, QEvent* event)
                 if (index.data(KindRole).toString().startsWith(QLatin1String("smart-filter"))) {
                     return true;
                 }
+                // The mask thumbnail and link glyph own their clicks; a
+                // double-click there must not rename or open a style.
+                const QRect rowRect = tree_->visualRect(index);
+                if (delegate_->maskThumbRect(rowRect, index).contains(pos)
+                    || delegate_->linkGlyphRect(rowRect, index).contains(pos)
+                    || delegate_->vectorMaskThumbRect(rowRect, index).contains(pos)
+                    || delegate_->vectorLinkGlyphRect(rowRect, index).contains(pos)) {
+                    return true;
+                }
                 const QString path = pathForProxyIndex(index);
                 if (index.data(KindRole).toString() == QLatin1String("background")) {
                     // A control keeps its own action; any other content-band
@@ -790,7 +893,9 @@ bool LayersPanel::eventFilter(QObject* watched, QEvent* event)
                     }
                 } else if (delegate_->nameRect(tree_->visualRect(index), index).contains(pos)) {
                     tree_->edit(index);
-                } else {
+                } else if (!delegate_->eyeColumnContains(tree_->visualRect(index), pos)
+                           && !delegate_->lockRect(tree_->visualRect(index)).contains(pos)
+                           && !delegate_->fxRect(tree_->visualRect(index), index).contains(pos)) {
                     openLayerStyle(path);
                 }
                 return true;
@@ -824,11 +929,14 @@ void LayersPanel::openBackgroundConversion(const QString& path)
     }
 }
 
-void LayersPanel::openLayerStyle(const QString&)
+void LayersPanel::openLayerStyle(const QString& path)
 {
-    // ponytail: no Layer Style dialog exists yet (the fx button and Blending
-    // Options are inert). A double-click outside the name is a deliberate no-op
-    // affordance until one is built.
+    if (!view_ || path.isEmpty() || !layer_style_can_edit(*view_, path)) {
+        return;
+    }
+    LayerStyleDialog dialog(view_, path, QString(), this);
+    runDialog(dialog, this);
+    refresh();
 }
 
 void LayersPanel::syncControls()
@@ -889,6 +997,14 @@ void LayersPanel::syncControls()
         for (QToolButton* button : lockButtons) {
             button->setEnabled(lockAny);
         }
+        // A type or shape layer forces Transparency and Image on: show them
+        // checked (the row projection already sets the bits) and refuse a click.
+        const bool forcedLocks = valueIndex.data(LayerRowShapeRole).toBool()
+            || valueIndex.data(KindRole).toString() == QLatin1String("type");
+        if (forcedLocks) {
+            lockTransparency_->setEnabled(false);
+            lockPixels_->setEnabled(false);
+        }
         blend_->setEnabled(blendAny);
         opacity_->setEnabled(opacityAny);
         fill_->setEnabled(fillAny);
@@ -914,9 +1030,15 @@ void LayersPanel::openPanelOptions()
     contentsBox->setCurrentIndex(qBound(0, thumbContents_, 1));
     auto* expandBox = new QCheckBox(tr("Expand New Effects"), &dialog);
     expandBox->setChecked(expandNewEffects_);
+    auto* copyBox = new QCheckBox(tr("Add \"copy\" to Copied Layers and Groups"), &dialog);
+    copyBox->setChecked(addCopyOnDuplicate_);
+    auto* maskBox = new QCheckBox(tr("Use Default Masks on Fill Layers"), &dialog);
+    maskBox->setChecked(useDefaultMasksOnFill_);
     form->addRow(tr("Thumbnail Size"), sizeBox);
     form->addRow(tr("Thumbnail Contents"), contentsBox);
     form->addRow(expandBox);
+    form->addRow(copyBox);
+    form->addRow(maskBox);
     auto* buttons =
         new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
     form->addRow(buttons);
@@ -928,11 +1050,16 @@ void LayersPanel::openPanelOptions()
     thumbSizeIndex_ = sizeBox->currentIndex();
     thumbContents_ = contentsBox->currentIndex();
     expandNewEffects_ = expandBox->isChecked();
+    addCopyOnDuplicate_ = copyBox->isChecked();
+    useDefaultMasksOnFill_ = maskBox->isChecked();
     thumbEntireDocument_ = thumbContents_ == 0;
     if (delegate_) {
         delegate_->setThumbnailSize(kThumbSizePx.at(thumbSizeIndex_));
     }
     persistOptions();
+    if (view_) {
+        set_layers_panel_options(*view_, addCopyOnDuplicate_, useDefaultMasksOnFill_);
+    }
     refresh();
 }
 
@@ -942,6 +1069,8 @@ void LayersPanel::persistOptions()
     state.layersThumbSize = thumbSizeIndex_;
     state.layersThumbContents = thumbContents_;
     state.layersExpandNewEffects = expandNewEffects_;
+    state.layersAddCopyOnDuplicate = addCopyOnDuplicate_;
+    state.layersUseDefaultMasksOnFill = useDefaultMasksOnFill_;
     state.schemaVersion = 3;
     pictura::saveSession(state);
 }
