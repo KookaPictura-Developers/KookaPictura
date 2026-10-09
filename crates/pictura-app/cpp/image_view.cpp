@@ -8,6 +8,7 @@
 #include <QtCore/QStringList>
 #include <QtCore/QTimer>
 #include <QtCore/QtNumeric>
+#include <QtGui/QContextMenuEvent>
 #include <QtGui/QFontMetrics>
 #include <QtGui/QKeyEvent>
 #include <QtGui/QMouseEvent>
@@ -174,7 +175,10 @@ void ImageView::blitRegion(const QImage& region, int x, int y)
 void ImageView::zoomAt(const QPointF& cursor, int angleDelta)
 {
     const double factor = std::pow(1.0015, angleDelta);
-    setZoom(zoom_ * factor, cursor);
+    // Zoom-in keeps the point under the cursor fixed; zoom-out steps at the
+    // canvas centre so the image does not drift toward (and off) the pointer.
+    const QPointF anchor = angleDelta < 0 ? QPointF(width() / 2.0, height() / 2.0) : cursor;
+    setZoom(zoom_ * factor, anchor);
 }
 
 void ImageView::panBy(const QPointF& delta)
@@ -1048,6 +1052,13 @@ void ImageView::mouseMoveEvent(QMouseEvent* event)
         emit mouseMoved(widgetToImage(event->position()));
     }
     QWidget::mouseMoveEvent(event);
+}
+
+void ImageView::contextMenuEvent(QContextMenuEvent* event)
+{
+    // The frame decides which tool menu (if any) applies at this point.
+    emit contextMenuRequested(event->globalPos());
+    event->accept();
 }
 
 void ImageView::mouseReleaseEvent(QMouseEvent* event)

@@ -446,6 +446,14 @@ int PicturaMainWindow::addDocument(PictureView* view, const QString& path)
             infoPanel_->setCursorPosition(p);
         }
     });
+    // With the Zoom tool active a canvas right-click shows the same preset menu
+    // as the toolbox slot (the image or the workspace around it).
+    connect(entry.canvas, &ImageView::contextMenuRequested, this,
+            [this](const QPoint& globalPos) {
+                if (activeTool() == ToolId::Zoom && toolbox_ && toolbox_->zoomMenu()) {
+                    toolbox_->zoomMenu()->popup(globalPos);
+                }
+            });
 
     docs_.append(entry);
     const int index = docs_.size() - 1;

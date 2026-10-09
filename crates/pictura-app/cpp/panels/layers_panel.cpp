@@ -427,6 +427,10 @@ void LayersPanel::refresh()
 {
     const QStringList selected = selectedPaths();
     const QString selectedPath = currentPath();
+    // The model reset below clears the tree's current index, whose
+    // `selectionChanged` syncs an empty active layer; remember the document's
+    // active layer now so the fallback can restore it afterwards.
+    const QString activePath = view_ ? view_->active_layer_path() : QString();
     // A Tab rename commits through `changed`; the queued refresh must keep the
     // next row's editor alive rather than dropping it on the model reset.
     const bool wasEditing = tree_->viewport()->findChild<QLineEdit*>() != nullptr;
@@ -529,8 +533,18 @@ void LayersPanel::refresh()
     if (!selected.isEmpty()) {
         selectPaths(selected, selectedPath);
     }
-    if (!tree_->currentIndex().isValid() && proxy_->rowCount() > 0) {
-        tree_->setCurrentIndex(proxy_->index(0, 0));
+    // A document switch or a model reset can leave the tree with no selected
+    // row. Photoshop always has an active layer, so restore the document's
+    // active layer (the topmost pixel layer on open), falling back to the
+    // first displayed row only when the document has none.
+    if (tree_->selectionModel()->selectedRows(0).isEmpty() && proxy_->rowCount() > 0) {
+        const QModelIndex activeIndex =
+            activePath.isEmpty() ? QModelIndex() : proxyIndexForPath(activePath);
+        if (activeIndex.isValid()) {
+            selectPaths(QStringList{activePath}, activePath);
+        } else if (!tree_->currentIndex().isValid()) {
+            tree_->setCurrentIndex(proxy_->index(0, 0));
+        }
     }
     if (wasEditing) {
         const QModelIndex editIndex = proxyIndexForPath(selectedPath);

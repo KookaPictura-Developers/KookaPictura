@@ -2,9 +2,12 @@
 
 #include "color_picker_dialog.h"
 #include "icons.h"
+#include "image_view.h"
 #include "panels/color_panel.h"
 #include "theme.h"
 #include "tools.h"
+
+#include "pictura_app/src/cxxqt_object/image_adjust/image_size.cxxqt.h"
 
 #include <QtCore/QEvent>
 #include <QtCore/QSize>
@@ -101,9 +104,9 @@ protected:
     void mousePressEvent(QMouseEvent* event) override
     {
         if (event->button() == Qt::RightButton) {
-            if (onMenu) {
-                onMenu();
-            }
+            // Open the menu on release, not press: a popup shown during the
+            // press can be dismissed by the matching release on some platforms.
+            rightPressed_ = true;
             event->accept();
             return;
         }
@@ -125,6 +128,14 @@ protected:
     void mouseReleaseEvent(QMouseEvent* event) override
     {
         holdTimer_.stop();
+        if (event->button() == Qt::RightButton && rightPressed_) {
+            rightPressed_ = false;
+            if (onMenu) {
+                onMenu();
+            }
+            event->accept();
+            return;
+        }
         if (held_) {
             held_ = false;
             event->accept();
@@ -136,6 +147,7 @@ protected:
 private:
     QTimer holdTimer_;
     bool held_ = false;
+    bool rightPressed_ = false;
     bool hasFlyout_ = false;
 };
 
@@ -414,6 +426,12 @@ Toolbox::Toolbox(ToolController* controller, ColorState* colors, QWidget* parent
                     closeOpenSlotMenu();
                 }
             });
+        }
+        // The Zoom slot is a single tool, so its right-click menu is the CS6
+        // zoom-preset menu rather than a flyout of members.
+        if (members.size() == 1 && members.contains(ToolId::Zoom)) {
+            menu = buildZoomMenu();
+            zoomMenu_ = menu;
         }
         slotMenuByGroup_[g] = menu;
 
@@ -703,6 +721,67 @@ void Toolbox::reflow()
             grid_->addWidget(slotButtons_.at(i), i, 0, Qt::AlignHCenter);
         }
     }
+}
+
+QMenu* Toolbox::buildZoomMenu()
+{
+    auto* menu = new QMenu(this);
+    menu->setObjectName(QStringLiteral("zoomToolMenu"));
+
+    const auto add = [this, menu](const QString& text, void (ImageView::*fn)()) {
+        QAction* action = menu->addAction(text);
+        connect(action, &QAction::triggered, this, [this, fn]() {
+            if (ImageView* canvas = controller_ ? controller_->canvas() : nullptr) {
+                (canvas->*fn)();
+            }
+        });
+        return action;
+    };
+    const auto addZoom = [this, menu](const QString& text, double zoom) {
+        QAction* action = menu->addAction(text);
+        connect(action, &QAction::triggered, this, [this, zoom]() {
+            if (ImageView* canvas = controller_ ? controller_->canvas() : nullptr) {
+                canvas->setZoom(zoom, QPointF(canvas->width() / 2.0, canvas->height() / 2.0));
+            }
+        });
+        return action;
+    };
+
+    add(tr("Fit on Screen"), &ImageView::fitOnScreen);
+    add(tr("100%"), &ImageView::actualPixels);
+    addZoom(tr("200%"), 2.0);
+    QAction* printSize = menu->addAction(tr("Print Size"));
+    connect(printSize, &QAction::triggered, this, [this]() {
+        PictureView* view = controller_ ? controller_->view() : nullptr;
+        ImageView* canvas = controller_ ? controller_->canvas() : nullptr;
+        if (!view || !canvas) {
+            return;
+        }
+        // One image inch (ppi pixels) displays as one logical screen inch.
+        // ponytail: a fixed 96 logical DPI, not the monitor's physical DPI.
+        const double ppi = document_ppi(*view);
+        if (ppi > 0.0) {
+            canvas->setZoom(96.0 / ppi, QPointF(canvas->width() / 2.0, canvas->height() / 2.0));
+        }
+    });
+    menu->addSeparator();
+    add(tr("Zoom In"), &ImageView::zoomIn);
+    add(tr("Zoom Out"), &ImageView::zoomOut);
+
+    // Every entry needs a document; grey them out with none open.
+    connect(menu, &QMenu::aboutToShow, this, [this, menu]() {
+        ImageView* canvas = controller_ ? controller_->canvas() : nullptr;
+        const bool enabled = canvas && !canvas->image().isNull();
+        for (QAction* action : menu->actions()) {
+            action->setEnabled(enabled && !action->isSeparator());
+        }
+    });
+    connect(menu, &QMenu::aboutToHide, this, [this, menu]() {
+        if (openSlotMenu_ == menu) {
+            closeOpenSlotMenu();
+        }
+    });
+    return menu;
 }
 
 void Toolbox::showSlotMenu(int group)

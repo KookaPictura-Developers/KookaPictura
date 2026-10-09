@@ -1,6 +1,8 @@
 #include <QtTest/QtTest>
 
 #include <QtCore/QAbstractItemModel>
+#include <QtCore/QDir>
+#include <QtCore/QFile>
 #include <QtCore/QMimeData>
 #include <QtCore/QModelIndex>
 #include <QtCore/QPoint>
@@ -116,6 +118,8 @@ private slots:
     void moveToolFindsAnotherDocumentTab();
     void dropOnDelete();
     void clippingMasks();
+    void backgroundOnlyStaysActive();
+    void activeLayerNotFirstRow();
 
 private:
     bool setupNest();
@@ -664,6 +668,68 @@ void LayersPanelTest::clippingMasks()
     QCoreApplication::processEvents();
     panel_->altClickBelowRowForTest(fill);
     QVERIFY(!view_->layer_row_clipping(rowOf(fill)));
+}
+
+// Issue #119: a document whose only layer is the locked Background must always
+// report that row as active, including after a refresh that finds no selected
+// row (a model reset, a document switch, or a cleared selection).
+void LayersPanelTest::backgroundOnlyStaysActive()
+{
+    const bool created = window_->newDocument(QStringLiteral("BgOnly"), 16, 16,
+                                              QStringLiteral("rgb"), 8, QStringLiteral("white"));
+    QVERIFY(created);
+    view_ = window_->activeView();
+    panel_ = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    QVERIFY(view_ && panel_);
+
+    // A fully opaque import becomes the single locked Background.
+    QImage opaque(16, 16, QImage::Format_RGB32);
+    opaque.fill(QColor(200, 30, 30));
+    const QString path = QDir::tempPath() + QStringLiteral("/pictura_bg_only.png");
+    QVERIFY(opaque.save(path));
+    QVERIFY(view_->open_image(path));
+    QFile::remove(path);
+
+    QCOMPARE(view_->layer_row_count(), 1);
+    QCOMPARE(view_->layer_row_kind(0), QStringLiteral("background"));
+    QCOMPARE(view_->active_layer_path(), QStringLiteral("0"));
+    QCOMPARE(panel_->currentPath(), QStringLiteral("0"));
+
+    // Clearing the tree selection while the document keeps its active layer
+    // must not leave the Background unselected after a refresh.
+    panel_->selectPaths(QStringList{}, QString());
+    QVERIFY(panel_->selectedPaths().isEmpty());
+    view_->set_active_layer(QStringLiteral("0"));
+    panel_->refresh();
+    QCOMPARE(panel_->currentPath(), QStringLiteral("0"));
+    QCOMPARE(panel_->selectedPaths(), QStringList{QStringLiteral("0")});
+}
+
+// Issue #119: a refresh that finds no selected row must restore the document's
+// active layer, not the first displayed row. A top group (or adjustment) makes
+// the active pixel layer differ from the first row.
+void LayersPanelTest::activeLayerNotFirstRow()
+{
+    const bool created = window_->newDocument(QStringLiteral("ActiveNotTop"), 16, 16,
+                                              QStringLiteral("rgb"), 8, QStringLiteral("white"));
+    QVERIFY(created);
+    view_ = window_->activeView();
+    panel_ = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    QVERIFY(view_ && panel_);
+
+    QVERIFY(!view_->add_layer_in(QString()).isEmpty());
+    QVERIFY(!view_->add_group_in(QString()).isEmpty());
+    // The group is the first displayed row; the active pixel layer is "0".
+    QCOMPARE(view_->layer_row_path(0), QStringLiteral("2"));
+    QCOMPARE(view_->layer_row_kind(0), QStringLiteral("group"));
+    // Clearing the selection syncs an empty active layer, so re-establish the
+    // document's active layer (off the first row) before the refresh.
+    panel_->selectPaths(QStringList{}, QString());
+    view_->set_active_layer(QStringLiteral("0"));
+    panel_->refresh();
+    QCOMPARE(view_->active_layer_path(), QStringLiteral("0"));
+    QCOMPARE(panel_->currentPath(), QStringLiteral("0"));
+    QCOMPARE(panel_->selectedPaths(), QStringList{QStringLiteral("0")});
 }
 
 QTEST_MAIN(LayersPanelTest)

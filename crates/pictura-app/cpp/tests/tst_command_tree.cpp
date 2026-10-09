@@ -4,6 +4,7 @@
 #include <QtCore/QCoreApplication>
 #include <QtCore/QStringList>
 #include <QtGui/QAction>
+#include <QtGui/QContextMenuEvent>
 #include <QtGui/QImage>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPalette>
@@ -15,6 +16,7 @@
 #include "commands.h"
 #include "frame.h"
 #include "icons.h"
+#include "image_view.h"
 #include "panels/layers_panel.h"
 #include "panels/panel_column.h"
 #include "panels/panel_column_internal.h"
@@ -41,6 +43,7 @@ private slots:
     void panelMenusToolsIcons();
     void toolboxSlotMetrics();
     void toolboxInteractions();
+    void toolboxZoomMenu();
     void widgetmenuButton();
     void panelGroupChrome();
     void selfAnchorDock();
@@ -353,6 +356,84 @@ void CommandTreeTest::toolboxInteractions()
     QVERIFY2(screenMode->icon().pixmap(16, 16).toImage() != standardIcon,
              "screen-mode button icon follows the mode");
     window_->setScreenMode(pictura::PicturaMainWindow::ScreenMode::Standard);
+}
+
+// The Zoom tool's right-click menu: the CS6 zoom presets, driving the active
+// canvas (issue: Zoom tool context menu).
+void CommandTreeTest::toolboxZoomMenu()
+{
+    auto* toolbox = window_->findChild<pictura::Toolbox*>(QStringLiteral("toolsPanel"));
+    QVERIFY(toolbox != nullptr);
+    const int zoomGroup = pictura::toolInfo(pictura::ToolId::Zoom).group;
+    QMenu* menu = toolbox->slotMenuForTest(zoomGroup);
+    QVERIFY2(menu != nullptr, "the Zoom slot has a right-click menu");
+    QCOMPARE(menu->objectName(), QStringLiteral("zoomToolMenu"));
+    QVERIFY2(!toolbox->hasFlyoutTriangleForTest(zoomGroup), "Zoom has no member flyout");
+
+    QStringList texts;
+    for (QAction* action : menu->actions()) {
+        if (!action->isSeparator()) {
+            texts << action->text();
+        }
+    }
+    // A right-click on the Zoom slot must open the menu.
+    QToolButton* zoomButton = nullptr;
+    const QList<QToolButton*> zoomButtons = toolbox->slotButtons();
+    const QList<int> zoomGroups = toolbox->slotGroupsForTest();
+    for (int i = 0; i < zoomGroups.size() && i < zoomButtons.size(); ++i) {
+        if (zoomGroups.at(i) == zoomGroup) {
+            zoomButton = zoomButtons.at(i);
+        }
+    }
+    QVERIFY(zoomButton != nullptr);
+    QTest::mouseClick(zoomButton, Qt::RightButton);
+    QCoreApplication::processEvents();
+    QVERIFY2(menu->isVisible(), "right-click on the Zoom slot opens the menu");
+    menu->close();
+
+    QCOMPARE(texts, (QStringList{QStringLiteral("Fit on Screen"), QStringLiteral("100%"),
+                                 QStringLiteral("200%"), QStringLiteral("Print Size"),
+                                 QStringLiteral("Zoom In"), QStringLiteral("Zoom Out")}));
+
+    pictura::ImageView* canvas = window_->imageView();
+    QVERIFY(canvas != nullptr);
+    const QPointF centre(canvas->width() / 2.0, canvas->height() / 2.0);
+
+    // Each entry drives the active canvas.
+    canvas->setZoom(4.0, centre);
+    menu->actions().at(2)->trigger(); // 200%
+    QVERIFY2(qAbs(canvas->zoom() - 2.0) < 1e-6, "200% sets the zoom");
+    menu->actions().at(1)->trigger(); // 100%
+    QVERIFY2(qAbs(canvas->zoom() - 1.0) < 1e-6, "100% sets the zoom");
+    menu->actions().at(3)->trigger(); // Print Size (72 ppi default -> 96/72)
+    QVERIFY2(qAbs(canvas->zoom() - 96.0 / 72.0) < 1e-6, "Print Size follows the resolution");
+    canvas->setZoom(8.0, centre);
+    menu->actions().at(0)->trigger(); // Fit on Screen
+    QVERIFY2(canvas->zoom() < 8.0, "Fit on Screen fits the document");
+
+    // The Zoom In / Zoom Out entries step the zoom.
+    canvas->setZoom(1.0, centre);
+    menu->actions().at(5)->trigger(); // Zoom In
+    QVERIFY2(canvas->zoom() > 1.0, "Zoom In magnifies");
+    menu->actions().at(6)->trigger(); // Zoom Out
+    QVERIFY2(qAbs(canvas->zoom() - 1.0) < 1e-6, "Zoom Out reduces back to 100%");
+
+    // With the Zoom tool active, a canvas right-click shows the same menu; with
+    // another tool active it does not.
+    const QPoint local(20, 20);
+    const QPoint global = canvas->mapToGlobal(local);
+    window_->setActiveTool(pictura::ToolId::Zoom);
+    QContextMenuEvent zoomCtx(QContextMenuEvent::Mouse, local, global);
+    QApplication::sendEvent(canvas, &zoomCtx);
+    QCoreApplication::processEvents();
+    QVERIFY2(menu->isVisible(), "canvas right-click shows the zoom menu with Zoom active");
+    menu->close();
+
+    window_->setActiveTool(pictura::ToolId::Move);
+    QContextMenuEvent moveCtx(QContextMenuEvent::Mouse, local, global);
+    QApplication::sendEvent(canvas, &moveCtx);
+    QCoreApplication::processEvents();
+    QVERIFY2(!menu->isVisible(), "canvas right-click shows no zoom menu with another tool");
 }
 
 void CommandTreeTest::widgetmenuButton()
