@@ -202,6 +202,16 @@ public:
     void setFilterAttributeForTest(const QString& attr, bool enabled);
     int filterDimensionForTest() const;
 
+    // Layer-style panel hooks: the fx badge projection, the row menu with a real
+    // path, the Effect filter dimension, and an Alt-click on the fx region.
+    bool rowHasStyleForTest(const QString& path) const;
+    QRect rowFxRectForTest(const QString& path) const;
+    void altClickRowFxForTest(const QString& path);
+    QStringList rowMenuTextsForPathForTest(const QString& path);
+    bool rowMenuEnabledForPathForTest(const QString& path, const QString& text);
+    bool performRowActionForTest(const QString& id, const QString& path);
+    void setFilterEffectForTest(const QString& effect, bool enabled);
+
     // Phase D: run a wired Layers per-widget menu entry by its action id.
     // Returns false for ids this panel does not own.
     bool performPanelMenuAction(const QString& actionId);

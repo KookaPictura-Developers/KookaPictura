@@ -3,6 +3,8 @@
 #include "icons.h"
 #include "layers_panel_internal.h"
 
+#include "pictura_app/src/cxxqt_object/layer_style.cxxqt.h"
+
 #include <QtCore/QSize>
 #include <QtCore/QVariant>
 #include <QtWidgets/QComboBox>
@@ -80,6 +82,23 @@ QWidget* makePage(QWidget* parent)
     return new QWidget(parent);
 }
 
+// "dropShadow" -> "Drop Shadow", so the combo shows the CS6 name while the
+// item data keeps the bridge key the proxy matches.
+QString effectLabel(const QString& key)
+{
+    QString label;
+    for (const QChar c : key) {
+        if (c.isUpper() && !label.isEmpty()) {
+            label += QLatin1Char(' ');
+        }
+        label += c;
+    }
+    if (!label.isEmpty()) {
+        label[0] = label[0].toUpper();
+    }
+    return label;
+}
+
 } // namespace
 
 LayerFilterBar::LayerFilterBar(QWidget* parent)
@@ -153,18 +172,10 @@ LayerFilterBar::LayerFilterBar(QWidget* parent)
     auto* effectLayout = new QHBoxLayout(effectPage);
     effectLayout->setContentsMargins(0, 0, 0, 0);
     effect_ = new QComboBox(effectPage);
-    effect_->addItem(tr("Drop Shadow"));
-    effect_->addItem(tr("Inner Shadow"));
-    effect_->addItem(tr("Outer Glow"));
-    effect_->addItem(tr("Inner Glow"));
-    effect_->addItem(tr("Bevel and Emboss"));
-    effect_->addItem(tr("Satin"));
-    effect_->addItem(tr("Color Overlay"));
-    effect_->addItem(tr("Gradient Overlay"));
-    effect_->addItem(tr("Pattern Overlay"));
-    effect_->addItem(tr("Stroke"));
-    effect_->setEnabled(false);
-    effect_->setToolTip(tr("Layer effects — not implemented yet"));
+    effect_->setObjectName(QStringLiteral("layersFilterEffect"));
+    for (const QString& key : layer_style_effect_names()) {
+        effect_->addItem(effectLabel(key), key);
+    }
     effectLayout->addWidget(effect_);
     stack_->addWidget(effectPage);
 
@@ -227,6 +238,7 @@ LayerFilterBar::LayerFilterBar(QWidget* parent)
     connect(mode_, &QComboBox::currentIndexChanged, this, [this](int) { userChanged(); });
     connect(attribute_, &QComboBox::currentIndexChanged, this, [this](int) { userChanged(); });
     connect(color_, &QComboBox::currentIndexChanged, this, [this](int) { userChanged(); });
+    connect(effect_, &QComboBox::currentIndexChanged, this, [this](int) { userChanged(); });
 }
 
 QString LayerFilterBar::activeDimension() const
@@ -254,7 +266,7 @@ LayerFilter LayerFilterBar::buildFilter() const
     } else if (dimension == QLatin1String("color")) {
         filter.color = color_->currentData().toInt();
     } else if (dimension == QLatin1String("effect")) {
-        filter.enabled = false;
+        filter.effect = effect_->currentData().toString();
     }
     return filter;
 }
@@ -280,6 +292,7 @@ void LayerFilterBar::setFilter(const LayerFilter& filter)
     mode_->setCurrentIndex(qMax(0, mode_->findData(filter.mode)));
     attribute_->setCurrentIndex(qMax(0, attribute_->findData(filter.attribute)));
     color_->setCurrentIndex(qMax(0, color_->findData(filter.color)));
+    effect_->setCurrentIndex(qMax(0, effect_->findData(filter.effect)));
 
     int dimension = dimension_->findData(QStringLiteral("kind"));
     if (filter.enabled) {
@@ -291,6 +304,8 @@ void LayerFilterBar::setFilter(const LayerFilter& filter)
             dimension = dimension_->findData(QStringLiteral("attribute"));
         } else if (filter.color >= 0) {
             dimension = dimension_->findData(QStringLiteral("color"));
+        } else if (!filter.effect.isEmpty()) {
+            dimension = dimension_->findData(QStringLiteral("effect"));
         }
     }
     if (dimension >= 0) {

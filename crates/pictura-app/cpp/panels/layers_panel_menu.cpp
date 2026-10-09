@@ -5,6 +5,7 @@
 
 #include "pictura_app/src/cxxqt_object/impl_layers/layer_masks.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/impl_layers/smart_object_actions.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/layer_style.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/shapes.cxxqt.h"
 
 #include <QtCore/QItemSelectionModel>
@@ -62,6 +63,10 @@ struct RowSpec {
     const char* label;
     unsigned kinds;
     bool implemented;
+    // Row-state enablement the kind mask cannot express. `Always` (the default)
+    // keeps the other implemented rows unconditional.
+    enum Enable { Always, StyleEdit, HasStyle, CanPasteStyle };
+    Enable enable = Always;
 };
 
 // Row menu, in block order: common rows, kind-specific rows, then export rows.
@@ -82,10 +87,11 @@ const RowSpec kRowSpecs[] = {
     {"deleteLayerMask", "Delete Layer Mask", Pixel, true},
     {"enableLayerMask", "Enable Layer Mask", Pixel, true},
     {"disableLayerMask", "Disable Layer Mask", Pixel, true},
-    {"blendingOptions", "Blending Options…", Pixel | Background | Group, false},
-    {"copyLayerStyle", "Copy Layer Style", Pixel, false},
-    {"pasteLayerStyle", "Paste Layer Style", Pixel, false},
-    {"clearLayerStyle", "Clear Layer Style", Pixel, false},
+    {"blendingOptions", "Blending Options…", Pixel | Background | Group | Type, true,
+     RowSpec::StyleEdit},
+    {"copyLayerStyle", "Copy Layer Style", Pixel, true, RowSpec::HasStyle},
+    {"pasteLayerStyle", "Paste Layer Style", Pixel, true, RowSpec::CanPasteStyle},
+    {"clearLayerStyle", "Clear Layer Style", Pixel, true, RowSpec::HasStyle},
     {"editAdjustment", "Edit Adjustment…", Adjustment, false},
     {"rasterizeType", "Rasterize Type", Type, false},
     {"copyShapeAttributes", "Copy Shape Attributes", Shape, true},
@@ -193,6 +199,24 @@ void LayersPanel::populateRowMenu(QMenu& menu, const QString& path, int color,
                 action->setToolTip(tr("%1 — not implemented yet").arg(tr(row->label)));
                 continue;
             }
+            bool enabled = true;
+            switch (row->enable) {
+            case RowSpec::StyleEdit:
+                enabled = view_ && layer_style_can_edit(*view_, path);
+                break;
+            case RowSpec::HasStyle:
+                enabled = view_ && layer_style_has(*view_, path);
+                break;
+            case RowSpec::CanPasteStyle:
+                enabled = view_ && layer_style_can_paste();
+                break;
+            case RowSpec::Always:
+                break;
+            }
+            if (!enabled) {
+                action->setEnabled(false);
+                continue;
+            }
             const QString id = QLatin1String(row->id);
             connect(action, &QAction::triggered, this,
                     [this, id, path] { performRowAction(id, path); });
@@ -268,6 +292,20 @@ bool LayersPanel::performRowAction(const QString& id, const QString& path)
                 refresh();
                 selectPath(copy);
             }
+        }
+    } else if (id == QLatin1String("blendingOptions")) {
+        openLayerStyle(path);
+    } else if (id == QLatin1String("copyLayerStyle")) {
+        if (view_) {
+            layer_style_copy(*view_, path);
+        }
+    } else if (id == QLatin1String("pasteLayerStyle")) {
+        if (view_ && layer_style_paste(*view_, QStringList{path}) > 0) {
+            refresh();
+        }
+    } else if (id == QLatin1String("clearLayerStyle")) {
+        if (view_ && layer_style_clear(*view_, QStringList{path}) > 0) {
+            refresh();
         }
     } else if (id == QLatin1String("exportAs")) {
         exportAsFromView(this, view_);

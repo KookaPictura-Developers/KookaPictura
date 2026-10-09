@@ -2,6 +2,7 @@
 #include "dialogs.h"
 
 #include "layer_new_dialog.h"
+#include "layer_style_dialog.h"
 #include "layers_filter_bar.h"
 #include "layers_filter_proxy.h"
 #include "layers_panel_internal.h"
@@ -16,6 +17,7 @@
 #include "pictura_app/src/cxxqt_object/impl_layers/layer_masks.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/impl_layers/layers_surface.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/impl_layers/vector_masks.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/layer_style.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/layers_smart_filters.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/shapes.cxxqt.h"
 
@@ -252,15 +254,25 @@ LayersPanel::LayersPanel(QWidget* parent)
         return button;
     };
 
-    // CS6 strip order. Link/fx have icons but no behaviour yet, so they stay
-    // disabled rather than pretending.
+    // CS6 strip order. Link has an icon but no behaviour yet, so it stays
+    // disabled rather than pretending; fx opens Blending Options.
     auto* linkButton =
         stripIconButton(QStringLiteral("layersStripLink"), QStringLiteral("layers.link"));
     linkButton->setEnabled(false);
     linkButton->setToolTip(tr("Link Layers — not implemented yet"));
     auto* fxButton = stripIconButton(QStringLiteral("layersStripFx"), QStringLiteral("layers.fx"));
-    fxButton->setEnabled(false);
-    fxButton->setToolTip(tr("Layer Style — not implemented yet"));
+    fxButton->setToolTip(tr("Layer Style — click opens Blending Options; "
+                            "Alt-click toggles all effects"));
+    connect(fxButton, &QToolButton::clicked, this, [this] {
+        if (!view_) {
+            return;
+        }
+        if (QApplication::keyboardModifiers().testFlag(Qt::AltModifier)) {
+            layer_style_set_all_visible(*view_, !layer_style_any_visible(*view_, true));
+        } else {
+            openLayerStyle(currentPath());
+        }
+    });
     auto* maskButton =
         stripIconButton(QStringLiteral("layersStripMask"), QStringLiteral("layers.mask"));
     maskButton->setToolTip(tr("Add Layer Mask — click adds a mask for the selection "
@@ -459,6 +471,7 @@ void LayersPanel::refresh()
         const int documentWidth = view_->document_width();
         const int documentHeight = view_->document_height();
         rows.reserve(count);
+        const QStringList styleEffectNames = layer_style_effect_names();
         for (int i = 0; i < count; ++i) {
             LayerRow row;
             row.path = view_->layer_row_path(i);
@@ -482,6 +495,16 @@ void LayersPanel::refresh()
             row.documentHeight = documentHeight;
             row.shape = shape_row_is_shape(*view_, i);
             row.smartObject = layer_row_is_smart_object(*view_, i);
+            row.hasStyle = layer_row_has_style(*view_, i);
+            if (row.hasStyle) {
+                for (const QString& name : styleEffectNames) {
+                    if (layer_style_value(*view_, row.path,
+                                          name + QStringLiteral(".exists"))
+                        == 1.0) {
+                        row.styleEffects.push_back(name);
+                    }
+                }
+            }
             row.thumbnail = row.shape
                 ? shape_row_thumbnail(*view_, i, thumbSize)
                 : view_->layer_row_thumbnail(i, thumbSize, thumbEntireDocument_);
@@ -766,6 +789,16 @@ bool LayersPanel::eventFilter(QObject* watched, QEvent* event)
                     return true;
                 }
             }
+            // An Alt-click on a row's fx badge toggles every layer's effects,
+            // CS6's Show/Hide All Effects (a plain click leaves it to selection).
+            if (index.isValid() && view_ && (mouse->modifiers() & Qt::AltModifier)) {
+                const QRect fx = delegate_->fxRect(tree_->visualRect(index), index);
+                if (!fx.isEmpty() && fx.contains(pos)) {
+                    layer_style_set_all_visible(*view_,
+                                                !layer_style_any_visible(*view_, true));
+                    return true;
+                }
+            }
             // Alt-click on the line between two rows (outside the eye column)
             // clips the upper layer to the lower, or releases it, as CS6 does.
             if (index.isValid() && (mouse->modifiers() & Qt::AltModifier)
@@ -856,7 +889,9 @@ bool LayersPanel::eventFilter(QObject* watched, QEvent* event)
                     }
                 } else if (delegate_->nameRect(tree_->visualRect(index), index).contains(pos)) {
                     tree_->edit(index);
-                } else {
+                } else if (!delegate_->eyeColumnContains(tree_->visualRect(index), pos)
+                           && !delegate_->lockRect(tree_->visualRect(index)).contains(pos)
+                           && !delegate_->fxRect(tree_->visualRect(index), index).contains(pos)) {
                     openLayerStyle(path);
                 }
                 return true;
@@ -890,11 +925,14 @@ void LayersPanel::openBackgroundConversion(const QString& path)
     }
 }
 
-void LayersPanel::openLayerStyle(const QString&)
+void LayersPanel::openLayerStyle(const QString& path)
 {
-    // ponytail: no Layer Style dialog exists yet (the fx button and Blending
-    // Options are inert). A double-click outside the name is a deliberate no-op
-    // affordance until one is built.
+    if (!view_ || path.isEmpty() || !layer_style_can_edit(*view_, path)) {
+        return;
+    }
+    LayerStyleDialog dialog(view_, path, QString(), this);
+    runDialog(dialog, this);
+    refresh();
 }
 
 void LayersPanel::syncControls()

@@ -243,18 +243,21 @@ an icon SHALL NOT change what each button does. The **Add Layer Mask** button
 SHALL be active: a click SHALL add a `reveal-selection` mask when a selection
 exists and a `reveal-all` mask otherwise, and an `Alt`-click SHALL add a
 `hide-all` mask, each through the layer-mask bridge and each one undoable step.
-Buttons whose operation is not yet implemented (link, fx) SHALL be shown
-disabled until their operation lands.
+The **Layer Style** (`fx`) button SHALL be active: a click SHALL open the Layer
+Style dialog on Blending Options for the active layer when that layer can carry
+a style, and an `Alt`-click SHALL toggle all effects through the layer-style
+bridge in one undoable step. The **Link Layers** button SHALL be shown disabled
+until its operation lands.
 
 #### Scenario: The implemented strip buttons carry icons
 
 - **WHEN** the Layers panel is shown
-- **THEN** its mask, fill/adjustment, group, new-layer, and delete buttons each carry their documented icon
+- **THEN** its mask, fx, fill/adjustment, group, new-layer, and delete buttons each carry their documented icon
 
 #### Scenario: A deferred button is disabled
 
-- **WHEN** the Layers panel is shown before the link or fx operation exists
-- **THEN** that button is disabled
+- **WHEN** the Layers panel is shown before the link operation exists
+- **THEN** the link button is disabled
 
 #### Scenario: The mask button adds a mask [lmk_strip]
 
@@ -270,6 +273,16 @@ disabled until their operation lands.
 
 - **WHEN** the user `Alt`-clicks the Add Layer Mask strip button
 - **THEN** a hide-all mask is added to the active layer in one undoable step
+
+#### Scenario: The fx button opens Blending Options
+
+- **WHEN** the user clicks the Layer Style strip button with an active layer that can carry a style
+- **THEN** the Layer Style dialog opens on Blending Options for that layer
+
+#### Scenario: Alt-clicking the fx button toggles all effects
+
+- **WHEN** the user `Alt`-clicks the Layer Style strip button
+- **THEN** every layer's effects are shown when any were hidden and hidden when any were shown, as one undoable step
 
 ### Requirement: Layer tree projection and paths
 
@@ -306,8 +319,9 @@ without panicking and without changing the document.
 The system SHALL draw each row with a delegate that paints, in CS6 order, the
 visibility toggle, the thumbnail (a folder glyph for a group), the name, a
 clipping-mask indicator for a clipped layer, the clipping indentation and base
-underline, the layer-mask thumbnail when a mask is present, and an
-adjustment/style badge when adjustment content is present. A layer whose lock
+underline, the layer-mask thumbnail when a mask is present, an adjustment badge
+when adjustment content is present, and a layer-style `fx` badge when the layer
+carries a layer style (an `lfx2` or legacy `lrFX` block). A layer whose lock
 state has any flag set SHALL also show a lock badge at the right side of its
 row; an unlocked layer SHALL show none. The visibility toggle SHALL be an eye
 icon (`layers.eyeOn`/`layers.eyeOff`) drawn slightly inset from the panel's left
@@ -442,6 +456,12 @@ rather than fail.
 
 - **WHEN** the adjustment badge's icon asset is missing
 - **THEN** the row is still drawn and the badge is simply omitted
+
+#### Scenario: A styled layer shows the fx badge
+
+- **WHEN** a layer that carries a layer style is shown
+- **THEN** its row draws the `layers.fx` badge at its right edge beside the lock
+  and mask badges, and a layer with no style draws no fx badge
 
 ### Requirement: Multi-selection edits and refusals
 
@@ -1489,3 +1509,72 @@ filter-mask decoding lands.
 
 - **WHEN** the current layer is a smart object with filters but no decoded filter mask
 - **THEN** Disable Filter Mask and Delete Filter Mask are disabled
+
+### Requirement: Layer style panel integration
+
+The Layers panel SHALL be the surface that reaches the layer-style feature. A
+row double-click outside the name and the eye/mask controls SHALL open the Layer
+Style dialog on Blending Options for that layer when the layer can carry a style
+(`layer_style_can_edit`), and SHALL do nothing otherwise. The row context menu
+SHALL offer **Blending Options…**, **Copy Layer Style**, **Paste Layer Style**,
+and **Clear Layer Style** as implemented commands: Blending Options SHALL appear
+for pixel, background, group, and type rows and SHALL be enabled only where the
+layer can carry a style; Copy and Clear SHALL be enabled when the row's layer
+carries a style; Paste SHALL be enabled when the app-wide style clipboard is
+non-empty. Choosing a command SHALL act on the row's layer through the
+layer-style bridge and SHALL record through the bridge's own history.
+
+An `Alt`-click on a styled-or-adjustment row's right-edge `fx` region SHALL
+toggle every layer's effects through `layer_style_set_all_visible`, showing
+them when all were hidden and hiding them when any were shown, as one undoable
+step.
+
+The filter row's **Effect** dimension SHALL be enabled and SHALL list the ten
+effect keys from `layer_style_effect_names()`; selecting an effect SHALL match
+the rows whose layer carries that effect (and, as with the other dimensions,
+their ancestors), and a row whose layer does not carry it SHALL be filtered out.
+
+#### Scenario: A double-click opens Blending Options
+
+- **WHEN** a pixel layer row is double-clicked outside its name and its eye/mask controls
+- **THEN** the Layer Style dialog opens on Blending Options for that layer
+
+#### Scenario: A background double-click does not open a style
+
+- **WHEN** the Background row is double-clicked outside its name
+- **THEN** the Background conversion path runs and no Layer Style dialog opens
+
+#### Scenario: The style rows report their enablement
+
+- **WHEN** the row menu is opened for a pixel layer that carries a color overlay and has a copied style available
+- **THEN** Blending Options, Copy Layer Style, Paste Layer Style, and Clear Layer Style are all enabled
+
+#### Scenario: An unstyled pixel row disables Copy and Clear
+
+- **WHEN** the row menu is opened for a pixel layer with no layer style
+- **THEN** Blending Options is enabled and Copy Layer Style, Paste Layer Style, and Clear Layer Style are disabled
+
+#### Scenario: An adjustment row omits the style rows
+
+- **WHEN** the row menu is opened for an adjustment layer
+- **THEN** it does not offer Blending Options, Copy Layer Style, Paste Layer Style, or Clear Layer Style
+
+#### Scenario: The row menu clears a row's style
+
+- **WHEN** Clear Layer Style is chosen for a pixel row that carries a style
+- **THEN** the row's style is removed in one undoable step and its fx badge disappears
+
+#### Scenario: Alt-clicking the fx region toggles all effects
+
+- **WHEN** the user `Alt`-clicks the fx badge of a styled row while effects are shown
+- **THEN** every layer's effects are hidden in one undoable step, and a second `Alt`-click shows them again
+
+#### Scenario: The Effect dimension matches styled rows
+
+- **WHEN** the filter uses the Effect dimension with an effect a layer carries
+- **THEN** that layer's row is shown and rows without the effect are hidden
+
+#### Scenario: The Effect dimension lists the effect keys
+
+- **WHEN** the filter's Effect dimension is selected
+- **THEN** its choices are the ten effect keys from the layer-style effect list

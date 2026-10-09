@@ -70,6 +70,36 @@ public:
                      itemRect.top() + (itemRect.height() - side) / 2, side, side);
     }
 
+    /// Whether a row paints the fx badge: adjustment content or a layer style,
+    /// but never a shape row (its own badge owns the thumbnail corner).
+    bool showsFx(const QModelIndex& index) const
+    {
+        return !index.data(LayerRowShapeRole).toBool()
+            && (index.data(HasAdjustmentRole).toBool()
+                || index.data(HasLayerStyleRole).toBool());
+    }
+
+    /// The fx badge's rect at a row's right edge, immediately left of the lock
+    /// badge; empty when the row paints no fx badge.
+    QRect fxRect(const QRect& itemRect, const QModelIndex& index) const
+    {
+        if (!showsFx(index)) {
+            return {};
+        }
+        const int thumb = qMax(0, thumbnailSize_);
+        const int badge = qMax(12, thumb > 0 ? thumb : 16);
+        if (pictura::icon(QStringLiteral("layers.fx")).pixmap(badge, badge).isNull()) {
+            return {};
+        }
+        int right = itemRect.right() - 3;
+        if (index.data(LockRole).toInt() != 0
+            && !pictura::icon(QStringLiteral("layers.lockAll")).pixmap(badge, badge).isNull()) {
+            right -= badge + 3;
+        }
+        return QRect(right - badge, itemRect.top() + (itemRect.height() - badge) / 2, badge,
+                     badge);
+    }
+
     /// The x where a row's content begins: the eye gutter plus the per-depth
     /// indent, plus the chevron slot only for expandable rows. Shared by
     /// thumbRect, nameRect, and paint() so the three never disagree.
@@ -147,7 +177,7 @@ public:
             && !pictura::icon(QStringLiteral("layers.lockAll")).pixmap(badge, badge).isNull()) {
             right -= badge + 3;
         }
-        if (index.data(HasAdjustmentRole).toBool() && !index.data(LayerRowShapeRole).toBool()
+        if (showsFx(index)
             && !pictura::icon(QStringLiteral("layers.fx")).pixmap(badge, badge).isNull()) {
             right -= badge + 3;
         }
@@ -246,7 +276,7 @@ public:
             && !pictura::icon(QStringLiteral("layers.lockAll")).pixmap(badge, badge).isNull()) {
             right -= badge + 3;
         }
-        if (index.data(HasAdjustmentRole).toBool() && !index.data(LayerRowShapeRole).toBool()
+        if (showsFx(index)
             && !pictura::icon(QStringLiteral("layers.fx")).pixmap(badge, badge).isNull()) {
             right -= badge + 3;
         }
@@ -483,8 +513,7 @@ public:
                 right -= badge + 3;
             }
         }
-        if (index.data(HasAdjustmentRole).toBool() && !index.data(LayerRowShapeRole).toBool()
-            && !fxIcon.isNull()) {
+        if (showsFx(index) && !fxIcon.isNull()) {
             const QPixmap badgePix = fxIcon.pixmap(badge, badge);
             if (!badgePix.isNull()) {
                 painter->drawPixmap(

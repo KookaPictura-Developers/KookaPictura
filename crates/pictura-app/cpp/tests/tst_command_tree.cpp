@@ -138,7 +138,8 @@ void CommandTreeTest::menusPanel()
     expectedAdjustment << QStringLiteral("Edit Adjustment…") << QStringLiteral("Color Label");
 
     QStringList expectedType = common;
-    expectedType << QStringLiteral("Rasterize Type") << QStringLiteral("Color Label");
+    expectedType << QStringLiteral("Blending Options…") << QStringLiteral("Rasterize Type")
+                 << QStringLiteral("Color Label");
 
     QCOMPARE(panel->rowMenuTextsForTest(QStringLiteral("pixel")), expectedPixel);
     QCOMPARE(panel->rowMenuTextsForTest(QStringLiteral("background")), expectedBackground);
@@ -150,11 +151,11 @@ void CommandTreeTest::menusPanel()
              "wired mask row is enabled");
     QVERIFY2(!panel->rowMenuEnabledForTest(QStringLiteral("pixel"),
                                            QStringLiteral("Blending Options…")),
-             "unimplemented pixel row is disabled");
-    QVERIFY2(panel->rowMenuToolTipForTest(QStringLiteral("pixel"),
-                                          QStringLiteral("Blending Options…"))
-                 .contains(QStringLiteral("not implemented yet")),
-             "unimplemented pixel row tooltip");
+             "a kind-only row with no editable path is disabled");
+    QVERIFY2(!panel->rowMenuToolTipForTest(QStringLiteral("pixel"),
+                                           QStringLiteral("Blending Options…"))
+                  .contains(QStringLiteral("not implemented yet")),
+             "Blending Options is implemented (no not-implemented tooltip)");
     QVERIFY2(panel->rowMenuEnabledForTest(QStringLiteral("pixel"), QStringLiteral("New Layer")),
              "wired pixel row is enabled");
 

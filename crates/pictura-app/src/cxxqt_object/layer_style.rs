@@ -36,6 +36,12 @@ pub mod ffi {
         /// Whether the layer at `path` carries any effect, on or off.
         fn layer_style_has(view: &PictureView, path: &QString) -> bool;
 
+        /// Whether the projection row at `i` carries any effect, on or off.
+        fn layer_row_has_style(view: &PictureView, i: i32) -> bool;
+
+        /// The ten effect dialog keys, in CS6 list order.
+        fn layer_style_effect_names() -> QStringList;
+
         /// The value of `key` (`"<effect>.<field>"`, `"<effect>.on"`, `"fx.visible"` or `"blending.<option>"`) on the layer at `path`; colours pack as 0xRRGGBB, blend modes and choices are indices. NaN for an unknown key or path.
         fn layer_style_value(view: &PictureView, path: &QString, key: &QString) -> f64;
 
@@ -100,6 +106,19 @@ fn layer_style_can_edit(view: &PictureView, path: &QString) -> bool {
 
 fn layer_style_has(view: &PictureView, path: &QString) -> bool {
     with_layer(view, path, pictura_render::has_layer_style).unwrap_or(false)
+}
+
+fn layer_row_has_style(view: &PictureView, i: i32) -> bool {
+    let path = view.layer_row_path(i);
+    !path.is_empty() && layer_style_has(view, &path)
+}
+
+fn layer_style_effect_names() -> QStringList {
+    let mut names = QStringList::default();
+    for name in pictura_render::layer_style_effect_names() {
+        names.append(QString::from(name));
+    }
+    names
 }
 
 fn layer_style_value(view: &PictureView, path: &QString, key: &QString) -> f64 {

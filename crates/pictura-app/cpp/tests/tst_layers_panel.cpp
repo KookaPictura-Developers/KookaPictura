@@ -17,6 +17,7 @@
 #include <QtGui/QImage>
 #include <QtGui/QPalette>
 #include <QtWidgets/QApplication>
+#include <QtWidgets/QComboBox>
 #include <QtWidgets/QMenu>
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QTabBar>
@@ -33,6 +34,7 @@
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/impl_layers/layer_masks.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/impl_layers/vector_masks.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/layer_style.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/shapes.cxxqt.h"
 
 #include "qt_test_support.h"
@@ -134,6 +136,7 @@ private slots:
     void panelOptionsFlags();
     void renameTabNavigation();
     void shapeRowActions();
+    void layerStylePanelIntegration();
 
 private:
     bool setupNest();
@@ -1070,6 +1073,93 @@ void LayersPanelTest::shapeRowActions()
     QVERIFY2((view_->layer_row_lock(rowOf(shape)) & 0x01) != 0, "bit stays set");
 
     window_->closeDocument(window_->activeDocumentIndex(), false);
+}
+
+// The Layers panel reaches the layer-style feature: the row menu style rows and
+// their enablement, the fx badge projection, the FX Alt-click toggle, and the
+// Effect filter dimension.
+void LayersPanelTest::layerStylePanelIntegration()
+{
+    QVERIFY(window_->newDocument(QStringLiteral("Style"), 40, 40, QStringLiteral("rgb"), 8,
+                                 QStringLiteral("white")));
+    view_ = window_->activeView();
+    panel_ = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    QVERIFY2(view_ && panel_, "layer style fixture");
+    const int doc = window_->activeDocumentIndex();
+    view_->select_rect(10, 10, 10, 10, QStringLiteral("new"), 0.0);
+    QVERIFY(!view_->layer_via_copy(QStringLiteral("0")).isEmpty());
+    view_->deselect();
+    QCoreApplication::processEvents();
+    panel_->setView(view_);
+    panel_->selectPaths({QStringLiteral("1")}, QStringLiteral("1"));
+    panel_->refresh();
+
+    const QString layer = QStringLiteral("1");
+    QVERIFY2(!panel_->rowHasStyleForTest(layer), "unstyled row reports no style");
+    QVERIFY2(panel_->rowFxRectForTest(layer).isEmpty(), "unstyled row paints no fx badge");
+    QVERIFY2(panel_->rowMenuEnabledForPathForTest(layer, QStringLiteral("Blending Options…")),
+             "Blending Options is enabled for a pixel layer");
+    QVERIFY2(!panel_->rowMenuEnabledForPathForTest(layer, QStringLiteral("Copy Layer Style")),
+             "Copy is disabled without a style");
+    QVERIFY2(!panel_->rowMenuEnabledForPathForTest(layer, QStringLiteral("Clear Layer Style")),
+             "Clear is disabled without a style");
+    QVERIFY2(!panel_->rowMenuEnabledForPathForTest(layer, QStringLiteral("Paste Layer Style")),
+             "Paste is disabled with an empty clipboard");
+    QVERIFY2(!panel_->rowMenuTextsForTest(QStringLiteral("adjustment"))
+                  .contains(QStringLiteral("Blending Options…")),
+             "adjustment rows omit the style commands");
+
+    // A color overlay makes the row project the style and enables Copy / Clear.
+    QVERIFY(pictura::layer_style_set(*view_, layer, QStringLiteral("colorOverlay.on"), 1.0));
+    pictura::layer_style_commit(*view_, QStringLiteral("Layer Style"));
+    QCoreApplication::processEvents();
+    panel_->refresh();
+    QVERIFY2(panel_->rowHasStyleForTest(layer), "styled row reports a style");
+    QVERIFY2(!panel_->rowFxRectForTest(layer).isEmpty(), "styled row paints the fx badge");
+    QVERIFY2(panel_->rowMenuEnabledForPathForTest(layer, QStringLiteral("Copy Layer Style")),
+             "Copy is enabled with a style");
+    QVERIFY2(panel_->rowMenuEnabledForPathForTest(layer, QStringLiteral("Clear Layer Style")),
+             "Clear is enabled with a style");
+    QVERIFY(pictura::layer_style_copy(*view_, layer));
+    panel_->refresh();
+    QVERIFY2(panel_->rowMenuEnabledForPathForTest(layer, QStringLiteral("Paste Layer Style")),
+             "Paste is enabled after a copy");
+
+    // The Effect dimension is populated from the effect keys and matches only a
+    // row whose layer carries that effect.
+    auto* effectCombo = panel_->findChild<QComboBox*>(QStringLiteral("layersFilterEffect"));
+    QVERIFY(effectCombo != nullptr);
+    QVERIFY(effectCombo->count() >= 10);
+    QVERIFY(effectCombo->findData(QStringLiteral("colorOverlay")) >= 0);
+    panel_->setFilterEffectForTest(QStringLiteral("colorOverlay"), true);
+    QVERIFY2(panel_->visiblePathsForTest().contains(layer), "styled row passes its effect filter");
+    QVERIFY2(!panel_->visiblePathsForTest().contains(QStringLiteral("0")),
+             "unstyled background is filtered out");
+    panel_->setFilterEffectForTest(QStringLiteral("dropShadow"), true);
+    QVERIFY2(!panel_->visiblePathsForTest().contains(layer),
+             "a row without the effect is filtered out");
+    panel_->setFilterEffectForTest(QString(), false);
+    panel_->refresh();
+
+    // Alt-clicking the fx badge toggles every layer's effects, one undo step.
+    QVERIFY2(panel_->rowHasStyleForTest(layer), "row still styled before the fx toggle");
+    QVERIFY2(!panel_->rowFxRectForTest(layer).isEmpty(), "fx badge present before the toggle");
+    const int before = view_->history_count();
+    panel_->altClickRowFxForTest(layer);
+    QCOMPARE(view_->history_label(view_->history_index()), QStringLiteral("Hide All Effects"));
+    panel_->altClickRowFxForTest(layer);
+    QCOMPARE(view_->history_count(), before + 2);
+    QCOMPARE(view_->history_label(view_->history_index()), QStringLiteral("Show All Effects"));
+
+    // The row-menu Clear removes the style and the badge, in one undo step.
+    QVERIFY(panel_->performRowActionForTest(QStringLiteral("clearLayerStyle"), layer));
+    QCoreApplication::processEvents();
+    panel_->refresh();
+    QCOMPARE(view_->history_label(view_->history_index()), QStringLiteral("Clear Layer Style"));
+    QVERIFY2(!panel_->rowHasStyleForTest(layer), "cleared row reports no style");
+    QVERIFY2(panel_->rowFxRectForTest(layer).isEmpty(), "cleared row paints no fx badge");
+
+    window_->closeDocument(doc, false);
 }
 
 QTEST_MAIN(LayersPanelTest)

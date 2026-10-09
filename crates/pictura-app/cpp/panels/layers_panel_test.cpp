@@ -434,6 +434,85 @@ int LayersPanel::filterDimensionForTest() const
     return filterBar_ ? filterBar_->dimensionIndexForTest() : -1;
 }
 
+bool LayersPanel::rowHasStyleForTest(const QString& path) const
+{
+    return model_ && model_->indexForPath(path).data(HasLayerStyleRole).toBool();
+}
+
+QRect LayersPanel::rowFxRectForTest(const QString& path) const
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || !delegate_ || !tree_) {
+        return {};
+    }
+    const QRect vr = tree_->visualRect(index);
+    return delegate_->fxRect(QRect(0, 0, vr.width(), vr.height()), index);
+}
+
+void LayersPanel::altClickRowFxForTest(const QString& path)
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || !delegate_ || !tree_) {
+        return;
+    }
+    const QRect vr = tree_->visualRect(index);
+    const QRect fx = delegate_->fxRect(vr, index);
+    if (fx.isEmpty()) {
+        return;
+    }
+    const QPoint at = fx.center();
+    QMouseEvent press(QEvent::MouseButtonPress, at, tree_->viewport()->mapToGlobal(at),
+                      Qt::LeftButton, Qt::LeftButton, Qt::AltModifier);
+    QApplication::sendEvent(tree_->viewport(), &press);
+}
+
+QStringList LayersPanel::rowMenuTextsForPathForTest(const QString& path)
+{
+    const QModelIndex index = model_ ? model_->indexForPath(path) : QModelIndex();
+    QMenu menu;
+    populateRowMenu(menu, path, index.data(ColorRole).toInt(), index.data(KindRole).toString(),
+                    index.data(LayerRowShapeRole).toBool(),
+                    index.data(SmartObjectRole).toBool());
+    QStringList texts;
+    for (QAction* action : menu.actions()) {
+        if (!action->isSeparator()) {
+            texts.push_back(action->text());
+        }
+    }
+    return texts;
+}
+
+bool LayersPanel::rowMenuEnabledForPathForTest(const QString& path, const QString& text)
+{
+    const QModelIndex index = model_ ? model_->indexForPath(path) : QModelIndex();
+    QMenu menu;
+    populateRowMenu(menu, path, index.data(ColorRole).toInt(), index.data(KindRole).toString(),
+                    index.data(LayerRowShapeRole).toBool(),
+                    index.data(SmartObjectRole).toBool());
+    for (QAction* action : menu.actions()) {
+        if (!action->isSeparator() && action->text() == text) {
+            return action->isEnabled();
+        }
+    }
+    return false;
+}
+
+bool LayersPanel::performRowActionForTest(const QString& id, const QString& path)
+{
+    return performRowAction(id, path);
+}
+
+void LayersPanel::setFilterEffectForTest(const QString& effect, bool enabled)
+{
+    LayerFilter filter = filterBar_ ? filterBar_->filter() : LayerFilter{};
+    filter.enabled = enabled;
+    filter.effect = effect;
+    if (filterBar_) {
+        filterBar_->setFilter(filter);
+    }
+    applyFilter(filter);
+}
+
 bool LayersPanel::headerOrderOkForTest() const
 {
     const auto y = [this](const QWidget* widget) {

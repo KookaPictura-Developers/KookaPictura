@@ -15,6 +15,7 @@ struct LayerFilter {
     QString mode;
     int color = -1;
     QString attribute;
+    QString effect;
 };
 
 class LayersFilterProxyModel : public QSortFilterProxyModel {

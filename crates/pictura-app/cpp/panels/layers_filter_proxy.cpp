@@ -35,7 +35,7 @@ void LayersFilterProxyModel::setFilter(const LayerFilter& filter)
 bool LayersFilterProxyModel::hasActiveCriteria() const
 {
     return !filter_.name.isEmpty() || !filter_.kinds.isEmpty() || !filter_.mode.isEmpty()
-        || filter_.color >= 0 || !filter_.attribute.isEmpty();
+        || filter_.color >= 0 || !filter_.attribute.isEmpty() || !filter_.effect.isEmpty();
 }
 
 bool LayersFilterProxyModel::rowMatches(const QModelIndex& index) const
@@ -72,6 +72,10 @@ bool LayersFilterProxyModel::rowMatches(const QModelIndex& index) const
         if (!matches) {
             return false;
         }
+    }
+    if (!filter_.effect.isEmpty()
+        && !index.data(StyleEffectsRole).toStringList().contains(filter_.effect)) {
+        return false;
     }
     return true;
 }
