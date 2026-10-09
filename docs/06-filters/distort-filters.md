@@ -60,9 +60,9 @@ Ranges below marked **[AS]** are taken from the Photoshop CS6 AppleScript Script
 
 | Filter | Control | Type | Default | Range / options | Source |
 |---|---|---|---|---|---|
-| Diffuse Glow | Graininess | int | 6 *(inferred)* | 0–10 | [AS] |
-| Diffuse Glow | Glow Amount | int | 10 *(inferred)* | 0–20 | [AS] |
-| Diffuse Glow | Clear Amount | int | 15 *(inferred)* | 0–20 | [AS] |
+| Diffuse Glow | Graininess | int | 6 *(observed)* | 0–10 | [AS] |
+| Diffuse Glow | Glow Amount | int | 10 *(observed)* | 0–20 | [AS] |
+| Diffuse Glow | Clear Amount | int | 15 *(observed)* | 0–20 | [AS] |
 | Displace | Horizontal Scale | int | 0 *(inferred)* | −999–999 | [AS] |
 | Displace | Vertical Scale | int | 0 *(inferred)* | −999–999 | [AS] |
 | Displace | Displacement Map | enum | Stretch To Fit *(inferred)* | Stretch To Fit / Tile | [AS] |
@@ -74,8 +74,8 @@ Ranges below marked **[AS]** are taken from the Photoshop CS6 AppleScript Script
 | Glass | Texture | enum | Frosted *(inferred)* | Blocks / Canvas / Frosted / Tiny Lens / Load Texture (texture document) | [AS] |
 | Glass | Invert Texture | bool | false | on / off | [AS] |
 | Glass | Texture Definition | file | — | Photoshop PSD (mutually exclusive with a built-in Texture) | [AS] |
-| Ocean Ripple | Ripple Size | int | 9 *(inferred)* | 1–15 | [AS] |
-| Ocean Ripple | Ripple Magnitude | int | 5 *(inferred)* | 0–20 | [AS] |
+| Ocean Ripple | Ripple Size | int | 9 *(observed)* | 1–15 | [AS] |
+| Ocean Ripple | Ripple Magnitude | int | 9 *(observed)* | 0–20 | [AS] |
 | Pinch | Amount | int % | 0 | −100–100 (positive = toward center) | [AS][Help] |
 | Polar Coordinates | Kind | enum | Rectangular to Polar | Rectangular to Polar / Polar to Rectangular | [AS] |
 | Ripple | Amount | int | 100 *(inferred)* | −999–999 | [AS] |
@@ -124,9 +124,9 @@ Ranges below marked **[AS]** are taken from the Photoshop CS6 AppleScript Script
 | Wave | Multi-generator sinusoidal displacement | Sum of `N` wave generators; each has a random phase/period drawn from wavelength range, amplitude range, and type (sine/triangle/square); scale applies axis-wise; random seed makes it repeatable. *[AS]* |
 | Shear | Smooth horizontal shift | Curve control points spline-interpolated over the row position (top `-1`, bottom `1`); each row shifts horizontally by `offset × width/2`; undefined columns wrap or repeat edges. *(inferred; matches CS6's row shift and photorust's model)* |
 | ZigZag | Radial displacement | Amount scales magnitude, ridges set the number of direction reversals from center to edge; three styles (around center = rotation, out from center = radial, pond ripples = diagonal). *(inferred)* |
-| Glass | Texture-driven refraction | A height field (built-in or loaded texture) offsets the sampling position, modulated by Distortion; Smoothness interpolates the height field; Scaling scales the texture. *(inferred; classic "glass/refraction" displacement)* |
-| Ocean Ripple | Random ripple displacement | Small randomly-placed ripples; size = frequency, magnitude = amplitude. *(inferred)* |
-| Diffuse Glow | Blur + noise + screen | Grainy glow: blur the selection, add white noise, screen back toward the source; glow fades toward the selection center. *(inferred)* |
+| Glass | Texture-driven refraction | Each pixel samples the source displaced along the *slope* of the texture's height field, so each bump acts as a small lens. Distortion scales the reach, Smoothness blurs the height field, Scaling sizes it, and Invert reverses the reach. CS6 renders rule out Displace-style mapping, where one grey value shifts x and y equally: at Tiny Lens, each dome holds its own small piece of the picture. *(approximation tuned against CS6 renders; the built-in surfaces are procedural stand-ins for CS6's bitmaps)* |
+| Ocean Ripple | Refraction through random bumps | Pixels are displaced along the slope of a seeded, smoothly interpolated noise surface. Size sets the bump size, which grows only slowly. Magnitude sets the reach, which grows faster than linearly: about 2 px at Magnitude 2, frosted-glass blobs at 9–12, and scattered fragments of about 30 px at 20. *(approximation tuned against CS6 renders)* |
+| Diffuse Glow | Luminance-driven mix toward the glow colour | Every channel of a pixel moves toward the glow colour (the Background colour) by one shared fraction. That fraction rises with the pixel's blurred luminance, so highlights bloom and spill past their edges as a halo. Glow Amount lowers the threshold, steepens the ramp, and widens the halo. A low Clear Amount lifts the whole picture with a veil: CS6 lifts the shadows about 58 % at Clear 2, about a tenth at Clear 6, and almost none from Clear 10. Graininess adds see-through noise to the fraction. No centre falloff was visible in the CS6 renders. *(least-squares fit to CS6 renders)* |
 | Lens Correction | Radial polynomial distortion + per-channel scaling + vignette | Undistortion is a radial polynomial (Brown–Conrady-style `r²`,`r⁴` terms) inverse-mapped; chromatic aberration scales one channel pair relative to another; vignette applies a radial gain with a midpoint; perspective/angle are homographies. Auto Correction matches EXIF to a lens profile. *(inferred model; profile coefficients are Adobe data)* |
 
 **Pipeline.** All Distort filters are single-image, single-pass on the active layer/selection (Wave and Displace read one auxiliary input). For a Rust core they should share one `Warp` trait that renders output tiles from an input tile + a per-pixel displacement field; the filters differ only in how the field is generated. This is the lazy, GPU-friendly shape and matches how `gpu-rendering-pipeline` wants to run filters.
@@ -207,6 +207,7 @@ Widgets over QML for the dialogs (they are dense and modal), per `ARCH-003`; the
 Fetched for this document:
 
 - `https://help.adobe.com/archive/en/photoshop/cs6/photoshop_reference.pdf` — Adobe Photoshop CS6 Help. Established: the Distort submenu list and descriptions; the Filter-Gallery membership of Diffuse Glow/Glass/Ocean Ripple; "Defining undistorted areas" (Wrap Around / Repeat Edge Pixels / Set To Background for Offset); "Set texture and glass surface controls"; "Apply the Displace filter" (map channels, 128 = no shift, 100% = 128 px max, Stretch To Fit/Tile, Bitmap unsupported); "Use the Filter menu / bit-depth support lists" (which filters run at 16/32-bit); the full Lens Correction Auto + Custom workflow, Edge/Auto Scale, profile search, grid, and the statement that perspective settings are not saved; Filter Gallery rules.
+- CS6 Filter Gallery comparison renders (issue #286). These are screenshots of the CS6 preview for two photographs. Diffuse Glow was captured at (Graininess, Glow, Clear) = 6/10/15, 2/2/2, 9/18/16 and 8/1/6. Ocean Ripple was captured at (Size, Magnitude) = 9/9, 2/12, 14/2 and 15/20. Glass was captured at Frosted 3/3/66 %, 10/6/66 % and 10/11/162 %, Blocks 17/11/162 %, Canvas 19/15/162 %, and Tiny Lens 19/15/162 %. Each render was registered to its source to establish the displacement and mix behaviour above. Defaults marked *(observed)* are the values CS6 showed in those captures, taken to be its defaults.
 - `https://applescriptlibrary.files.wordpress.com/2013/11/photoshop-cs6-applescript-reference.pdf` — Adobe Photoshop CS6 AppleScript Scripting Reference. Established the exact option ranges and enum values for the scriptable Distort filters: Diffuse Glow (0–10, 0–20, 0–20), Displace (scales −999–999; kind stretch to fit/tile; undefined areas), Glass (0–20, 1–15, 50–200%, texture kinds, invert), Ocean Ripple (1–15, 0–20), Pinch (−100–100), Polar Coordinates kinds, Ripple (−999–999; small/medium/large), Shear (curve point list; undefined areas), Spherize (−100–100; normal/horizontal/vertical), Twirl (−999–999), Wave (generators/wavelength/amplitude/scale/type/seed/undefined), ZigZag (−100–100; 0–20; styles); plus the four-char event IDs (`'Dspl'`, `'Pnch'`, `'Plr '`, `'Rple'`, `'Shr '`, `'Sphr'`, `'Twrl'`, `'Wave'`, `'ZgZg'`, `'Gls '`, `'OcnR'`, `'DfsG'`).
 - `https://web.archive.org/web/2014id_/https://helpx.adobe.com/photoshop/using/filter-effects-reference.html` and `https://web.archive.org/web/2016id_/https://helpx.adobe.com/photoshop/using/filter-effects-reference.html` — archived Adobe "Filter effects reference" pages; used to confirm the prose descriptions were unchanged from the CS6 Help and to check that numeric ranges are not documented in Help itself.
 - `https://bpb-us-w2.wpmucdn.com/wonecks.net/dist/3/535/files/2020/03/Photoshop-filter-effects-reference.pdf` — a PDF mirror of the same Adobe reference; corroborated the prose (no added ranges).
