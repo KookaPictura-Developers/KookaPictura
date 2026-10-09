@@ -43,6 +43,8 @@ use crate::gpu::Backend;
 
 mod plan;
 mod resources;
+#[cfg(test)]
+mod tests;
 
 use plan::plan;
 use resources::run;

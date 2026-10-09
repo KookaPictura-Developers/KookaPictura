@@ -4,6 +4,8 @@
 #include <QtCore/QList>
 #include <QtCore/QPair>
 #include <QtCore/QPoint>
+#include <QtCore/QRect>
+#include <QtCore/QSize>
 #include <QtCore/QString>
 #include <QtGui/QImage>
 #include <QtWidgets/QDialog>
@@ -24,15 +26,16 @@ class QWidget;
 namespace pictura {
 
 class FilterParamControls;
+class GalleryPreviewCanvas;
 class PictureView;
 
 // CS6's Filter Gallery (docs/06-filters/artistic-filters.md, FILT-080): a
 // large preview, the gallery filters as thumbnails by category, the selected
 // effect's options, and a stack of effect layers. Effects stack like layers —
 // the bottom row is applied first — and each can be hidden with its eye,
-// dragged to reorder, or deleted. The stack previews on the canvas as it
-// changes; OK commits it as one "Filter Gallery" history state, Cancel
-// restores the layer.
+// dragged to reorder, or deleted. The stack previews in the dialog's pane on a
+// reduced copy of the visible picture, leaving the document alone; OK filters
+// the layer at full resolution as one "Filter Gallery" history state.
 class FilterGalleryDialog : public QDialog {
     Q_OBJECT
 
@@ -80,6 +83,10 @@ public:
     // hidden nothing is committed, which is not a refusal.
     CommitResult commit();
 
+    // The pane's last rendered preview: the visible part of the picture,
+    // reduced and filtered.
+    QImage previewImage() const;
+
 protected:
     void showEvent(QShowEvent* event) override;
     bool eventFilter(QObject* watched, QEvent* event) override;
@@ -93,23 +100,23 @@ private:
     void effectMoved(int from, int to);
     void schedulePreview();
     void runPreview();
-    void showPreviewImage();
+    void layoutPreview();
+    QSize documentSize() const;
     void setZoom(double zoom);
     double fitZoom() const;
     void renderNextThumbnail();
-    void discardPreview();
 
     PictureView* view_ = nullptr;
     QList<Effect> effects_;
     int selected_ = 0;
-    bool previewShown_ = false;
     double zoom_ = 1.0;
     bool panning_ = false;
     QPoint panAnchor_;
     QPoint panStart_;
 
     QScrollArea* previewArea_ = nullptr;
-    QLabel* previewLabel_ = nullptr;
+    GalleryPreviewCanvas* previewCanvas_ = nullptr;
+    QRect previewRegion_;
     QLabel* zoomLabel_ = nullptr;
     QWidget* thumbnailPane_ = nullptr;
     QList<QToolButton*> thumbnails_;

@@ -16,7 +16,7 @@
 
 ### Requirement: Filter Gallery effect stack
 
-The gallery SHALL hold a stack of effects applied in order, shown top-down as last-applied first. Clicking a thumbnail or choosing from the menu SHALL make the selected effect that filter on its defaults. New effect layer SHALL insert a copy of the selected effect above it; Delete SHALL remove the selected effect but never the last one; the eye SHALL hide an effect from the preview and the commit, and SHALL be the row's check state, so Space toggles it from the keyboard and assistive technology reads it; dragging SHALL reorder. The stack SHALL preview on the canvas as it changes, OK SHALL commit the visible effects as one "Filter Gallery" history state, and Cancel SHALL restore the layer bit-identically. The gallery SHALL reopen on the session's last stack.
+The gallery SHALL hold a stack of effects applied in order, shown top-down as last-applied first. Clicking a thumbnail or choosing from the menu SHALL make the selected effect that filter on its defaults. New effect layer SHALL insert a copy of the selected effect above it; Delete SHALL remove the selected effect but never the last one; the eye SHALL hide an effect from the preview and the commit, and SHALL be the row's check state, so Space toggles it from the keyboard and assistive technology reads it; dragging SHALL reorder. The stack SHALL preview in the dialog as it changes (see `imaging/filter-gallery-preview`), OK SHALL commit the visible effects as one "Filter Gallery" history state, and Cancel SHALL leave the layer bit-identical. The gallery SHALL reopen on the session's last stack.
 
 #### Scenario: OK commits the stack as one state
 

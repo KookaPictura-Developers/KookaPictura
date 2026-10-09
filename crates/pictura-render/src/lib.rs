@@ -114,6 +114,9 @@ pub use smart_filter::{apply_smart_filter_chain, decode_smart_filter, SmartFilte
 
 pub mod locks;
 
+mod filter_proxy;
+pub use filter_proxy::FilterProxy;
+
 mod gpu_filter;
 pub use gpu_filter::{apply_filter_active, filter_gpu_available};
 

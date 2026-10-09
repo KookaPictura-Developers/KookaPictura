@@ -16,7 +16,7 @@ FILT-080).
   sample of the picture), a hide-thumbnails toggle, OK / Cancel, a filter menu,
   the selected effect's options, and an effect-layer list with eye, drag to
   reorder, New effect layer, and Delete. Effects stack like layers (bottom row
-  applied first). The stack previews on the canvas, OK commits it as one
+  applied first). The stack previews in the dialog, OK commits it as one
   "Filter Gallery" history state, Cancel restores the layer. The gallery
   reopens on the session's last stack.
 - Wire `Filter ▸ Filter Gallery…`, enabled exactly when a filter can run.

@@ -267,12 +267,14 @@ fn note_paper_paints_in_the_two_swatches() {
 
 #[test]
 fn note_paper_is_deterministic() {
-    let mut a = Pixmap::filled(48, 48, Rgba8::new(150, 120, 90, 255));
-    a.fill_rect(Rect::new(10, 10, 20, 20), Rgba8::new(30, 30, 30, 255));
-    let mut b = a.clone();
-    note_paper(&mut a, 25, 10, 11, BLACK, WHITE);
-    note_paper(&mut b, 25, 10, 11, BLACK, WHITE);
-    assert_eq!(a.as_bytes(), b.as_bytes());
+    crate::photorust::with_seed(0, || {
+        let mut a = Pixmap::filled(48, 48, Rgba8::new(150, 120, 90, 255));
+        a.fill_rect(Rect::new(10, 10, 20, 20), Rgba8::new(30, 30, 30, 255));
+        let mut b = a.clone();
+        note_paper(&mut a, 25, 10, 11, BLACK, WHITE);
+        note_paper(&mut b, 25, 10, 11, BLACK, WHITE);
+        assert_eq!(a.as_bytes(), b.as_bytes());
+    });
 }
 
 #[test]
@@ -546,20 +548,22 @@ fn reticulation_paints_between_the_two_swatches() {
 
 #[test]
 fn reticulation_is_deterministic_and_leaves_alpha_alone() {
-    let mut a = Pixmap::filled(48, 48, Rgba8::new(120, 140, 160, 77));
-    a.fill_rect(Rect::new(4, 4, 8, 8), Rgba8::new(20, 20, 20, 200));
-    let before = a.clone();
-    let mut b = a.clone();
-    reticulation(&mut a, 12, 40, 5, BLACK, WHITE);
-    reticulation(&mut b, 12, 40, 5, BLACK, WHITE);
-    assert_eq!(a.as_bytes(), b.as_bytes());
-    let alpha = |pm: &Pixmap| {
-        pm.as_bytes()
-            .chunks_exact(4)
-            .map(|p| p[3])
-            .collect::<Vec<_>>()
-    };
-    assert_eq!(alpha(&a), alpha(&before));
+    crate::photorust::with_seed(0, || {
+        let mut a = Pixmap::filled(48, 48, Rgba8::new(120, 140, 160, 77));
+        a.fill_rect(Rect::new(4, 4, 8, 8), Rgba8::new(20, 20, 20, 200));
+        let before = a.clone();
+        let mut b = a.clone();
+        reticulation(&mut a, 12, 40, 5, BLACK, WHITE);
+        reticulation(&mut b, 12, 40, 5, BLACK, WHITE);
+        assert_eq!(a.as_bytes(), b.as_bytes());
+        let alpha = |pm: &Pixmap| {
+            pm.as_bytes()
+                .chunks_exact(4)
+                .map(|p| p[3])
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(alpha(&a), alpha(&before));
+    });
 }
 
 #[test]
@@ -740,20 +744,22 @@ fn torn_edges_frays_the_boundary() {
 
 #[test]
 fn torn_edges_is_deterministic_and_leaves_alpha_alone() {
-    let mut a = Pixmap::filled(48, 48, Rgba8::new(120, 140, 160, 77));
-    a.fill_rect(Rect::new(4, 4, 20, 20), Rgba8::new(20, 20, 20, 200));
-    let before = a.clone();
-    let mut b = a.clone();
-    torn_edges(&mut a, 25, 11, 17, BLACK, WHITE);
-    torn_edges(&mut b, 25, 11, 17, BLACK, WHITE);
-    assert_eq!(a.as_bytes(), b.as_bytes());
-    let alpha = |pm: &Pixmap| {
-        pm.as_bytes()
-            .chunks_exact(4)
-            .map(|p| p[3])
-            .collect::<Vec<_>>()
-    };
-    assert_eq!(alpha(&a), alpha(&before));
+    crate::photorust::with_seed(0, || {
+        let mut a = Pixmap::filled(48, 48, Rgba8::new(120, 140, 160, 77));
+        a.fill_rect(Rect::new(4, 4, 20, 20), Rgba8::new(20, 20, 20, 200));
+        let before = a.clone();
+        let mut b = a.clone();
+        torn_edges(&mut a, 25, 11, 17, BLACK, WHITE);
+        torn_edges(&mut b, 25, 11, 17, BLACK, WHITE);
+        assert_eq!(a.as_bytes(), b.as_bytes());
+        let alpha = |pm: &Pixmap| {
+            pm.as_bytes()
+                .chunks_exact(4)
+                .map(|p| p[3])
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(alpha(&a), alpha(&before));
+    });
 }
 
 #[test]
@@ -863,20 +869,22 @@ fn water_paper_weave_shows_in_the_dark() {
 
 #[test]
 fn water_paper_is_deterministic_and_leaves_alpha_alone() {
-    let mut a = Pixmap::filled(48, 48, Rgba8::new(120, 140, 160, 77));
-    a.fill_rect(Rect::new(4, 4, 8, 8), Rgba8::new(20, 20, 20, 200));
-    let before = a.clone();
-    let mut b = a.clone();
-    water_paper(&mut a, 15, 60, 80);
-    water_paper(&mut b, 15, 60, 80);
-    assert_eq!(a.as_bytes(), b.as_bytes());
-    let alpha = |pm: &Pixmap| {
-        pm.as_bytes()
-            .chunks_exact(4)
-            .map(|p| p[3])
-            .collect::<Vec<_>>()
-    };
-    assert_eq!(alpha(&a), alpha(&before));
+    crate::photorust::with_seed(0, || {
+        let mut a = Pixmap::filled(48, 48, Rgba8::new(120, 140, 160, 77));
+        a.fill_rect(Rect::new(4, 4, 8, 8), Rgba8::new(20, 20, 20, 200));
+        let before = a.clone();
+        let mut b = a.clone();
+        water_paper(&mut a, 15, 60, 80);
+        water_paper(&mut b, 15, 60, 80);
+        assert_eq!(a.as_bytes(), b.as_bytes());
+        let alpha = |pm: &Pixmap| {
+            pm.as_bytes()
+                .chunks_exact(4)
+                .map(|p| p[3])
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(alpha(&a), alpha(&before));
+    });
 }
 
 #[test]

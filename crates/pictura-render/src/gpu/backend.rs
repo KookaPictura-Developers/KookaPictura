@@ -218,6 +218,10 @@ async fn request_device() -> Option<Devices> {
         })
         .await
         .ok()?;
+    device.set_device_lost_callback(|reason, message| {
+        LOST.store(true, std::sync::atomic::Ordering::Relaxed);
+        eprintln!("pictura: GPU device lost ({reason:?}: {message}); using the CPU from now on");
+    });
     Some(Devices {
         _instance: instance,
         _adapter: adapter,
@@ -244,8 +248,20 @@ pub(super) fn accelerates(device_type: wgpu::DeviceType) -> bool {
 pub(super) static RESIDENT_HITS: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 
+/// Set once the driver reports the shared device lost (a reset after a hung
+/// job, for one). A lost device never comes back, so every later caller sees
+/// [`GpuError::Unavailable`] and takes the CPU path.
+static LOST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub(crate) fn device_lost() -> bool {
+    LOST.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 pub(super) fn devices() -> Result<&'static Devices, GpuError> {
     static DEVICES: OnceLock<Option<Devices>> = OnceLock::new();
+    if device_lost() {
+        return Err(GpuError::Unavailable);
+    }
     DEVICES
         .get_or_init(|| pollster::block_on(request_device()))
         .as_ref()
@@ -434,19 +450,19 @@ impl Gpu {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let views: Vec<_> = (0..size)
+        // Every run lies inside the fresh buffer, so a refused write means the
+        // device is lost: leave the buffer unwritten, and `read_canvas` fails.
+        let views: Option<Vec<_>> = (0..size)
             .step_by(RUN)
             .map(|at| {
                 let bytes =
                     wgpu::BufferSize::new(RUN.min(size - at) as u64).expect("a run is never empty");
-                let view = self
-                    .queue
-                    .write_buffer_with(&buffer, at as u64, bytes)
-                    .expect("a run lies inside the fresh buffer");
-                (at, view)
+                let view = self.queue.write_buffer_with(&buffer, at as u64, bytes)?;
+                Some((at, view))
             })
             .collect();
         views
+            .unwrap_or_default()
             .into_par_iter()
             .for_each(|(at, mut view)| write(at, view.slice(..)));
         buffer
@@ -710,6 +726,9 @@ impl Gpu {
         rx.recv()
             .map_err(|_| GpuError::Readback)?
             .map_err(|_| GpuError::Readback)?;
+        if device_lost() {
+            return Err(GpuError::Readback);
+        }
 
         // Each plane is `pw` words; copy exactly `n` bytes of it into the
         // planar `PixelBuffer`, ignoring the tail padding.
