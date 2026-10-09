@@ -37,7 +37,7 @@ filter -> ImageMagick mapping and the measured/tolerated divergence live in
     Ripple        -wave {amp}x{period} + -crop      (measured, no equivalent)
     Wave          -wave {amp}x{wavelength} + -crop  (measured, no equivalent)
     PolarCoordinates -distort DePolar / Polar 0      (measured, no equivalent)
-    Shear         -shear 0x{angle} + -crop           (measured, no equivalent)
+    Shear         -shear {angle}x0 + -crop           (measured, no equivalent)
     ZigZag        -swirl {angle}                     (measured, no equivalent)
     OceanRipple   -wave {amp}x{wavelength} + -crop   (measured, no equivalent)
 
@@ -54,8 +54,9 @@ Ripple / Wave displace both axes (Wave sums seeded generators).
 The M11 Distort filters (PolarCoordinates, Shear, ZigZag, OceanRipple) were
 measured the same way and are likewise no-equivalent: IM `-distort Polar` /
 `DePolar` use a different angle origin and radius anchor, `-shear` is a
-whole-canvas y-shear that background-fills the expanded canvas, and `-swirl` /
-`-wave` are different displacement models. The measured deltas and exact flags
+whole-canvas horizontal shear that background-fills the expanded canvas, and
+`-swirl` / `-wave` are different displacement models. The measured deltas and
+exact flags
 are in `crates/pictura-filters/tests/README.md`.
 
 `-wave` grows the canvas by `2*amplitude` (background-filled); the named `wave`
@@ -224,12 +225,18 @@ def build_im_args(args: argparse.Namespace) -> list[str]:
         return ["-distort", "Polar", "0"]
     if op == "shear":
         w, h = (int(part) for part in args.size.split("x"))
-        offset = round(w * math.tan(math.radians(args.shear_angle)) / 2.0)
+        # A horizontal shear: each row slides by tan(angle) per row down, the
+        # way Pictura's curve `[(-1,-0.5),(1,0.5)]` slopes. ImageMagick's
+        # positive x-shear runs the other way, so the angle is negated. The
+        # grown canvas is cropped back to --size, centred on the middle row.
+        crop_x = args.shear_crop_x
+        if crop_x is None:
+            crop_x = round(h * math.tan(math.radians(args.shear_angle)) / 2.0)
         return [
             "-shear",
-            f"0x{args.shear_angle:g}",
+            f"{-args.shear_angle:g}x0",
             "-crop",
-            f"{w}x{h}+0+{offset}",
+            f"{w}x{h}+{crop_x}+0",
             "+repage",
         ]
     raise SystemExit(f"unknown --op {op!r}")
@@ -370,7 +377,10 @@ def main(argv: list[str] | None = None) -> int:
     p_apply.add_argument("--wave-wavelength", type=float, default=16.0,
                          help="IM -wave wavelength")
     p_apply.add_argument("--shear-angle", type=float, default=26.565,
-                         help="IM -shear y-axis angle in degrees (shear op crops back to --size)")
+                         help="Pictura shear curve slope in degrees (the shear op negates it "
+                              "for IM and crops back to --size)")
+    p_apply.add_argument("--shear-crop-x", type=int, default=None,
+                         help="x offset of the shear op's crop (default centres the middle row)")
     p_apply.add_argument("input", help="raw 8-bit input image")
     p_apply.add_argument("output", help="raw 8-bit output image")
     p_apply.set_defaults(func=cmd_apply)

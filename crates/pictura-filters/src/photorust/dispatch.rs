@@ -12,7 +12,9 @@ use super::{
     add_noise, artistic, brush_strokes, convolve, distort, pixelate, sharpen, sketch, stylize,
     texture, with_seed,
 };
-use crate::{Filter, FilterError, LightDirection, NoiseDistribution, PolarKind, TextureOptions};
+use crate::{
+    Filter, FilterError, LightDirection, NoiseDistribution, PolarKind, ShearFill, TextureOptions,
+};
 
 type Run = Box<dyn FnOnce(&mut Pixmap)>;
 
@@ -219,6 +221,10 @@ fn plan(filter: &Filter) -> Option<Result<(u64, Run), FilterError>> {
             let to_polar = kind == PolarKind::RectangularToPolar;
             Ok(unseeded(move |p| distort::polar_coordinates(p, to_polar)))
         }
+        Filter::Shear { ref curve, fill } => check_shear_curve(curve).map(|()| {
+            let curve = curve.clone();
+            unseeded(move |p| distort::shear(p, &curve, fill == ShearFill::WrapAround))
+        }),
         Filter::ZigZag {
             amount,
             ridges,
@@ -265,6 +271,36 @@ fn check_wave(
     check_f("wave amplitude max", amplitude.1, amplitude.0 + 1.0..=999.0)?;
     check_f("wave scale", scale.0, 1.0..=100.0)?;
     check_f("wave scale", scale.1, 1.0..=100.0)
+}
+
+/// Shear's control-point curve: at least two finite `(position, offset)`
+/// points, both in `-1..=1`, with `position` strictly increasing top to
+/// bottom.
+fn check_shear_curve(curve: &[(f64, f64)]) -> Result<(), FilterError> {
+    if curve.len() < 2 {
+        return Err(FilterError::InvalidParams(format!(
+            "shear curve needs at least two points, got {}",
+            curve.len()
+        )));
+    }
+    for (i, &(position, offset)) in curve.iter().enumerate() {
+        if !position.is_finite() || !offset.is_finite() {
+            return Err(FilterError::InvalidParams(format!(
+                "shear curve point {i} must be finite"
+            )));
+        }
+        if !(-1.0..=1.0).contains(&position) || !(-1.0..=1.0).contains(&offset) {
+            return Err(FilterError::InvalidParams(format!(
+                "shear curve point {i} must have position and offset within -1.0..=1.0"
+            )));
+        }
+        if i > 0 && position <= curve[i - 1].0 {
+            return Err(FilterError::InvalidParams(format!(
+                "shear curve position must strictly increase at point {i}"
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn unseeded(f: impl FnOnce(&mut Pixmap) + 'static) -> (u64, Run) {
@@ -983,4 +1019,47 @@ fn plan_sketch(filter: &Filter) -> Option<Result<(u64, Run), FilterError>> {
         _ => return None,
     };
     Some(plan)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ramp() -> PixelBuffer {
+        let mut buffer = PixelBuffer::new(8, 8, 3);
+        for (i, v) in buffer.data.iter_mut().enumerate() {
+            *v = (i * 7) as u8;
+        }
+        buffer
+    }
+
+    #[test]
+    fn shear_validation_rejects_bad_curves_without_touching_the_buffer() {
+        // The rejected shapes the spec fixes: fewer than two points, a
+        // non-finite coordinate, a position that does not strictly increase,
+        // and a coordinate outside -1..=1.
+        let cases: &[&[(f64, f64)]] = &[
+            &[(0.0, 0.0)],
+            &[(0.0, 0.0), (0.0, 1.0)],
+            &[(0.5, 0.0), (0.2, 1.0)],
+            &[(0.0, 0.0), (f64::NAN, 1.0)],
+            &[(0.0, 0.0), (1.0, f64::INFINITY)],
+            &[(-1.5, 0.0), (1.0, 0.0)],
+            &[(0.0, 0.0), (1.0, 1.5)],
+        ];
+        for curve in cases {
+            let mut buffer = ramp();
+            let before = buffer.data.clone();
+            let filter = Filter::Shear {
+                curve: curve.to_vec(),
+                fill: ShearFill::WrapAround,
+            };
+            let applied = apply(&filter, &mut buffer);
+            assert!(
+                matches!(applied, Some(Err(FilterError::InvalidParams(_)))),
+                "curve {curve:?} was not rejected: {applied:?}"
+            );
+            assert_eq!(buffer.data, before, "curve {curve:?} mutated the buffer");
+        }
+    }
 }

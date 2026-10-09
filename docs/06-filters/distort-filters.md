@@ -45,7 +45,7 @@
 | `Filter > Distort > Pinch` | Menu / modal dialog | — | Preview + slider |
 | `Filter > Distort > Polar Coordinates` | Menu / modal dialog | — | Radio options only |
 | `Filter > Distort > Ripple` | Menu / modal dialog | — | Amount slider + size combo |
-| `Filter > Distort > Shear` | Menu / modal dialog | — | Curve grid with draggable control points |
+| `Filter > Distort > Shear` | Menu / modal dialog | — | Curve grid with draggable control points; Undefined Areas radios; live preview below |
 | `Filter > Distort > Spherize` | Menu / modal dialog | — | Amount slider + mode combo |
 | `Filter > Distort > Twirl` | Menu / modal dialog | — | Angle dial/slider |
 | `Filter > Distort > Wave` | Menu / modal dialog | — | Numeric fields + Randomize |
@@ -80,7 +80,7 @@ Ranges below marked **[AS]** are taken from the Photoshop CS6 AppleScript Script
 | Polar Coordinates | Kind | enum | Rectangular to Polar | Rectangular to Polar / Polar to Rectangular | [AS] |
 | Ripple | Amount | int | 100 *(inferred)* | −999–999 | [AS] |
 | Ripple | Ripple Size | enum | Medium *(inferred)* | Small / Medium / Large | [AS] |
-| Shear | Curve | list of points (x,y) | straight | ≥ 2 control points dragged in the grid | [AS] |
+| Shear | Curve | list of points (position, offset) | straight | 2–8 control points dragged in the grid; position runs top to bottom | [AS] |
 | Shear | Undefined Areas | enum | Wrap Around *(inferred)* | Wrap Around / Repeat Edge Pixels | [AS] |
 | Spherize | Amount | int % | 100 *(inferred)* | −100–100 | [AS] |
 | Spherize | Mode | enum | Normal | Normal / Horizontal Only / Vertical Only | [AS] |
@@ -122,7 +122,7 @@ Ranges below marked **[AS]** are taken from the Photoshop CS6 AppleScript Script
 | Polar Coordinates | Coordinate transform | `rect→polar` and `polar→rect` with bilinear resampling. *(inferred)* |
 | Ripple | Sinusoidal displacement | Periodic offsets; size sets spatial frequency. *(inferred)* |
 | Wave | Multi-generator sinusoidal displacement | Sum of `N` wave generators; each has a random phase/period drawn from wavelength range, amplitude range, and type (sine/triangle/square); scale applies axis-wise; random seed makes it repeatable. *[AS]* |
-| Shear | Piecewise-linear vertical shift | Curve control points interpolated; columns shift vertically by the curve; undefined rows wrap or repeat edges. *(inferred)* |
+| Shear | Smooth horizontal shift | Curve control points spline-interpolated over the row position (top `-1`, bottom `1`); each row shifts horizontally by `offset × width/2`; undefined columns wrap or repeat edges. *(inferred; matches CS6's row shift and photorust's model)* |
 | ZigZag | Radial displacement | Amount scales magnitude, ridges set the number of direction reversals from center to edge; three styles (around center = rotation, out from center = radial, pond ripples = diagonal). *(inferred)* |
 | Glass | Texture-driven refraction | A height field (built-in or loaded texture) offsets the sampling position, modulated by Distortion; Smoothness interpolates the height field; Scaling scales the texture. *(inferred; classic "glass/refraction" displacement)* |
 | Ocean Ripple | Random ripple displacement | Small randomly-placed ripples; size = frequency, magnitude = amplitude. *(inferred)* |
@@ -150,7 +150,7 @@ Crossing types: `Tile`, `Rect`, `ColorMode`, `BitDepth`, `EdgeMode`, `FilterPara
 | Proposal | Base | Responsibility |
 |---|---|---|
 | `DistortOptionsDialog` | `QDialog` | Hosts each filter's small parameter form; swap-in `QStackedWidget` per filter |
-| `ShearCurveEditor` | `QWidget` | Draws the shear curve grid; drag control points; Default button |
+| `ShearCurveEditor` | `QWidget` | Draws the shear curve grid; drag control points; click the line to add, drag a point out to remove |
 | `WaveOptionsPanel` | `QWidget` | Generators, min/max wavelength/amplitude spin boxes, type combo, Randomize |
 | `DisplaceOptionsPanel` | `QWidget` | Scale spins, Stretch/Tile, Undefined combo, file chooser (deferred to post-OK open) |
 | `GlassOptionsPanel` | `QWidget` | Distortion/Smoothness/Scaling sliders, texture combo + Load Texture, Invert |

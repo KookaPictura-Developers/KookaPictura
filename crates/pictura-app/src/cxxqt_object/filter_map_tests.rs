@@ -96,12 +96,21 @@ fn multi_slot_offsets_decode_correctly() {
             },
         })
     );
-    // The 7-slot shear curve and fill.
+    // The count + control-point pairs + fill shear encoding.
+    let mut shear = vec![0.0; SHEAR_SLOTS];
+    shear[0] = 3.0;
+    shear[1] = -1.0;
+    shear[2] = -0.5;
+    shear[3] = 0.25;
+    shear[4] = 0.75;
+    shear[5] = 1.0;
+    shear[6] = 0.5;
+    shear[SHEAR_SLOTS - 1] = 1.0;
     assert_eq!(
-        filter_from_kind_params("shear", &[0.25, 0.5, 0.75, 0.85, 1.5, 2.5, 0.0]),
+        filter_from_kind_params("shear", &shear),
         Some(Filter::Shear {
-            curve: vec![(0.25, 0.5), (0.75, 0.85), (1.5, 2.5)],
-            fill: ShearFill::WrapAround,
+            curve: vec![(-1.0, -0.5), (0.25, 0.75), (1.0, 0.5)],
+            fill: ShearFill::RepeatEdgePixels,
         })
     );
     // Wave wavelength/amplitude/scale pairs.

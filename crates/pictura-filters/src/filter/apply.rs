@@ -48,7 +48,6 @@ pub fn apply(filter: &Filter, buf: &mut PixelBuffer) -> Result<(), FilterError> 
             offset,
         } => other::custom(buf, kernel, *scale, *offset),
         Filter::Solarize => stylize::solarize(buf),
-        Filter::Shear { curve, fill } => distort::shear(buf, curve, *fill),
         Filter::OceanRipple {
             size,
             magnitude,

@@ -960,6 +960,7 @@ dependencies = [
  "pictura-codec",
  "pictura-core",
  "pictura-filters",
+ "pictura-ops",
  "pictura-paint",
  "pictura-render",
  "pictura-select",

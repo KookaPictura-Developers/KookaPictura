@@ -16,11 +16,18 @@ enum class FilterControl {
     Slider,    // one slot
     Angle,     // one slot, degrees, with a wheel
     Choice,    // one slot, an index into `choiceValues`
+    Radio,     // one slot, an index; a vertical radio group
     CheckBox,  // one slot, 0 or 1
     Color,     // three slots: red, green, blue (0..255)
     Placement, // two slots: x, y (normalized 0..1)
     BlurCenter, // display-only centre pad, contributes no slot
+    ShearCurve, // a point count and up to kShearMaxPoints (position, offset) pairs
 };
+
+// The most control points a Shear curve carries. Lock-step with
+// `pictura_filters::SHEAR_MAX_POINTS`; the curve box edits the points and the
+// filter is the same points, so the two never disagree.
+constexpr int kShearMaxPoints = 8;
 
 // One parameter's control identity and range. Ported from photorust's
 // per-filter dialog descriptors.
@@ -49,6 +56,9 @@ struct FilterCommandSpec {
     // One wide column under the preview instead of spilling into a second
     // input column; checkboxes trail the column.
     bool stacked = false;
+    // The preview sits under the inputs (Shear) instead of beside them, with
+    // no zoom row and no Preview checkbox, as CS6's Shear has none.
+    bool previewBelow = false;
 };
 
 // Every Filter-menu leaf that has an engine kernel, in menu order.
