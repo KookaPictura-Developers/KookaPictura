@@ -146,7 +146,10 @@ int pictura::runWorkspaceInputChecks(pictura::PicturaMainWindow& frame)
     const QPointF clickWidget(canvas->width() * 0.3, canvas->height() * 0.3);
     const QPointF clickImage = canvas->widgetToImage(clickWidget);
     const double clickZoomBefore = canvas->zoom();
+    // A click (press and release with no drag) steps on release; a drag draws a
+    // marquee instead, so the step is not committed at press.
     canvas->mousePressed(clickImage, Qt::LeftButton, int(Qt::NoModifier));
+    canvas->mouseReleased(clickImage);
     const bool clickZoomed = canvas->zoom() > clickZoomBefore;
     const bool clickAnchored = distance(clickImage, canvas->widgetToImage(clickWidget)) < 1e-6;
     ST_BEGIN("ws_zoom_click_anchor");
