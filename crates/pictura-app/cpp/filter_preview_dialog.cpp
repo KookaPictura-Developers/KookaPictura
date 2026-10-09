@@ -148,19 +148,11 @@ FilterPreviewDialog::FilterPreviewDialog(PictureView* view, const FilterCommandS
         thumbnail_->setAlignment(Qt::AlignCenter);
         thumbnail_->setFrameShape(QFrame::StyledPanel);
         thumbnail_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
-        // Cache the picture before any canvas preview, so each pane update
-        // re-filters the proxy rather than reading the whole canvas.
+        // Cache the picture before any canvas preview: the document with the
+        // active layer hidden, so each pane update composites the filtered
+        // active layer over it rather than reading the whole canvas.
         if (view_ && view_->has_document()) {
-            const QImage image = view_->image();
-            if (!image.isNull()) {
-                proxy_ = image.scaled(kProxySize, kProxySize, Qt::KeepAspectRatio,
-                                      Qt::SmoothTransformation)
-                             .convertToFormat(QImage::Format_RGBA8888);
-                for (int y = 0; y < proxy_.height(); ++y) {
-                    proxyRgba_.append(
-                        reinterpret_cast<const char*>(proxy_.constScanLine(y)), proxy_.width() * 4);
-                }
-            }
+            baseProxy_ = filter_proxy_base(*view_, kProxySize);
         }
     }
     body->addLayout(leftColumn, 1);
@@ -295,14 +287,17 @@ void FilterPreviewDialog::updateThumbnail()
     }
     const QSize target = thumbnail_->size().expandedTo(thumbnail_->minimumSize());
     if (spec_.previewBelow) {
-        // CS6's Shear shows the whole picture under the inputs, re-filtered
-        // on the small proxy so a drag does not wait for the whole layer.
-        QImage shown = proxy_;
-        if (!proxy_.isNull()) {
-            const QImage filtered = filter_thumbnail(proxyRgba_, proxy_.width(), proxy_.height(),
-                                                     spec_.kind, values());
-            if (!filtered.isNull()) {
-                shown = filtered;
+        // CS6's Shear shows the whole picture under the inputs: the active
+        // layer filtered on the small proxy and composited over the document
+        // with it hidden, so a drag stays responsive and the other layers are
+        // not filtered with it.
+        QImage shown;
+        if (view_ && !baseProxy_.isNull()) {
+            const QImage layer = filter_proxy_layer(*view_, spec_.kind, values(), kProxySize);
+            if (!layer.isNull()) {
+                shown = baseProxy_.copy();
+                QPainter painter(&shown);
+                painter.drawImage(0, 0, layer);
             }
         }
         if (!shown.isNull()) {

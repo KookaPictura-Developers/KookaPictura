@@ -296,12 +296,17 @@ protected:
             }
         }
 
-        // Not on a point, so add one where the click landed, in curve order.
-        // At the cap the click is ignored, as CS6 stops adding too.
+        // Not on a point: a click on the line adds one there, in curve order.
+        // A click off the line is ignored, as CS6's is; at the cap the click
+        // is ignored too, as CS6 stops adding.
         if (points_.size() >= kShearMaxPoints) {
             return;
         }
         const double y = qBound(0.0, pos.y() / (height() - 1), 1.0);
+        const double lineX = (offsetAt(y) + 1.0) / 2.0 * (width() - 1);
+        if (qAbs(pos.x() - lineX) > kShearGrabRadius) {
+            return;
+        }
         const double x = qBound(-1.0, pos.x() / (width() - 1) * 2.0 - 1.0, 1.0);
         int index = 1;
         while (index < points_.size() - 1 && points_.at(index).y() < y) {

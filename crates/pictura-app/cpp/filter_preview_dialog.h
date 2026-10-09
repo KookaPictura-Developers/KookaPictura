@@ -4,7 +4,6 @@
 // shell/src/dialogs/FilterPreviewDialog.{h,cpp}.
 // Source: https://github.com/perfecto25/photorust
 
-#include <QtCore/QByteArray>
 #include <QtCore/QList>
 #include <QtCore/QPointF>
 #include <QtCore/QRectF>
@@ -80,11 +79,11 @@ private:
     bool shownOnce_ = false;
     QRectF previewVisible_;
     double canvasZoom_ = 1.0;
-    // A small pre-preview picture for a bottom pane (Shear): each change
-    // re-renders the filter on this proxy instead of the full canvas, so the
-    // pane follows a drag while the whole-layer preview waits for release.
-    QImage proxy_;
-    QByteArray proxyRgba_;
+    // A small pre-preview picture for a bottom pane (Shear): the document with
+    // the active layer hidden, so each pane update filters only the active
+    // layer at proxy scale and composites it over this base. The pane follows a
+    // drag while the whole-layer preview waits for release.
+    QImage baseProxy_;
 };
 
 } // namespace pictura

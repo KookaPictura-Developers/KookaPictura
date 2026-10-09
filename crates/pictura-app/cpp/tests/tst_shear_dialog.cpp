@@ -82,6 +82,7 @@ private slots:
     void menuOpensItAndCommits();
     void rejectRestoresPixels();
     void lastFilterSettingsReopensPrefilled();
+    void paneKeepsTheOtherLayersUnsheared();
 
 private:
     pictura::test::ScopedStateHome stateHome_;
@@ -167,8 +168,8 @@ void ShearDialogTest::curveBoxEditsTheControlPoints()
     QCOMPARE(bent.at(4), 1.0);
 
     // Click the line to add a point, then drag it out of the box: the curve
-    // goes back to what it was.
-    const QPoint midway(curve->width() / 5, curve->height() / 2);
+    // goes back to what it was. The bent line at mid-height sits at 3/4 width.
+    const QPoint midway((curve->width() - 1) * 3 / 4, curve->height() / 2);
     QTest::mouseClick(curve, Qt::LeftButton, Qt::NoModifier, midway);
     const QList<double> withPoint = dialog.values();
     QCOMPARE(withPoint.at(0), 3.0);
@@ -187,20 +188,30 @@ void ShearDialogTest::theCurveKeepsAFewControlPoints()
     QVERIFY(curve != nullptr);
 
     // A clicked point is stored as one point, not sampled into a lattice: the
-    // curve box must show the handful the user placed, like CS6's.
+    // curve box must show the handful the user placed, like CS6's. The bend
+    // puts the line's midpoint at 3/4 width, where the click lands on it.
+    bendTheCurve(curve);
     const QPoint middle((curve->width() - 1) * 3 / 4, curve->height() / 2);
     QTest::mouseClick(curve, Qt::LeftButton, Qt::NoModifier, middle);
     const QList<double> values = dialog.values();
     QCOMPARE(values.at(0), 3.0);
-    QVERIFY(values.at(4) > 0.4); // the new point's offset, mid-box
+    QVERIFY(values.at(4) > 0.4); // the new point's offset, on the bent line
     for (int i = 7; i < 1 + 2 * pictura::kShearMaxPoints; ++i) {
         QCOMPARE(values.at(i), 0.0);
     }
 
-    // The cap refuses further points instead of overflowing the slots.
+    // A click away from the rendered line is ignored, as CS6's is: only the
+    // line adds a point.
+    QTest::mouseClick(curve, Qt::LeftButton, Qt::NoModifier, QPoint(5, curve->height() / 2));
+    QCOMPARE(dialog.values().at(0), 3.0);
+
+    // The cap refuses further points instead of overflowing the slots. Each
+    // click lands on the line, which the points on it keep straight.
     for (int i = 0; i < 12; ++i) {
-        const QPoint extra(20 + i, 20 + i * 8);
-        QTest::mouseClick(curve, Qt::LeftButton, Qt::NoModifier, extra);
+        const int y = 20 + i * 8;
+        const int x = static_cast<int>((static_cast<double>(y) / (curve->height() - 1) + 1.0)
+                                       / 2.0 * (curve->width() - 1));
+        QTest::mouseClick(curve, Qt::LeftButton, Qt::NoModifier, QPoint(x, y));
     }
     QCOMPARE(dialog.values().at(0), static_cast<double>(pictura::kShearMaxPoints));
 }
@@ -312,6 +323,43 @@ void ShearDialogTest::lastFilterSettingsReopensPrefilled()
                                 .arg(seen.at(i))
                                 .arg(expected.at(i))));
     }
+}
+
+// The pane shows the picture with the filter applied to the active layer
+// alone. A partial copy makes the stack a full background layer plus a
+// selected-region top layer, so the flattened composite the pane used to
+// re-filter is not the picture: only the active top layer may shear, and the
+// background must stay put under it.
+void ShearDialogTest::paneKeepsTheOtherLayersUnsheared()
+{
+    pictura::PictureView* view = window_->activeView();
+    QVERIFY(view != nullptr);
+
+    // Single layer: the pane is the sheared picture.
+    pictura::FilterPreviewDialog one(view, shearSpec());
+    QWidget* oneCurve = curveBox(one);
+    auto* onePane = one.findChild<QLabel*>(QStringLiteral("filterThumbnail"));
+    QVERIFY(oneCurve != nullptr && onePane != nullptr);
+    bendTheCurve(oneCurve);
+    const QImage single = onePane->pixmap().toImage();
+    QVERIFY(!single.isNull());
+    one.reject();
+
+    view->select_rect(0, 0, 32, 32, QStringLiteral("new"), 0.0);
+    const QString top = view->layer_via_copy(QStringLiteral("0"));
+    QVERIFY(!top.isEmpty());
+    view->set_active_layer(top);
+    view->deselect();
+
+    pictura::FilterPreviewDialog two(view, shearSpec());
+    QWidget* twoCurve = curveBox(two);
+    auto* twoPane = two.findChild<QLabel*>(QStringLiteral("filterThumbnail"));
+    QVERIFY(twoCurve != nullptr && twoPane != nullptr);
+    bendTheCurve(twoCurve);
+    const QImage stacked = twoPane->pixmap().toImage();
+    two.reject();
+
+    QVERIFY2(single != stacked, "the pane filtered every layer, not just the active one");
 }
 
 QTEST_MAIN(ShearDialogTest)
