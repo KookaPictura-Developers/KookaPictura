@@ -339,8 +339,8 @@ fn filter_from_kind_maps_known_and_rejects_unknown() {
     assert_eq!(
         filter_from_kind("shear"),
         Some(Filter::Shear {
-            curve: vec![(-1.0, -0.5), (0.0, 0.0), (1.0, 0.5)],
-            fill: ShearFill::RepeatEdgePixels,
+            curve: vec![(-1.0, 0.0), (1.0, 0.0)],
+            fill: ShearFill::WrapAround,
         })
     );
     assert_eq!(

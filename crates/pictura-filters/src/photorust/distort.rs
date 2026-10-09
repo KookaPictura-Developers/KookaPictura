@@ -187,6 +187,87 @@ pub fn polar_coordinates(pixmap: &mut Pixmap, to_polar: bool) {
     }
 }
 
+/// Filter ▸ Distort ▸ Shear.
+///
+/// Each row of the image is pushed sideways by an amount read off a curve —
+/// `curve` is that curve as `(position, offset)` control points top to bottom,
+/// with `offset` in fractions of half the image's width. All zeroes is a
+/// straight line down the middle and does nothing.
+pub fn shear(pixmap: &mut Pixmap, curve: &[(f32, f32)], wrap: bool) {
+    // The all-zero shortcut keeps a straight curve bit-exact on translucent
+    // pixels, where the premultiplied round trip in `remap` would not be.
+    if pixmap.is_empty() || curve.iter().all(|&(_, offset)| offset == 0.0) {
+        return;
+    }
+    let height = pixmap.height() as f32;
+    let half_w = pixmap.width() as f32 / 2.0;
+    let edge = if wrap {
+        EdgeMode::Wrap
+    } else {
+        EdgeMode::Clamp
+    };
+
+    remap(pixmap, edge, move |x, y| {
+        // The pixel centre of the top row reads the curve at -1 and of the
+        // bottom row at 1; between them the curve is a smooth line.
+        let position = if height > 1.0 {
+            (y - 0.5) / (height - 1.0) * 2.0 - 1.0
+        } else {
+            0.0
+        };
+        (x - curve_at(curve, position) * half_w, y)
+    });
+}
+
+/// Smooth `offset` at `position`, clamped outside the control span.
+///
+/// A cubic Hermite through the control points with Catmull-Rom tangents, so
+/// the line bends rather than kinks where the points are, the way CS6's curve
+/// does. With two points both tangents are the secant, which makes the curve
+/// exactly the straight line between them.
+fn curve_at(curve: &[(f32, f32)], position: f32) -> f32 {
+    let first = curve[0];
+    let last = curve[curve.len() - 1];
+    if position <= first.0 {
+        return first.1;
+    }
+    if position >= last.0 {
+        return last.1;
+    }
+    let mut i = 0;
+    while i + 2 < curve.len() && position > curve[i + 1].0 {
+        i += 1;
+    }
+    let (p1, o1) = curve[i];
+    let (p2, o2) = curve[i + 1];
+    let (p0, o0) = curve[i.saturating_sub(1)];
+    let (p3, o3) = curve[(i + 2).min(curve.len() - 1)];
+    let secant = (o2 - o1) / (p2 - p1);
+    // The ends get the adjacent secant, which both clamps the ends and makes a
+    // two-point curve a line.
+    let slope1 = if i == 0 {
+        secant
+    } else {
+        (o2 - o0) / (p2 - p0)
+    };
+    let slope2 = if i + 2 >= curve.len() {
+        secant
+    } else {
+        (o3 - o1) / (p3 - p1)
+    };
+    hermite(o1, slope1, o2, slope2, p2 - p1, (position - p1) / (p2 - p1))
+}
+
+/// The cubic Hermite blend over one segment.
+fn hermite(o1: f32, slope1: f32, o2: f32, slope2: f32, span: f32, t: f32) -> f32 {
+    let t2 = t * t;
+    let t3 = t2 * t;
+    (2.0 * t3 - 3.0 * t2 + 1.0) * o1
+        + (t3 - 2.0 * t2 + t) * span * slope1
+        + (-2.0 * t3 + 3.0 * t2) * o2
+        + (t3 - t2) * span * slope2
+}
+
 /// Filter ▸ Distort ▸ Ripple.
 ///
 /// `amount` is a percentage from -999 to 999 and `size` sets how far apart the
@@ -869,5 +950,98 @@ mod tests {
             crossings(RippleSize::Small) != crossings(RippleSize::Large),
             "Small and Large rippled identically"
         );
+    }
+
+    #[test]
+    fn a_two_point_shear_curve_is_a_straight_line() {
+        // Two points make both Hermite tangents the secant, so the shift has
+        // to grow evenly down the image rather than easing.
+        let curve = [(-1.0f32, -0.5), (1.0, 0.5)];
+        for (position, expected) in [
+            (-1.0, -0.5),
+            (-0.5, -0.25),
+            (0.0, 0.0),
+            (0.5, 0.25),
+            (1.0, 0.5),
+        ] {
+            assert!(
+                (curve_at(&curve, position) - expected).abs() < 1e-6,
+                "at {position} the straight curve read {} not {expected}",
+                curve_at(&curve, position)
+            );
+        }
+    }
+
+    #[test]
+    fn an_interior_shear_point_bends_the_line_without_kinking() {
+        // The slope either side of a control point has to agree, or the line
+        // is pointy exactly where CS6's is rounded.
+        let curve = [(-1.0f32, 0.0), (0.0, 0.5), (1.0, 0.0)];
+        let eps = 1e-3f32;
+        let before = (curve_at(&curve, -eps) - curve_at(&curve, -3.0 * eps)) / (2.0 * eps);
+        let after = (curve_at(&curve, 3.0 * eps) - curve_at(&curve, eps)) / (2.0 * eps);
+        assert!(
+            (before - after).abs() < 0.05,
+            "the curve kinks at the point: {before} then {after}"
+        );
+        // ...and it bows above the straight chord between the points.
+        assert!(curve_at(&curve, -0.5) > 0.25);
+        assert!(curve_at(&curve, 0.5) > 0.25);
+    }
+
+    #[test]
+    fn a_straight_shear_curve_does_nothing() {
+        // All zeroes is a straight line down the middle of the box, which is
+        // where the curve starts. Opening the dialog and pressing OK must
+        // leave the picture alone.
+        let source = grid(64, 8);
+        let mut after = source.clone();
+        shear(&mut after, &[(-1.0, 0.0), (1.0, 0.0)], false);
+        assert_eq!(after.as_bytes(), source.as_bytes());
+    }
+
+    #[test]
+    fn shear_pushes_each_row_by_what_the_curve_says() {
+        // A curve that is zero at the top and bends to the right lower down
+        // has to move the bottom rows and leave the top ones.
+        let mut source = Pixmap::filled(64, 64, Rgba8::WHITE);
+        for y in 0..64 {
+            source.set(20, y, Rgba8::BLACK);
+        }
+
+        let mut after = source.clone();
+        shear(&mut after, &[(-1.0, 0.0), (1.0, 0.5)], false);
+
+        // The dark column, found on the top row and the bottom row.
+        let column_on =
+            |px: &Pixmap, y: i32| -> Option<i32> { (0..64).find(|&x| px.get(x, y).r < 128) };
+        assert_eq!(
+            column_on(&after, 0),
+            Some(20),
+            "the top row should not have moved"
+        );
+        let bottom = column_on(&after, 63).expect("the line vanished from the bottom row");
+        assert!(bottom > 20, "the bottom row went the wrong way: {bottom}");
+    }
+
+    #[test]
+    fn shear_wraps_or_repeats_the_edge_it_shifted_off() {
+        // A constant offset that pushes every row half a width to the right:
+        // the columns that fall off the left edge come back from the right
+        // under Wrap, and repeat the left edge under Clamp.
+        let mut source = Pixmap::filled(32, 32, Rgba8::WHITE);
+        for y in 0..32 {
+            source.set(0, y, Rgba8::new(255, 0, 0, 255));
+            source.set(31, y, Rgba8::new(0, 0, 255, 255));
+        }
+        let curve = [(-1.0, 1.0), (1.0, 1.0)];
+        let mut clamp = source.clone();
+        shear(&mut clamp, &curve, false);
+        let mut wrap = source.clone();
+        shear(&mut wrap, &curve, true);
+
+        assert_ne!(clamp.as_bytes(), wrap.as_bytes());
+        assert_eq!(clamp.get(0, 16), Rgba8::new(255, 0, 0, 255));
+        assert_eq!(wrap.get(0, 16), Rgba8::new(255, 255, 255, 255));
     }
 }

@@ -72,7 +72,7 @@ block checker in B, so every filter sees both gradients and hard edges. All
 | `Ripple` | — | **no** | — | IM `-wave {amp}x{period}` displaces **one axis** with a sine in x and pads the canvas (background fill); Pictura Ripple displaces **both axes** (`dx ∝ sin y`, `dy ∝ sin x`) with clamp-to-edge and a fixed period per size. Measured max delta 255 / mean 104 (Ripple 100 Medium vs `-wave 10x16`, cropped back to 16×16). |
 | `Wave` | — | **no** | — | IM `-wave {amp}x{wavelength}` is a single **unseeded** sine along one axis; Pictura sums seeded generators with random phase/period/amplitude and an axis-wise scale. Measured max delta 255 / mean 101 (1 generator sine, amp 20, wavelength 10, seed 42 vs `-wave 20x10`, cropped). |
 | `PolarCoordinates` | — | **no** | — | Closest `-distort Polar 0` (RectangularToPolar) / `-distort DePolar 0` (PolarToRectangular); IM uses a different angle origin (≈180° off) and pixel-center/radius anchor plus its own resampling. Best measured max delta 189 (mean 58.3) and 194 (58.9); the crossed directions give max 240. Guarded by the remap/no-op property tests. |
-| `Shear` | — | **no** | — | IM `-shear 0x{angle}` is a whole-canvas y-shear that **background-fills** the expanded canvas; Pictura shifts columns by a piecewise-linear curve with clamp/wrap and expands nothing. Curve `[(-1,-0.5),(1,0.5)]` = 26.565°; best measured `-shear 0x26.565 -crop 16x16+0+4 +repage` max 255 / mean 18.4 (WrapAround 23.4). Guarded by the zero-curve no-op and fill-mode tests. |
+| `Shear` | — | **no** | — | IM `-shear {angle}x0` is a whole-canvas horizontal shear that **background-fills** the expanded canvas; Pictura shifts each row by a smooth spline through the control points with clamp/wrap and expands nothing. Curve `[(-1,-0.5),(1,0.5)]` = 26.565° (IM's sign runs the other way); best measured `-shear -26.565x0 -crop 16x16+4+0 +repage` max 255 / mean 18.4 (WrapAround 23.4). Guarded by the zero-curve no-op and fill-mode tests. |
 | `ZigZag` | — | **no** | — | IM `-swirl` uses a smooth falloff about `min(w,h)/2`; Pictura's cosine radial profile is pinned to zero at the edge with `ridges` reversals. Best measured `-swirl 50` (amount 80 / ridges 5 / AroundCenter) max 170 / mean 14.3. Guarded by the zero no-op and style tests. |
 | `OceanRipple` | — | **no** | — | IM `-wave` is an unseeded single-axis sine that pads the canvas; Pictura sums 8 seeded direction sinusoids with clamp-to-edge. Best measured `-wave 2x8 -crop 16x16+0+2 +repage` (size 9 / magnitude 20 / seed 42) max 227 / mean 53.7. Guarded by seed determinism and the zero-magnitude no-op. |
 | `DustAndScratches` | — | **no** | — | IM `-statistic median NxN` is an **ungated** rank filter; Pictura replaces a pixel only when it differs from the local median by more than `threshold`, and no IM operator exposes that gate. Guarded by the speck-removal and determinism unit tests. |
@@ -163,7 +163,7 @@ play.
 | Ripple | `-wave {amount/10}x{period} -crop WxH+0+{amount/10} +repage` (measured, **not** used) |
 | Wave | `-wave {amp}x{wavelength} -crop WxH+0+{amp} +repage` (measured, **not** used) |
 | Polar Coordinates | `-distort DePolar 0` / `-distort Polar 0` (measured, **not** used) |
-| Shear | `-shear 0x{angle} -crop WxH+0+{round(W·tan(angle)/2)} +repage` (measured, **not** used) |
+| Shear | `-shear -{angle}x0 -crop WxH+{round(H·tan(angle)/2)}+0 +repage` (measured, **not** used) |
 | ZigZag | `-swirl {angle}` (measured, **not** used) |
 | OceanRipple | `-wave {amp}x{wavelength} -crop WxH+0+{amp} +repage` (measured, **not** used) |
 
@@ -269,8 +269,8 @@ are the evidence for the no-equivalent rows. Verified against ImageMagick
 | `PolarCoordinates` | RectangularToPolar | `-distort Polar 0` | 189 (58.3) |
 | `PolarCoordinates` | PolarToRectangular | `-distort DePolar 0` | 194 (58.9) |
 | `PolarCoordinates` | crossed directions | `-distort DePolar 0` / `Polar 0` | 240–241 (82.7 / 90.1) |
-| `Shear` | `[(-1,-0.5),(1,0.5)]` = 26.565°, RepeatEdgePixels | `-shear 0x26.565 -crop 16x16+0+4 +repage` | 255 (18.4) |
-| `Shear` | same, WrapAround | `-shear 0x26.565 -crop 16x16+0+4 +repage` | 255 (23.4) |
+| `Shear` | `[(-1,-0.5),(1,0.5)]` = 26.565°, RepeatEdgePixels | `-shear -26.565x0 -crop 16x16+4+0 +repage` | 255 (18.4) |
+| `Shear` | same, WrapAround | `-shear -26.565x0 -crop 16x16+4+0 +repage` | 255 (23.4) |
 | `ZigZag` | amount 80, ridges 5, AroundCenter | `-swirl 50` | 170 (14.3) |
 | `ZigZag` | same | `-swirl -80` / `-implode 0.8` | 170 (18.8 / 18.6) |
 | `OceanRipple` | size 9, magnitude 20, seed 42 | `-wave 2x8 -crop 16x16+0+2 +repage` | 227 (53.7) |
@@ -283,13 +283,13 @@ The mismatches are structural:
   differ. `RectangularToPolar` is closest to `-distort Polar` and
   `PolarToRectangular` to `-distort DePolar` (the natural same-name pairing),
   but neither is within a usable tolerance.
-- **Shear** (`-shear`). IM `-shear 0x{angle}` shears the whole canvas along y
-  and grows it by `W·tan(angle)`, filling the exposed strip with the background
-  colour (black by default); Pictura shifts each column by a piecewise-linear
-  curve, clamps or wraps undefined rows and never changes the canvas. The
+- **Shear** (`-shear`). IM `-shear {angle}x0` shears the whole canvas along x
+  and grows it by `H·tan(angle)`, filling the exposed strip with the background
+  colour (black by default); Pictura shifts each row by a smooth spline through
+  the control points, clamps or wraps undefined columns and never changes the canvas. The
   straight curve `[(-1,-0.5),(1,0.5)]` is `atan(0.5) = 26.565°`; even after
-  cropping the grown canvas back (`+0+4`), the background-fill boundary alone
-  pins the max delta at 255.
+  cropping the grown canvas back (`+4+0`, centred on the middle row), the
+  background-fill boundary alone pins the max delta at 255.
 - **ZigZag** (`-swirl` / `-implode`). IM `-swirl` uses a smooth falloff over
   `min(w,h)/2`; Pictura's cosine radial profile is pinned to zero at the edge
   and reverses `ridges` times. `-implode` is a radial scale, not a ridge

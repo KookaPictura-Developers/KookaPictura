@@ -14,7 +14,7 @@ use pictura_filters::{
     Light, LightDirection, LightType, Lighting, MezzotintType, NoiseDistribution, PolarKind,
     Quality, RadialMethod, RippleSize, SharpenRemove, ShearFill, SpherizeMode, StrokeDirection,
     TextureChannel, TextureOptions, TextureSurface, TileFill, TonalFade, WaveType, WindMethod,
-    ZigZagStyle,
+    ZigZagStyle, SHEAR_MAX_POINTS,
 };
 
 /// Refuse a non-empty parameter list that does not match the kind's arity.
@@ -107,6 +107,9 @@ const RIPPLE_SIZES: [RippleSize; 3] = [RippleSize::Small, RippleSize::Medium, Ri
 const WAVE_TYPES: [WaveType; 3] = [WaveType::Sine, WaveType::Triangle, WaveType::Square];
 const POLAR_KINDS: [PolarKind; 2] = [PolarKind::RectangularToPolar, PolarKind::PolarToRectangular];
 const SHEAR_FILLS: [ShearFill; 2] = [ShearFill::WrapAround, ShearFill::RepeatEdgePixels];
+/// Shear's slots: a point count, then `SHEAR_MAX_POINTS` `(position, offset)`
+/// pairs, then the fill.
+pub(super) const SHEAR_SLOTS: usize = 1 + 2 * SHEAR_MAX_POINTS + 1;
 const ZIGZAG_STYLES: [ZigZagStyle; 3] = [
     ZigZagStyle::AroundCenter,
     ZigZagStyle::OutFromCenter,
@@ -274,7 +277,7 @@ pub(super) const FILTER_ARITIES: &[(&str, usize)] = &[
     ("ripple", 2),
     ("wave", 9),
     ("polar-coordinates", 1),
-    ("shear", 7),
+    ("shear", SHEAR_SLOTS),
     ("zigzag", 3),
     ("ocean-ripple", 3),
     ("clouds", 8),
@@ -586,14 +589,21 @@ pub(super) fn filter_from_kind_params(kind: &str, params: &[f64]) -> Option<Filt
             }
         }
         "shear" => {
-            arity!(params, 7);
+            arity!(params, SHEAR_SLOTS);
+            // A zero (or absent) point count is the straight default.
+            let count = i32v(params, 0, 0);
+            let curve = if count == 0 {
+                vec![(-1.0, 0.0), (1.0, 0.0)]
+            } else if (2..=SHEAR_MAX_POINTS as i32).contains(&count) {
+                (0..count as usize)
+                    .map(|i| (f(params, 1 + 2 * i, 0.0), f(params, 2 + 2 * i, 0.0)))
+                    .collect()
+            } else {
+                return None;
+            };
             Filter::Shear {
-                curve: vec![
-                    (f(params, 0, -1.0), f(params, 1, -0.5)),
-                    (f(params, 2, 0.0), f(params, 3, 0.0)),
-                    (f(params, 4, 1.0), f(params, 5, 0.5)),
-                ],
-                fill: pick(&SHEAR_FILLS, params, 6, 1),
+                curve,
+                fill: pick(&SHEAR_FILLS, params, SHEAR_SLOTS - 1, 0),
             }
         }
         "zigzag" => {

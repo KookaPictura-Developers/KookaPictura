@@ -7,8 +7,6 @@ use pictura_core::PixelBuffer;
 use rand_chacha::{rand_core::RngCore, ChaCha8Rng};
 use rayon::prelude::*;
 
-use crate::FilterError;
-
 /// One uniform `f64` in `[0, 1)` from 53 random bits.
 pub(crate) fn unit_f64(rng: &mut ChaCha8Rng) -> f64 {
     (rng.next_u64() >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
@@ -49,41 +47,8 @@ pub fn clamp_index(i: isize, n: usize) -> usize {
     i.clamp(0, n as isize - 1) as usize
 }
 
-/// Edge policy for a source coordinate that falls outside the image.
-#[derive(Clone, Copy)]
-pub(crate) enum Edge {
-    Clamp,
-    Wrap,
-}
-
-/// Bilinear sample at `(x, y)` under `edge`.
-pub(crate) fn bilinear(plane: &[u8], w: usize, h: usize, x: f64, y: f64, edge: Edge) -> f64 {
-    let x0 = x.floor();
-    let y0 = y.floor();
-    let (fx, fy) = (x - x0, y - y0);
-    let (i0, j0) = (x0 as isize, y0 as isize);
-    let (xi, xi1) = (idx(i0, w, edge), idx(i0 + 1, w, edge));
-    let (yi, yi1) = (idx(j0, h, edge), idx(j0 + 1, h, edge));
-    let p00 = plane[yi * w + xi] as f64;
-    let p10 = plane[yi * w + xi1] as f64;
-    let p01 = plane[yi1 * w + xi] as f64;
-    let p11 = plane[yi1 * w + xi1] as f64;
-    (p00 * (1.0 - fx) + p10 * fx) * (1.0 - fy) + (p01 * (1.0 - fx) + p11 * fx) * fy
-}
-
-fn idx(i: isize, n: usize, edge: Edge) -> usize {
-    match edge {
-        Edge::Clamp => clamp_index(i, n),
-        Edge::Wrap => i.rem_euclid(n as isize) as usize,
-    }
-}
-
 pub(crate) fn to_u8(v: f64) -> u8 {
     v.round().clamp(0.0, 255.0) as u8
-}
-
-pub(crate) fn invalid(msg: String) -> FilterError {
-    FilterError::InvalidParams(msg)
 }
 
 /// Separable Gaussian blur of the color planes of a 3/4-channel planar buffer

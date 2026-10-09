@@ -14,9 +14,11 @@
 #include <QtWidgets/QCheckBox>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QDoubleSpinBox>
+#include <QtWidgets/QButtonGroup>
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QPushButton>
+#include <QtWidgets/QRadioButton>
 #include <QtWidgets/QSlider>
 #include <QtWidgets/QVBoxLayout>
 #include <QtWidgets/QWidget>
@@ -36,6 +38,8 @@ int slotCount(FilterControl control)
         return 2;
     case FilterControl::BlurCenter:
         return 0;
+    case FilterControl::ShearCurve:
+        return 1 + 2 * kShearMaxPoints;
     default:
         return 1;
     }
@@ -205,6 +209,215 @@ void setButtonColor(QPushButton* button, const QColor& color)
 
 } // namespace
 
+namespace {
+
+constexpr int kShearCurveBoxSize = 140;
+constexpr double kShearGrabRadius = 7.0;
+
+// CS6's Shear curve: a box in which a line runs from the top of the image to
+// the bottom, and dragging it sideways pushes those rows sideways.
+//
+// Click on the line to add a point, drag one to move it, and drag one out of
+// the box to take it away — as CS6's does. The two ends cannot be removed,
+// since a curve with fewer than two points is not a curve.
+class ShearCurveWidget : public QWidget {
+public:
+    explicit ShearCurveWidget(QWidget* parent) : QWidget(parent)
+    {
+        setObjectName(QStringLiteral("shearCurveWidget"));
+        setFixedSize(kShearCurveBoxSize, kShearCurveBoxSize);
+        setCursor(Qt::CrossCursor);
+        setToolTip(QStringLiteral("Drag the line to bend the image; click it to add a point, "
+                                  "drag a point out to remove"));
+    }
+
+    std::function<void()> changed;
+    std::function<void()> changedLive;
+
+    // The control points, `x` the offset in -1..1 and `y` the height down the
+    // image in 0..1, kept sorted by `y`. The first and last are the ends.
+    const QList<QPointF>& points() const { return points_; }
+
+    // Replace the curve with the stored control points; fewer than two falls
+    // back to the straight line.
+    void setPoints(const QList<QPointF>& points)
+    {
+        if (points.size() >= 2) {
+            points_.clear();
+            for (const QPointF& p : points) {
+                points_.append(QPointF(qBound(-1.0, p.x(), 1.0), qBound(0.0, p.y(), 1.0)));
+            }
+        }
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter painter(this);
+        painter.fillRect(rect(), Qt::white);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+
+        // The dotted 4x4 grid CS6 rules the box with.
+        painter.setPen(QPen(QColor(0xa0, 0xa0, 0xa0), 1.0, Qt::DotLine));
+        for (int i = 1; i < 4; ++i) {
+            const double t = static_cast<double>(i) / 4.0;
+            painter.drawLine(QPointF(t * width(), 0), QPointF(t * width(), height()));
+            painter.drawLine(QPointF(0, t * height()), QPointF(width(), t * height()));
+        }
+
+        QPolygonF line;
+        for (int y = 0; y < height(); ++y) {
+            const double ny = height() > 1 ? static_cast<double>(y) / (height() - 1) : 0.0;
+            line.append(QPointF((offsetAt(ny) + 1.0) / 2.0 * (width() - 1), y));
+        }
+        painter.setPen(QPen(QColor(0x20, 0x20, 0x20), 1.4));
+        painter.drawPolyline(line);
+
+        painter.setBrush(QColor(0x20, 0x20, 0x20));
+        painter.setPen(Qt::NoPen);
+        for (int i = 0; i < points_.size(); ++i) {
+            const QPointF p = at(i);
+            painter.drawRect(QRectF(p.x() - 2.5, p.y() - 2.5, 5, 5));
+        }
+
+        painter.setBrush(Qt::NoBrush);
+        painter.setPen(QPen(QColor(0x50, 0x50, 0x50), 1));
+        painter.drawRect(rect().adjusted(0, 0, -1, -1));
+    }
+
+    void mousePressEvent(QMouseEvent* event) override
+    {
+        const QPointF pos = event->position();
+        for (int i = 0; i < points_.size(); ++i) {
+            if (QLineF(pos, at(i)).length() <= kShearGrabRadius) {
+                dragging_ = i;
+                return;
+            }
+        }
+
+        // Not on a point, so add one where the click landed, in curve order.
+        // At the cap the click is ignored, as CS6 stops adding too.
+        if (points_.size() >= kShearMaxPoints) {
+            return;
+        }
+        const double y = qBound(0.0, pos.y() / (height() - 1), 1.0);
+        const double x = qBound(-1.0, pos.x() / (width() - 1) * 2.0 - 1.0, 1.0);
+        int index = 1;
+        while (index < points_.size() - 1 && points_.at(index).y() < y) {
+            ++index;
+        }
+        points_.insert(index, QPointF(x, y));
+        dragging_ = index;
+        dirty_ = true;
+        update();
+        if (changedLive) {
+            changedLive();
+        }
+    }
+
+    void mouseMoveEvent(QMouseEvent* event) override
+    {
+        if (dragging_ < 0) {
+            return;
+        }
+        const QPointF pos = event->position();
+        QPointF& point = points_[dragging_];
+        point.setX(qBound(-1.0, pos.x() / (width() - 1) * 2.0 - 1.0, 1.0));
+        // The two ends belong to the top and bottom rows and only slide
+        // sideways.
+        if (dragging_ > 0 && dragging_ < points_.size() - 1) {
+            point.setY(qBound(points_.at(dragging_ - 1).y(),
+                              pos.y() / (height() - 1),
+                              points_.at(dragging_ + 1).y()));
+        }
+        dirty_ = true;
+        update();
+        if (changedLive) {
+            changedLive();
+        }
+    }
+
+    void mouseReleaseEvent(QMouseEvent* event) override
+    {
+        // Dragged out of the box: take the point away, unless it is an end,
+        // which the curve cannot do without.
+        if (dragging_ > 0 && dragging_ < points_.size() - 1
+            && !rect().adjusted(-2, -2, 2, 2).contains(event->position().toPoint())) {
+            points_.removeAt(dragging_);
+            dirty_ = true;
+            update();
+            if (changedLive) {
+                changedLive();
+            }
+        }
+        // The canvas preview is a whole-layer render, so it waits for the
+        // release; the dialog's own pane has been following `changedLive`.
+        if (dirty_) {
+            dirty_ = false;
+            if (changed) {
+                changed();
+            }
+        }
+        dragging_ = -1;
+    }
+
+private:
+    QPointF at(int index) const
+    {
+        const QPointF p = points_.at(index);
+        // The offset runs the full width of the box, so -1 is the left edge.
+        return QPointF((p.x() + 1.0) / 2.0 * (width() - 1), p.y() * (height() - 1));
+    }
+
+    // Smooth offset at the normalized height `y` (0 top, 1 bottom).
+    //
+    // A cubic Hermite through the control points with Catmull-Rom tangents,
+    // so the line bends rather than kinks where the points are, the way CS6's
+    // curve does. Two points make both tangents the secant, so the line
+    // between them is straight.
+    double offsetAt(double y) const
+    {
+        const double first = points_.first().x();
+        const double last = points_.last().x();
+        if (y <= 0.0) {
+            return first;
+        }
+        if (y >= 1.0) {
+            return last;
+        }
+        int i = 0;
+        while (i + 2 < points_.size() && y > points_.at(i + 1).y()) {
+            ++i;
+        }
+        const int before = qMax(0, i - 1);
+        const int after = qMin(points_.size() - 1, i + 2);
+        const double p1 = points_.at(i).y();
+        const double o1 = points_.at(i).x();
+        const double p2 = points_.at(i + 1).y();
+        const double o2 = points_.at(i + 1).x();
+        const double p0 = points_.at(before).y();
+        const double o0 = points_.at(before).x();
+        const double p3 = points_.at(after).y();
+        const double o3 = points_.at(after).x();
+        const double span = p2 - p1;
+        const double secant = span > 0.0 ? (o2 - o1) / span : 0.0;
+        const double slope1 = i == 0 ? secant : (o2 - o0) / (p2 - p0);
+        const double slope2 = i + 2 >= points_.size() ? secant : (o3 - o1) / (p3 - p1);
+        const double t = span > 0.0 ? (y - p1) / span : 0.0;
+        const double t2 = t * t;
+        const double t3 = t2 * t;
+        return (2.0 * t3 - 3.0 * t2 + 1.0) * o1 + (t3 - 2.0 * t2 + t) * span * slope1
+            + (-2.0 * t3 + 3.0 * t2) * o2 + (t3 - t2) * span * slope2;
+    }
+
+    QList<QPointF> points_{{0.0, 0.0}, {0.0, 1.0}};
+    int dragging_ = -1;
+    bool dirty_ = false;
+};
+
+} // namespace
+
 FilterParamControls::FilterParamControls(const QList<FilterParamSpec>& params, QWidget* parent,
                                          const QImage& padImage)
     : QObject(parent), parent_(parent), padImage_(padImage)
@@ -265,6 +478,23 @@ void FilterParamControls::addControl(const FilterParamSpec& spec)
                 [this] { emit changed(); });
         break;
     }
+    case FilterControl::Radio: {
+        control.group = new QButtonGroup(parent_);
+        for (int i = 0; i < spec.choices.size(); ++i) {
+            auto* button = new QRadioButton(spec.choices.at(i), parent_);
+            control.group->addButton(button, i);
+        }
+        const int initial = static_cast<int>(fallback(0, spec.value));
+        if (QAbstractButton* button = control.group->button(initial)) {
+            button->setChecked(true);
+        }
+        connect(control.group, &QButtonGroup::idToggled, this, [this](int, bool on) {
+            if (on) {
+                emit changed();
+            }
+        });
+        break;
+    }
     case FilterControl::Color: {
         control.colorButton = new QPushButton(parent_);
         control.colorButton->setObjectName(QStringLiteral("filterColorSwatch"));
@@ -322,6 +552,13 @@ void FilterParamControls::addControl(const FilterParamSpec& spec)
     }
     case FilterControl::BlurCenter: {
         control.center = new BlurCenterWidget(parent_);
+        break;
+    }
+    case FilterControl::ShearCurve: {
+        auto* curve = new ShearCurveWidget(parent_);
+        curve->changed = [this] { emit changed(); };
+        curve->changedLive = [this] { emit changedLive(); };
+        control.shear = curve;
         break;
     }
     default: {
@@ -405,6 +642,17 @@ void FilterParamControls::addControl(const FilterParamSpec& spec)
         rowLayout->addWidget(new QLabel(spec.label, control.row));
         rowLayout->addWidget(control.center);
         break;
+    case FilterControl::ShearCurve:
+        rowLayout->addWidget(control.shear);
+        break;
+    case FilterControl::Radio: {
+        rowLayout->addWidget(new QLabel(spec.label, control.row));
+        const QList<QAbstractButton*> buttons = control.group->buttons();
+        for (QAbstractButton* button : buttons) {
+            rowLayout->addWidget(button);
+        }
+        break;
+    }
     default: {
         auto* line = new QHBoxLayout;
         line->addWidget(new QLabel(spec.label, control.row));
@@ -439,6 +687,31 @@ void FilterParamControls::setValues(const QList<double>& initial)
                                                ? static_cast<int>(initial.at(slot))
                                                : control.combo->currentIndex());
             break;
+        case FilterControl::Radio:
+            if (slot < initial.size()) {
+                if (QAbstractButton* button =
+                        control.group->button(static_cast<int>(initial.at(slot)))) {
+                    button->setChecked(true);
+                }
+            }
+            break;
+        case FilterControl::ShearCurve: {
+            const int count = slot < initial.size()
+                                  ? qBound(0, static_cast<int>(initial.at(slot)), kShearMaxPoints)
+                                  : 0;
+            QList<QPointF> points;
+            for (int i = 0; i < count; ++i) {
+                const double position = slot + 1 + 2 * i < initial.size()
+                                            ? initial.at(slot + 1 + 2 * i)
+                                            : 0.0;
+                const double offset = slot + 2 + 2 * i < initial.size()
+                                          ? initial.at(slot + 2 + 2 * i)
+                                          : 0.0;
+                points.append(QPointF(offset, (position + 1.0) / 2.0));
+            }
+            static_cast<ShearCurveWidget*>(control.shear)->setPoints(points);
+            break;
+        }
         case FilterControl::Color: {
             const double r = slot < initial.size() ? initial.at(slot) : buttonColor(control.colorButton).red();
             const double g = slot + 1 < initial.size() ? initial.at(slot + 1) : buttonColor(control.colorButton).green();
@@ -478,6 +751,8 @@ double FilterParamControls::controlValue(const Control& control, int slot) const
         return control.box->isChecked() ? 1.0 : 0.0;
     case FilterControl::Choice:
         return static_cast<double>(control.combo->currentIndex());
+    case FilterControl::Radio:
+        return static_cast<double>(qMax(0, control.group->checkedId()));
     case FilterControl::Color: {
         const QColor color = buttonColor(control.colorButton);
         return slot == 0 ? color.red() : slot == 1 ? color.green() : color.blue();
@@ -485,6 +760,7 @@ double FilterParamControls::controlValue(const Control& control, int slot) const
     case FilterControl::Placement:
         return slot == 0 ? control.x->value() : control.y->value();
     case FilterControl::BlurCenter:
+    case FilterControl::ShearCurve:
         return 0.0;
     default:
         return control.spin->value();
@@ -495,6 +771,20 @@ QList<double> FilterParamControls::values() const
 {
     QList<double> result;
     for (const Control& control : controls_) {
+        if (control.spec.control == FilterControl::ShearCurve) {
+            const QList<QPointF>& points =
+                static_cast<ShearCurveWidget*>(control.shear)->points();
+            result.append(static_cast<double>(points.size()));
+            for (const QPointF& p : points) {
+                result.append(p.y() * 2.0 - 1.0);
+                result.append(p.x());
+            }
+            for (int i = points.size(); i < kShearMaxPoints; ++i) {
+                result.append(0.0);
+                result.append(0.0);
+            }
+            continue;
+        }
         const int n = slotCount(control.spec.control);
         for (int s = 0; s < n; ++s) {
             result.append(controlValue(control, s));

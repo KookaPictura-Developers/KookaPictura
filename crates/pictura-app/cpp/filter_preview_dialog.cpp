@@ -47,6 +47,10 @@ const int kManyParams = 8;
 // A stacked dialog's rows span this width, wider than the preview alone.
 const int kStackedRowWidth = 360;
 
+// The bottom preview pane (Shear) re-filters a proxy of this size, so a
+// curve drag stays responsive while the whole-layer canvas render waits.
+const int kProxySize = 320;
+
 // CS6 preview zoom steps, as a percentage of the base thumbnail size.
 const int kZoomLevels[] = {25, 50, 100, 200, 400};
 const int kZoomCount = 5;
@@ -99,7 +103,8 @@ FilterPreviewDialog::FilterPreviewDialog(PictureView* view, const FilterCommandS
 
     auto* leftColumn = new QVBoxLayout;
     leftColumn->setSpacing(8);
-    if (spec.previewPane) {
+    const bool previewBelow = spec.previewBelow;
+    if (spec.previewPane && !previewBelow) {
         thumbnail_ = new QLabel(this);
         thumbnail_->setObjectName(QStringLiteral("filterThumbnail"));
         thumbnail_->setMinimumSize(200, 200);
@@ -135,12 +140,36 @@ FilterPreviewDialog::FilterPreviewDialog(PictureView* view, const FilterCommandS
         zoomRow->addStretch(1);
         leftColumn->addLayout(zoomRow);
     }
+    if (previewBelow) {
+        // CS6's Shear: the picture under the inputs, no zoom row.
+        thumbnail_ = new QLabel(this);
+        thumbnail_->setObjectName(QStringLiteral("filterThumbnail"));
+        thumbnail_->setMinimumSize(200, 120);
+        thumbnail_->setAlignment(Qt::AlignCenter);
+        thumbnail_->setFrameShape(QFrame::StyledPanel);
+        thumbnail_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+        // Cache the picture before any canvas preview, so each pane update
+        // re-filters the proxy rather than reading the whole canvas.
+        if (view_ && view_->has_document()) {
+            const QImage image = view_->image();
+            if (!image.isNull()) {
+                proxy_ = image.scaled(kProxySize, kProxySize, Qt::KeepAspectRatio,
+                                      Qt::SmoothTransformation)
+                             .convertToFormat(QImage::Format_RGBA8888);
+                for (int y = 0; y < proxy_.height(); ++y) {
+                    proxyRgba_.append(
+                        reinterpret_cast<const char*>(proxy_.constScanLine(y)), proxy_.width() * 4);
+                }
+            }
+        }
+    }
     body->addLayout(leftColumn, 1);
 
     // One self-contained row per parameter, built by addControl; a filter with
     // many inputs spills the overflow into the middle column.
     controls_ = new FilterParamControls(spec_.params, this, view_ ? view_->image() : QImage());
     connect(controls_, &FilterParamControls::changed, this, &FilterPreviewDialog::valuesChanged);
+    connect(controls_, &FilterParamControls::changedLive, this, &FilterPreviewDialog::updateThumbnail);
     QList<QWidget*> rows = controls_->rows();
     if (spec.stacked) {
         // Checkboxes trail the column so the sliders run on unbroken.
@@ -183,23 +212,30 @@ FilterPreviewDialog::FilterPreviewDialog(PictureView* view, const FilterCommandS
     auto* cancel = new QPushButton(QStringLiteral("Cancel"), this);
     connect(ok, &QPushButton::clicked, this, &QDialog::accept);
     connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
-    preview_ = new QCheckBox(QStringLiteral("Preview"), this);
-    preview_->setObjectName(QStringLiteral("filterPreview"));
-    preview_->setChecked(true);
-    connect(preview_, &QCheckBox::toggled, this, [this](bool on) {
-        if (on) {
-            valuesChanged();
-        } else {
-            discardPreview();
-        }
-    });
+    if (!previewBelow) {
+        preview_ = new QCheckBox(QStringLiteral("Preview"), this);
+        preview_->setObjectName(QStringLiteral("filterPreview"));
+        preview_->setChecked(true);
+        connect(preview_, &QCheckBox::toggled, this, [this](bool on) {
+            if (on) {
+                valuesChanged();
+            } else {
+                discardPreview();
+            }
+        });
+    }
     buttonColumn->addWidget(ok);
     buttonColumn->addWidget(cancel);
-    buttonColumn->addSpacing(6);
-    buttonColumn->addWidget(preview_);
+    if (preview_) {
+        buttonColumn->addSpacing(6);
+        buttonColumn->addWidget(preview_);
+    }
     buttonColumn->addStretch(1);
     body->addLayout(buttonColumn);
     outer->addLayout(body);
+    if (previewBelow) {
+        outer->addWidget(thumbnail_, 1);
+    }
 
     connect(this, &QDialog::rejected, this, &FilterPreviewDialog::discardPreview);
 }
@@ -254,7 +290,28 @@ void FilterPreviewDialog::updateThumbnail()
     if (zoomLabel_) {
         zoomLabel_->setText(QStringLiteral("%1%").arg(level));
     }
-    if (!thumbnail_ || !view_ || !view_->has_document()) {
+    if (!thumbnail_) {
+        return;
+    }
+    const QSize target = thumbnail_->size().expandedTo(thumbnail_->minimumSize());
+    if (spec_.previewBelow) {
+        // CS6's Shear shows the whole picture under the inputs, re-filtered
+        // on the small proxy so a drag does not wait for the whole layer.
+        QImage shown = proxy_;
+        if (!proxy_.isNull()) {
+            const QImage filtered = filter_thumbnail(proxyRgba_, proxy_.width(), proxy_.height(),
+                                                     spec_.kind, values());
+            if (!filtered.isNull()) {
+                shown = filtered;
+            }
+        }
+        if (!shown.isNull()) {
+            thumbnail_->setPixmap(QPixmap::fromImage(shown).scaled(
+                target, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        }
+        return;
+    }
+    if (!view_ || !view_->has_document()) {
         return;
     }
     const QImage image = view_->image();
@@ -273,7 +330,6 @@ void FilterPreviewDialog::updateThumbnail()
         crop = QRectF(0, 0, image.width(), image.height());
     }
     const QImage section = image.copy(crop.toRect());
-    const QSize target = thumbnail_->size().expandedTo(thumbnail_->minimumSize());
     thumbnail_->setPixmap(
         QPixmap::fromImage(section).scaled(target, Qt::KeepAspectRatio, Qt::SmoothTransformation));
 }

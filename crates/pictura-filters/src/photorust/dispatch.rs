@@ -12,7 +12,9 @@ use super::{
     add_noise, artistic, brush_strokes, convolve, distort, pixelate, sharpen, sketch, stylize,
     texture, with_seed,
 };
-use crate::{Filter, FilterError, LightDirection, NoiseDistribution, PolarKind, TextureOptions};
+use crate::{
+    Filter, FilterError, LightDirection, NoiseDistribution, PolarKind, ShearFill, TextureOptions,
+};
 
 type Run = Box<dyn FnOnce(&mut Pixmap)>;
 
@@ -219,6 +221,11 @@ fn plan(filter: &Filter) -> Option<Result<(u64, Run), FilterError>> {
             let to_polar = kind == PolarKind::RectangularToPolar;
             Ok(unseeded(move |p| distort::polar_coordinates(p, to_polar)))
         }
+        Filter::Shear { ref curve, fill } => check_shear_curve(curve).map(|()| {
+            let points: Vec<(f32, f32)> =
+                curve.iter().map(|&(p, o)| (p as f32, o as f32)).collect();
+            unseeded(move |p| distort::shear(p, &points, fill == ShearFill::WrapAround))
+        }),
         Filter::ZigZag {
             amount,
             ridges,
@@ -265,6 +272,36 @@ fn check_wave(
     check_f("wave amplitude max", amplitude.1, amplitude.0 + 1.0..=999.0)?;
     check_f("wave scale", scale.0, 1.0..=100.0)?;
     check_f("wave scale", scale.1, 1.0..=100.0)
+}
+
+/// Shear's control-point curve: at least two finite `(position, offset)`
+/// points, both in `-1..=1`, with `position` strictly increasing top to
+/// bottom.
+fn check_shear_curve(curve: &[(f64, f64)]) -> Result<(), FilterError> {
+    if curve.len() < 2 {
+        return Err(FilterError::InvalidParams(format!(
+            "shear curve needs at least two points, got {}",
+            curve.len()
+        )));
+    }
+    for (i, &(position, offset)) in curve.iter().enumerate() {
+        if !position.is_finite() || !offset.is_finite() {
+            return Err(FilterError::InvalidParams(format!(
+                "shear curve point {i} must be finite"
+            )));
+        }
+        if !(-1.0..=1.0).contains(&position) || !(-1.0..=1.0).contains(&offset) {
+            return Err(FilterError::InvalidParams(format!(
+                "shear curve point {i} must have position and offset within -1.0..=1.0"
+            )));
+        }
+        if i > 0 && position <= curve[i - 1].0 {
+            return Err(FilterError::InvalidParams(format!(
+                "shear curve position must strictly increase at point {i}"
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn unseeded(f: impl FnOnce(&mut Pixmap) + 'static) -> (u64, Run) {
