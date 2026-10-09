@@ -200,6 +200,38 @@ Snapshot for resuming after a context break. Update after each milestone.
   `tst_lens_flare_dialog`): a 250 px proxy with the flare under a draggable
   crosshair, Brightness field + slider, and a Lens Type radio group. Lens Flare
   previews against the whole layer (#168).
+- **Shear** (change `port-photorust-shear`, issue #226, ported from photorust):
+  `Filter::Shear` now shifts each **row** horizontally, not each column
+  vertically. `curve` is `(position, offset)` points (top row `-1`, bottom
+  `1`; shift `offset × width/2`), the warp moved to `photorust::distort::shear`
+  on the shared `remap` (premultiplied translucent edges), and the old
+  `distort/coord.rs` vertical shift is gone. `SHEAR_MAX_POINTS = 8` is
+  exported; the `shear` kind grew from 7 to 18 slots (a point count, up to 8
+  `(position, offset)` pairs, and the fill) and defaults to a straight curve +
+  Wrap Around. The dialog is CS6's: a 140 px curve box (click the line to add,
+  drag a point out to remove, the two ends slide horizontally only, only the
+  points the user placed are shown), a Hermite line that is straight between
+  two points and rounded between more, `Undefined Areas` radios (`Wrap Around`
+  checked), OK/Cancel to the right, and a live whole-picture preview below,
+  with no Preview checkbox and no zoom controls. New `ShearCurve`/`Radio`
+  controls and a `previewBelow` layout in
+  `filter_param_controls`/`filter_preview_dialog`; the pane re-filters a
+  320 px proxy on every change while the whole-layer canvas render waits for
+  the mouse release. The Filter Gallery's options pane gets the same curve
+  editor. `shear` joins `filter_preview_needs_whole_layer` (its shift is a
+  fraction of the layer's half-width). Tested by the ported property tests and
+  `tst_shear_dialog`.
+  Oracle: still no-equivalent, re-measured against
+  `-shear -26.565x0 -crop 16x16+4+0 +repage` max 255 / mean 18.4
+  (WrapAround 23.4). Verified: `cargo fmt --all --check` and `cargo clippy
+  --workspace --all-targets -- -D warnings` clean; `cargo nextest run
+  --workspace` **2706 passed, 17 skipped**; both headless self-tests exit 0
+  (475/0/0 and 510/0/0); `ctest -R '^tst_'` 41/41 (new `tst_shear_dialog`);
+  `TASK_ALLOWS_DOCS=1 bash scripts/verify-fast.sh` → `verify-fast: OK`
+  (TOTAL 3526 passed · 18 skipped · 0 failed); `openspec validate --all
+  --strict` 207/207. The change REMOVEs the old `Shear` requirement and ADDs
+  `Shear row shift` (`imaging/distort-filters`) plus the `Shear dialog`
+  requirement (`imaging/filter-app-ui`); no new capability.
 - **Lighting Effects workspace** (change `lighting-effects-workspace`, issue
   #225): `render::lighting_effects` (now `render/lighting.rs`) shades a CS6 rig
   of 1–16 Spot / Point / Infinite lights with photorust's model. A Spot is an
