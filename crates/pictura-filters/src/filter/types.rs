@@ -1,8 +1,8 @@
 use crate::{
-    BrushType, ContourEdge, DiffuseMode, ExtrudeType, GrainType, HalftoneType, HdrToningParams,
-    LensType, LightDirection, Lighting, MezzotintType, NoiseDistribution, PolarKind, Quality,
-    RadialMethod, RippleSize, SharpenRemove, ShearFill, SpherizeMode, StrokeDirection,
-    TextureOptions, TileFill, TonalFade, WaveType, WindMethod, ZigZagStyle,
+    BrushType, ContourEdge, DiffuseMode, ExtrudeType, GlassTexture, GrainType, HalftoneType,
+    HdrToningParams, LensType, LightDirection, Lighting, MezzotintType, NoiseDistribution,
+    PolarKind, Quality, RadialMethod, RippleSize, SharpenRemove, ShearFill, SpherizeMode,
+    StrokeDirection, TextureOptions, TileFill, TonalFade, WaveType, WindMethod, ZigZagStyle,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -142,6 +142,19 @@ pub enum Filter {
     OceanRipple {
         size: u32,
         magnitude: u32,
+        seed: u64,
+    },
+    Glass {
+        distortion: u32,
+        smoothness: u32,
+        texture: GlassTexture,
+        scaling: u32,
+        invert: bool,
+    },
+    DiffuseGlow {
+        graininess: u32,
+        glow_amount: u32,
+        clear_amount: u32,
         seed: u64,
     },
     Clouds {

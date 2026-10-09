@@ -10,11 +10,11 @@
 //! Source: https://github.com/perfecto25/photorust
 
 use pictura_filters::{
-    BrushType, ContourEdge, DiffuseMode, ExtrudeType, Filter, GrainType, HalftoneType, LensType,
-    Light, LightDirection, LightType, Lighting, MezzotintType, NoiseDistribution, PolarKind,
-    Quality, RadialMethod, RippleSize, SharpenRemove, ShearFill, SpherizeMode, StrokeDirection,
-    TextureChannel, TextureOptions, TextureSurface, TileFill, TonalFade, WaveType, WindMethod,
-    ZigZagStyle, SHEAR_MAX_POINTS,
+    BrushType, ContourEdge, DiffuseMode, ExtrudeType, Filter, GlassTexture, GrainType,
+    HalftoneType, LensType, Light, LightDirection, LightType, Lighting, MezzotintType,
+    NoiseDistribution, PolarKind, Quality, RadialMethod, RippleSize, SharpenRemove, ShearFill,
+    SpherizeMode, StrokeDirection, TextureChannel, TextureOptions, TextureSurface, TileFill,
+    TonalFade, WaveType, WindMethod, ZigZagStyle, SHEAR_MAX_POINTS,
 };
 
 /// Refuse a non-empty parameter list that does not match the kind's arity.
@@ -110,6 +110,12 @@ const SHEAR_FILLS: [ShearFill; 2] = [ShearFill::WrapAround, ShearFill::RepeatEdg
 /// Shear's slots: a point count, then `SHEAR_MAX_POINTS` `(position, offset)`
 /// pairs, then the fill.
 pub(super) const SHEAR_SLOTS: usize = 1 + 2 * SHEAR_MAX_POINTS + 1;
+const GLASS_TEXTURES: [GlassTexture; 4] = [
+    GlassTexture::Blocks,
+    GlassTexture::Canvas,
+    GlassTexture::Frosted,
+    GlassTexture::TinyLens,
+];
 const ZIGZAG_STYLES: [ZigZagStyle; 3] = [
     ZigZagStyle::AroundCenter,
     ZigZagStyle::OutFromCenter,
@@ -280,6 +286,8 @@ pub(super) const FILTER_ARITIES: &[(&str, usize)] = &[
     ("shear", SHEAR_SLOTS),
     ("zigzag", 3),
     ("ocean-ripple", 3),
+    ("diffuse-glow", 4),
+    ("glass", 5),
     ("clouds", 8),
     ("difference-clouds", 8),
     ("fibers", 9),
@@ -618,8 +626,27 @@ pub(super) fn filter_from_kind_params(kind: &str, params: &[f64]) -> Option<Filt
             arity!(params, 3);
             Filter::OceanRipple {
                 size: u32v(params, 0, 9),
-                magnitude: u32v(params, 1, 5),
+                magnitude: u32v(params, 1, 9),
                 seed: u64v(params, 2, 1),
+            }
+        }
+        "glass" => {
+            arity!(params, 5);
+            Filter::Glass {
+                distortion: u32v(params, 0, 5),
+                smoothness: u32v(params, 1, 3),
+                texture: pick(&GLASS_TEXTURES, params, 2, 2),
+                scaling: u32v(params, 3, 100),
+                invert: flag(params, 4, false),
+            }
+        }
+        "diffuse-glow" => {
+            arity!(params, 4);
+            Filter::DiffuseGlow {
+                graininess: u32v(params, 0, 6),
+                glow_amount: u32v(params, 1, 10),
+                clear_amount: u32v(params, 2, 15),
+                seed: u64v(params, 3, 1),
             }
         }
         "clouds" => {

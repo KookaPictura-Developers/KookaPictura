@@ -354,7 +354,7 @@ fn filter_from_kind_maps_known_and_rejects_unknown() {
         filter_from_kind("ocean-ripple"),
         Some(Filter::OceanRipple {
             size: 9,
-            magnitude: 5,
+            magnitude: 9,
             seed: 1,
         })
     );

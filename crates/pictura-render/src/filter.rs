@@ -113,6 +113,7 @@ pub fn filter_preserves_opacity(filter: &Filter) -> bool {
             | Filter::Shear { .. }
             | Filter::ZigZag { .. }
             | Filter::OceanRipple { .. }
+            | Filter::Glass { .. }
     )
 }
 

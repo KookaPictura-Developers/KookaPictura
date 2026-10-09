@@ -109,6 +109,15 @@ pub enum ShearFill {
 /// replayed from history, so the list is capped rather than open-ended.
 pub const SHEAR_MAX_POINTS: usize = 8;
 
+/// Glass's built-in surfaces, in CS6's menu order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GlassTexture {
+    Blocks,
+    Canvas,
+    Frosted,
+    TinyLens,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ZigZagStyle {
     AroundCenter,

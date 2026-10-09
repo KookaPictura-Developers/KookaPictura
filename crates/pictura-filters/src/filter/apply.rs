@@ -53,6 +53,19 @@ pub fn apply(filter: &Filter, buf: &mut PixelBuffer) -> Result<(), FilterError> 
             magnitude,
             seed,
         } => distort::ocean_ripple(buf, *size, *magnitude, *seed),
+        Filter::Glass {
+            distortion,
+            smoothness,
+            texture,
+            scaling,
+            invert,
+        } => distort::glass(buf, *distortion, *smoothness, *texture, *scaling, *invert),
+        Filter::DiffuseGlow {
+            graininess,
+            glow_amount,
+            clear_amount,
+            seed,
+        } => distort::diffuse_glow(buf, *graininess, *glow_amount, *clear_amount, *seed),
         Filter::Clouds {
             color_a,
             color_b,

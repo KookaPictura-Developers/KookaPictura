@@ -305,10 +305,9 @@ const MAPPING: &[Mapping] = &[
         filter: "OceanRipple",
         im: None,
         tolerance: 0,
-        note: "IM `-wave` is an unseeded single-axis sine that pads the canvas; Pictura sums 8 seeded \
-               direction sinusoids with clamp-to-edge. Best measured `-wave 2x8 -crop 16x16+0+2 \
-               +repage` vs size 9 / magnitude 20 / seed 42 max 227 / mean 53.7. Guarded by seed \
-               determinism and the zero-magnitude no-op",
+        note: "IM `-wave` is an unseeded single-axis sine that pads the canvas; Pictura refracts \
+               through the slope of seeded 2-D value noise with clamp-to-edge, which no single `-wave` \
+               reproduces. Guarded by seed determinism, the zero-magnitude no-op and the reach test",
     },
     Mapping {
         filter: "DustAndScratches",
