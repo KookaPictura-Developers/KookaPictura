@@ -69,6 +69,7 @@ fn main() {
                 "src/cxxqt_object/paint_tools.rs",
                 "src/cxxqt_object/paint_tools/fills.rs",
                 "src/cxxqt_object/path_list.rs",
+                "src/cxxqt_object/impl_history/display.rs",
                 "src/cxxqt_object/impl_history/purge.rs",
                 "src/cxxqt_object/paths.rs",
                 "src/cxxqt_object/shapes.rs",

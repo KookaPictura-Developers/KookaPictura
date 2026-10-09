@@ -587,7 +587,7 @@ fn begin_eraser(
 }
 
 fn begin_background_eraser(
-    view: Pin<&mut PictureView>,
+    mut view: Pin<&mut PictureView>,
     foreground: u32,
     background: u32,
     tip: &PaintTip,
@@ -607,13 +607,29 @@ fn begin_background_eraser(
         tolerance: (tolerance.clamp(0, 100) as f32 * 2.55).round() as u8,
         protect_foreground,
     };
-    begin(view, "Background Eraser", |doc, path, _| {
-        let kind = StrokeKind::BackgroundErase(options);
-        match unlocked_background(doc, path) {
-            Some(layered) => Stroke::begin_kind(&layered, path, cfg, kind).ok(),
-            None => Stroke::begin_kind(doc, path, cfg, kind).ok(),
+    // The stroke paints the live document, so a Background is layered there
+    // first; `stroke_base` keeps the original for a cancel or a refusal.
+    let layered = {
+        let rust = view.rust();
+        rust.doc
+            .as_ref()
+            .zip(rust.active_layer.as_deref())
+            .and_then(|(doc, path)| unlocked_background(doc, path))
+    };
+    if let Some(layered) = layered {
+        let mut rust = view.as_mut().rust_mut();
+        rust.stroke_base = rust.doc.replace(layered);
+    }
+    let begun = begin(view.as_mut(), "Background Eraser", |doc, path, _| {
+        Stroke::begin_kind(doc, path, cfg, StrokeKind::BackgroundErase(options)).ok()
+    });
+    if !begun {
+        let mut rust = view.as_mut().rust_mut();
+        if let Some(base) = rust.stroke_base.take() {
+            rust.doc = Some(base);
         }
-    })
+    }
+    begun
 }
 
 fn begin_focus(

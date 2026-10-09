@@ -296,10 +296,13 @@ pub(super) fn layer_visibility_region(layer: &Layer) -> Option<PsdRect> {
         }
         return Some(mask.rect);
     }
-    if !layer
-        .channels
-        .iter()
-        .any(|c| c.id >= 0 && !c.data.is_empty())
+    // A type layer without a rasterized proxy renders its text inside its
+    // rect, so it reaches no further than a pixel layer does.
+    if layer.type_tool.is_none()
+        && !layer
+            .channels
+            .iter()
+            .any(|c| c.id >= 0 && !c.data.is_empty())
     {
         return None;
     }

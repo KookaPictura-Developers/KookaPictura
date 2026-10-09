@@ -5,6 +5,7 @@
 #include "panels/numeric_field.h"
 #include "pictura_debug_timing.h"
 #include "pictura_app/src/cxxqt_object/image_adjust/image_mode.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/impl_history/display.cxxqt.h"
 
 #include <QtCore/QHash>
 #include <QtCore/QTemporaryDir>
@@ -13,6 +14,9 @@
 namespace pictura {
 
 namespace {
+
+// The canvas property recording the view `frame_revision` its image came from.
+constexpr const char* kFrameKey = "picturaFrameRevision";
 
 // The document pane keeps a minimum width even with no document open, so the
 // widget columns can never absorb the whole workspace (and the splitter keeps a
@@ -395,6 +399,7 @@ int PicturaMainWindow::addDocument(PictureView* view, const QString& path)
     }
     if (view->has_document()) {
         entry.canvas->setImage(view->image());
+        entry.canvas->setProperty(kFrameKey, quint64(pictura::frame_revision(*view)));
     } else {
         entry.canvas->replaceImage(view->image());
     }
@@ -896,7 +901,11 @@ void PicturaMainWindow::refresh()
         }
     }
 
-    if (view && canvas) {
+    // A `changed` that rebuilt no frame (a bounded undo, a rename, a slice)
+    // keeps the canvas's copy: regions already arrived as blits.
+    const quint64 frame = view ? quint64(pictura::frame_revision(*view)) : 0;
+    if (view && canvas && !(view->has_document() && canvas->property(kFrameKey) == QVariant(frame))) {
+        canvas->setProperty(kFrameKey, frame);
         QImage image;
         {
             pictura::ScopedTimer imageTimer("cxx_view_image()");

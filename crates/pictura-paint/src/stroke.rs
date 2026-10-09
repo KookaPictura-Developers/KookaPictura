@@ -70,10 +70,134 @@ pub struct StrokeOutcome {
     pub dirty: PsdRect,
 }
 
-/// A live stroke. `base` is the untouched document, `working` accumulates paint.
+/// Tile edge of the pre-stroke pixels a stroke keeps: a dab saves the tiles it
+/// is about to write, the first time it reaches them.
+const SAVED_TILE: i32 = 64;
+
+/// The target layer's pre-stroke pixels, saved a tile at a time just before a
+/// dab first writes the tile. The planes are layer-sized but zero-filled by the
+/// allocator, so only the saved tiles ever take memory.
+struct Saved {
+    planes: [Option<Vec<u8>>; 4],
+    tiles: Vec<bool>,
+    columns: i32,
+    width: i32,
+    height: i32,
+}
+
+impl Saved {
+    fn new(layer: &Layer, ch: PlaneIndex) -> Self {
+        let width = layer.rect.width().max(0);
+        let height = layer.rect.height().max(0);
+        let columns = (width + SAVED_TILE - 1) / SAVED_TILE;
+        let rows = (height + SAVED_TILE - 1) / SAVED_TILE;
+        let planes = ch.map(|k| {
+            k.and_then(|k| layer.channels.get(k))
+                .map(|c| vec![0u8; c.data.len()])
+        });
+        Self {
+            planes,
+            tiles: vec![false; (columns * rows) as usize],
+            columns,
+            width,
+            height,
+        }
+    }
+
+    /// Save every unsaved tile meeting the layer-local box `[x0, x1] × [y0, y1]`
+    /// (inclusive, clamped to the layer) from `layer`, which still holds them
+    /// unpainted.
+    fn save(&mut self, layer: &Layer, ch: PlaneIndex, x0: i32, y0: i32, x1: i32, y1: i32) {
+        let (x0, y0) = (x0.max(0), y0.max(0));
+        let (x1, y1) = (x1.min(self.width - 1), y1.min(self.height - 1));
+        if x1 < x0 || y1 < y0 {
+            return;
+        }
+        let w = self.width as usize;
+        for ty in y0 / SAVED_TILE..=y1 / SAVED_TILE {
+            for tx in x0 / SAVED_TILE..=x1 / SAVED_TILE {
+                let t = (ty * self.columns + tx) as usize;
+                if self.tiles[t] {
+                    continue;
+                }
+                self.tiles[t] = true;
+                let (left, top) = (tx * SAVED_TILE, ty * SAVED_TILE);
+                let right = (left + SAVED_TILE).min(self.width) as usize;
+                let bottom = (top + SAVED_TILE).min(self.height) as usize;
+                for (k, plane) in self.planes.iter_mut().enumerate() {
+                    let (Some(plane), Some(src)) =
+                        (plane.as_mut(), ch[k].and_then(|k| layer.channels.get(k)))
+                    else {
+                        continue;
+                    };
+                    for y in top as usize..bottom {
+                        let (a, b) = (y * w + left as usize, (y * w + right).min(plane.len()));
+                        if a < b {
+                            plane[a..b].copy_from_slice(&src.data[a..b]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Whether `layer` still has the planes this stroke began on. A document
+    /// restructured under a live stroke is refused rather than indexed out of
+    /// bounds.
+    fn fits(&self, layer: &Layer, ch: PlaneIndex) -> bool {
+        layer.rect.width().max(0) == self.width
+            && layer.rect.height().max(0) == self.height
+            && self
+                .planes
+                .iter()
+                .zip(ch)
+                .all(|(plane, k)| match (plane, k) {
+                    (Some(plane), Some(k)) => layer
+                        .channels
+                        .get(k)
+                        .is_some_and(|c| c.data.len() == plane.len()),
+                    (None, None) => true,
+                    _ => false,
+                })
+    }
+
+    fn planes(&self) -> [Option<&[u8]>; 4] {
+        [0, 1, 2, 3].map(|k| self.planes[k].as_deref())
+    }
+
+    /// Write every saved tile back into `layer`.
+    fn restore(&self, layer: &mut Layer, ch: PlaneIndex) {
+        let w = self.width as usize;
+        for (t, _) in self.tiles.iter().enumerate().filter(|(_, saved)| **saved) {
+            let (tx, ty) = (t as i32 % self.columns, t as i32 / self.columns);
+            let (left, top) = (tx * SAVED_TILE, ty * SAVED_TILE);
+            let right = (left + SAVED_TILE).min(self.width) as usize;
+            let bottom = (top + SAVED_TILE).min(self.height) as usize;
+            for (k, plane) in self.planes.iter().enumerate() {
+                let (Some(plane), Some(k)) = (plane.as_ref(), ch[k]) else {
+                    continue;
+                };
+                let Some(dst) = layer.channels.get_mut(k) else {
+                    continue;
+                };
+                for y in top as usize..bottom {
+                    let (a, b) = (y * w + left as usize, (y * w + right).min(plane.len()));
+                    if a < b {
+                        dst.data[a..b].copy_from_slice(&plane[a..b]);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// A live stroke. It paints the document handed to each call in place; the
+/// pixels it is about to change are kept in `saved`, which every dab blends
+/// against so the stroke's result does not depend on its own earlier dabs.
 pub struct Stroke {
-    base: Document,
-    working: Document,
+    saved: Saved,
+    /// The target layer's transparency lock, read once at the start.
+    locked: bool,
     cfg: StrokeConfig,
     tip: TipParams,
     placer: DabPlacer,
@@ -147,9 +271,10 @@ impl Stroke {
                 engine,
                 pixels: layer_rgba(target),
             });
+        let ch = plane_index(target);
         Ok(Stroke {
-            base: doc.clone(),
-            working: doc.clone(),
+            saved: Saved::new(target, ch),
+            locked: layer_transparency_locked(target),
             cfg,
             tip: TipParams::new(&cfg),
             placer: DabPlacer::new(cfg.spacing, cfg.diameter as f32),
@@ -159,7 +284,7 @@ impl Stroke {
             dab_dirty: None,
             layer_path: indices,
             rect,
-            ch: plane_index(target),
+            ch,
             paint: cfg.color,
             rng: STROKE_SEED,
             started: false,
@@ -277,8 +402,9 @@ impl Stroke {
         Ok(stroke)
     }
 
-    /// Feed one sample. Returns `true` when any pixel's accumulated coverage changed.
-    pub fn sample(&mut self, s: StrokeSample) -> bool {
+    /// Feed one sample, painting `doc` (the document the stroke began on) in
+    /// place. Returns `true` when any pixel's accumulated coverage changed.
+    pub fn sample(&mut self, doc: &mut Document, s: StrokeSample) -> bool {
         let cfg = self.cfg;
         let w = self.rect.width();
         let h = self.rect.height();
@@ -291,7 +417,7 @@ impl Stroke {
 
         if !self.started {
             self.started = true;
-            if cfg.auto_erase && self.pixel_rgb_matches(sx, sy, cfg.color) {
+            if cfg.auto_erase && self.pixel_rgb_matches(doc, sx, sy, cfg.color) {
                 self.paint = cfg.background;
             }
         }
@@ -299,7 +425,7 @@ impl Stroke {
         let mut dabs = Vec::new();
         self.placer.feed(sx, sy, &mut dabs);
         if self.per_dab.is_some() {
-            return self.apply_per_dab(&dabs);
+            return self.apply_per_dab(doc, &dabs);
         }
 
         let flow = cfg.flow as f32 / 100.0;
@@ -314,12 +440,12 @@ impl Stroke {
             }
         }
 
-        // Split the stroke into its disjoint parts so the base layer can be
-        // read while the working layer is written, with the layer path, the
-        // channel list and the base planes all resolved once per sample.
+        // Split the stroke into its disjoint parts so the saved pixels can be
+        // read while the layer is written, with the layer path, the channel
+        // list and the saved planes all resolved once per sample.
         let Stroke {
-            base,
-            working,
+            saved,
+            locked,
             layer_path,
             scratch,
             applied,
@@ -335,14 +461,25 @@ impl Stroke {
             ..
         } = self;
         let path: &[usize] = layer_path;
-        let (Some(base_layer), Some(work_layer)) =
-            (layer_at(base, path), layer_at_mut(working, path))
-        else {
+        let Some(work_layer) = layer_at_mut(doc, path).filter(|l| saved.fits(l, *ch)) else {
             return false;
         };
+        // Every pixel a dab writes lies in its bounding box, so saving the
+        // boxes first leaves the stencil only saved pixels to read.
+        for &(dab_x, dab_y, jittered) in &placed {
+            let radius = jittered.map_or(cfg.diameter, |t| t.diameter) as f32 * 0.5;
+            saved.save(
+                work_layer,
+                *ch,
+                (dab_x - radius).floor() as i32 - 1,
+                (dab_y - radius).floor() as i32 - 1,
+                (dab_x + radius).ceil() as i32 + 1,
+                (dab_y + radius).ceil() as i32 + 1,
+            );
+        }
         let stencil = Stencil {
-            base: read_planes(base_layer, *ch),
-            locked: layer_transparency_locked(base_layer),
+            base: saved.planes(),
+            locked: *locked,
             ch: *ch,
             cfg,
             paint: *paint,
@@ -425,24 +562,21 @@ impl Stroke {
         (x, y, tip)
     }
 
-    pub fn document(&self) -> &Document {
-        &self.working
-    }
-
     /// The stroke-constant tip state, so a host that rasters dabs on the GPU
     /// derives the same profile the exact stroke does.
     pub fn tip_params(&self) -> TipParams {
         self.tip
     }
 
-    /// The base layer's pixels as a document-sized interleaved straight-RGBA8
-    /// buffer at the layer's document rect; zero outside it. The planes are read
-    /// exactly as [`Stencil`] reads its base, so a GPU stroke seeded from this
-    /// starts from the same source pixels the exact CPU stroke does.
-    pub fn base_layer_rgba_doc(&self) -> Vec<u8> {
-        let (dw, dh) = (self.working.width as usize, self.working.height as usize);
+    /// The target layer's pixels in `doc` as a document-sized interleaved
+    /// straight-RGBA8 buffer at the layer's document rect; zero outside it.
+    /// Called before the first dab, `doc` still holds the pre-stroke pixels the
+    /// stencil reads, so a GPU stroke seeded from this starts from the same
+    /// source pixels the exact CPU stroke does.
+    pub fn base_layer_rgba_doc(&self, doc: &Document) -> Vec<u8> {
+        let (dw, dh) = (doc.width as usize, doc.height as usize);
         let mut out = vec![0u8; dw * dh * 4];
-        let Some(layer) = layer_at(&self.base, &self.layer_path) else {
+        let Some(layer) = layer_at(doc, &self.layer_path) else {
             return out;
         };
         let (lw, lh) = (
@@ -490,7 +624,7 @@ impl Stroke {
     /// Whether the target layer's transparency lock would be violated by the
     /// GPU's source-over alpha. Such a layer stays on the exact CPU path.
     pub fn transparency_locked(&self) -> bool {
-        layer_at(&self.base, &self.layer_path).is_some_and(layer_transparency_locked)
+        self.locked
     }
 
     /// Write a GPU dab's region into the working document, clipped to the
@@ -501,6 +635,7 @@ impl Stroke {
     /// Returns whether any pixel was patched.
     pub fn patch_working_layer(
         &mut self,
+        doc: &mut Document,
         doc_rect: PsdRect,
         plane_stride: usize,
         planes: &[u8],
@@ -525,9 +660,11 @@ impl Stroke {
         let first_row = (top - (doc_rect.top - rt)) as usize;
         let run = (right - left) as usize;
         let ch = self.ch;
-        let Some(layer) = layer_at_mut(&mut self.working, &self.layer_path) else {
+        let Some(layer) = layer_at_mut(doc, &self.layer_path).filter(|l| self.saved.fits(l, ch))
+        else {
             return false;
         };
+        self.saved.save(layer, ch, left, top, right - 1, bottom - 1);
         let mut dst: [Option<&mut [u8]>; 4] = [None, None, None, None];
         for (idx, c) in layer.channels.iter_mut().enumerate() {
             if let Some(k) = ch.iter().position(|&x| x == Some(idx)) {
@@ -566,7 +703,7 @@ impl Stroke {
         }
     }
 
-    fn apply_per_dab(&mut self, dabs: &[(f32, f32)]) -> bool {
+    fn apply_per_dab(&mut self, doc: &mut Document, dabs: &[(f32, f32)]) -> bool {
         let Some(per) = self.per_dab.as_mut() else {
             return false;
         };
@@ -594,9 +731,18 @@ impl Stroke {
             return false;
         };
         let ch = self.ch;
-        let Some(layer) = layer_at_mut(&mut self.working, &self.layer_path) else {
+        let Some(layer) = layer_at_mut(doc, &self.layer_path).filter(|l| self.saved.fits(l, ch))
+        else {
             return false;
         };
+        self.saved.save(
+            layer,
+            ch,
+            rect.left,
+            rect.top,
+            rect.right - 1,
+            rect.bottom - 1,
+        );
         let w = per.pixels.width;
         for y in rect.top..rect.bottom {
             for x in rect.left..rect.right {
@@ -623,16 +769,39 @@ impl Stroke {
         self.dab_dirty.take().map(|d| self.dirty_doc(d))
     }
 
-    pub fn finish(self) -> Option<StrokeOutcome> {
+    /// The document rectangle the stroke has changed so far, or `None`.
+    pub fn dirty(&self) -> Option<PsdRect> {
+        self.dirty.map(|d| self.dirty_doc(d))
+    }
+
+    /// End the stroke, leaving its paint in the document. Returns the document
+    /// rectangle it changed, or `None` when no pixel changed.
+    pub fn finish(self) -> Option<PsdRect> {
         if !self.painted {
             return None;
         }
         let local = self.dirty.expect("painted implies dirty");
-        let dirty = self.dirty_doc(local);
-        Some(StrokeOutcome {
-            document: self.working,
-            dirty,
-        })
+        Some(self.dirty_doc(local))
+    }
+
+    /// Save every tile up front, as a stroke that copied the whole layer would
+    /// have: the oracle the lazily saving stroke is held to.
+    #[cfg(test)]
+    fn save_all(&mut self, doc: &Document) {
+        if let Some(layer) = layer_at(doc, &self.layer_path) {
+            let (w, h) = (self.saved.width, self.saved.height);
+            self.saved.save(layer, self.ch, 0, 0, w - 1, h - 1);
+        }
+    }
+
+    /// Abandon the stroke, writing every pixel it changed in `doc` back to its
+    /// pre-stroke value.
+    pub fn cancel(self, doc: &mut Document) {
+        if let Some(layer) =
+            layer_at_mut(doc, &self.layer_path).filter(|l| self.saved.fits(l, self.ch))
+        {
+            self.saved.restore(layer, self.ch);
+        }
     }
 
     fn dirty_doc(&self, local: PsdRect) -> PsdRect {
@@ -665,7 +834,7 @@ impl Stroke {
         *dab_dirty = grow(*dab_dirty);
     }
 
-    fn pixel_rgb_matches(&self, lx: f32, ly: f32, color: Rgba) -> bool {
+    fn pixel_rgb_matches(&self, doc: &Document, lx: f32, ly: f32, color: Rgba) -> bool {
         let (w, h) = (self.rect.width(), self.rect.height());
         let px = lx.floor() as i32;
         let py = ly.floor() as i32;
@@ -673,7 +842,7 @@ impl Stroke {
             return false;
         }
         let i = py as usize * w as usize + px as usize;
-        let Some(layer) = layer_at(&self.working, &self.layer_path) else {
+        let Some(layer) = layer_at(doc, &self.layer_path) else {
             return false;
         };
         let (r, g, b, _) = read_pixel(layer, i);
@@ -762,11 +931,9 @@ pub fn paint_stroke(
 ) -> Option<PsdRect> {
     let mut stroke = Stroke::begin_at(doc, path, *cfg).ok()?;
     for &s in samples {
-        stroke.sample(s);
+        stroke.sample(doc, s);
     }
-    let outcome = stroke.finish()?;
-    *doc = outcome.document;
-    Some(outcome.dirty)
+    stroke.finish()
 }
 
 /// `s` laid at strength `a` (0.0–1.0) over the straight pixel `dst` in `mode`,

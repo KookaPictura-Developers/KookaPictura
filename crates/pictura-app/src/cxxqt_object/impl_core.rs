@@ -90,12 +90,9 @@ impl qobject::PictureView {
             .doc
             .as_ref()
             .and_then(|doc| topmost_pixel_layer_index(doc).map(|i| i.to_string()));
-        let initial = view.doc.as_ref().map(|doc| Snapshot {
-            doc: doc.clone(),
-            selection: None,
-        });
-        if let Some(snapshot) = initial {
-            view.history.capture(snapshot, "Open");
+        let view = &mut *view;
+        if let Some(doc) = view.doc.as_mut() {
+            view.history.capture_live(doc, &None, "Open");
         }
         view.path = if ok { Some(path) } else { None };
         view.dirty = false;
@@ -128,12 +125,9 @@ impl qobject::PictureView {
         view.doc = Some(doc);
         view.reset_edit_state();
         view.active_layer = Some("0".to_string());
-        let initial = view.doc.as_ref().map(|doc| Snapshot {
-            doc: doc.clone(),
-            selection: None,
-        });
-        if let Some(snapshot) = initial {
-            view.history.capture(snapshot, "Open");
+        let view = &mut *view;
+        if let Some(doc) = view.doc.as_mut() {
+            view.history.capture_live(doc, &None, "Open");
         }
         view.source_format = format_for_path(&path);
         view.dirty = false;
@@ -178,12 +172,10 @@ impl qobject::PictureView {
         view.doc = Some(doc);
         view.reset_edit_state();
         view.active_layer = Some("0".to_string());
-        let initial = view.doc.as_ref().map(|doc| Snapshot {
-            doc: doc.clone(),
-            selection: None,
-        });
-        if let Some(snapshot) = initial {
-            view.history.capture(snapshot, "Open As Smart Object");
+        let view = &mut *view;
+        if let Some(doc) = view.doc.as_mut() {
+            view.history
+                .capture_live(doc, &None, "Open As Smart Object");
         }
         view.path = None;
         view.dirty = false;
@@ -257,12 +249,9 @@ impl qobject::PictureView {
         view.doc = Some(doc);
         view.reset_edit_state();
         view.active_layer = Some("0".to_string());
-        let initial = view.doc.as_ref().map(|doc| Snapshot {
-            doc: doc.clone(),
-            selection: None,
-        });
-        if let Some(snapshot) = initial {
-            view.history.capture(snapshot, "New");
+        let view = &mut *view;
+        if let Some(doc) = view.doc.as_mut() {
+            view.history.capture_live(doc, &None, "New");
         }
         view.path = None;
         view.dirty = false;
@@ -900,30 +889,14 @@ impl super::PictureViewRust {
         self.reset_pyramid();
     }
 
-    /// The document-space canvas rectangle for the active source (the stroke's
-    /// document mid-paint, else the document), or an empty rect without one.
+    /// The document-space canvas rectangle, or an empty rect without a document.
     pub(super) fn canvas_rect(&self) -> PsdRect {
-        let (width, height) = match self.stroke.as_ref() {
-            Some(stroke) => (stroke.document().width, stroke.document().height),
-            None => match self.doc.as_ref() {
-                Some(doc) => (doc.width, doc.height),
-                None => (0, 0),
-            },
-        };
+        let (width, height) = self.doc.as_ref().map_or((0, 0), |d| (d.width, d.height));
         PsdRect {
             top: 0,
             left: 0,
             bottom: height as i32,
             right: width as i32,
-        }
-    }
-
-    /// The current display source: the active stroke's working document
-    /// mid-paint, else the document.
-    fn current_source(&self) -> Option<&Document> {
-        match self.stroke.as_ref() {
-            Some(stroke) => Some(stroke.document()),
-            None => self.doc.as_ref(),
         }
     }
 
@@ -941,13 +914,16 @@ impl super::PictureViewRust {
         self.pending_present = None;
         self.present_flush_due = false;
         self.stroke_tiles = Default::default();
-        // While a stroke is live its working document's `composite` is stale
-        // (paint writes the layer channels), so composite it rather than reading
-        // the cached frame; otherwise the level-0 frame is the document's own
-        // composite. Keeps a stray mid-stroke full rebuild correct.
+        // While a stroke is live the document's `composite` is stale (paint
+        // writes the layer channels in place), so composite it rather than
+        // reading the cached frame; otherwise the level-0 frame is the
+        // document's own composite. Keeps a stray mid-stroke full rebuild correct.
         let gpu_compute = self.gpu_compute;
-        let level0 = match self.stroke.as_ref() {
-            Some(stroke) => Some(level0_composited(stroke.document(), gpu_compute)),
+        let level0 = match self.stroke {
+            Some(_) => self
+                .doc
+                .as_ref()
+                .map(|doc| level0_composited(doc, gpu_compute)),
             None => self.doc.as_ref().map(level0_buffer),
         };
         self.level0 = level0;
@@ -956,6 +932,7 @@ impl super::PictureViewRust {
             None => pictura_render::ViewPyramid::default(),
         };
         self.canvas_revision = self.canvas_revision.wrapping_add(1);
+        self.frame_revision = self.frame_revision.wrapping_add(1);
     }
 
     /// Repair the pyramid for `rect` of the already-patched level-0 frame and
@@ -971,10 +948,7 @@ impl super::PictureViewRust {
     /// rebuilding the whole frame only when it is absent or a different size.
     pub(super) fn refresh_level0_region(&mut self, region: PixelBuffer, x0: i32, y0: i32) {
         let region = into_rgba_frame(region);
-        let dims = match self.stroke.as_ref() {
-            Some(stroke) => Some((stroke.document().width, stroke.document().height)),
-            None => self.doc.as_ref().map(|doc| (doc.width, doc.height)),
-        };
+        let dims = self.doc.as_ref().map(|doc| (doc.width, doc.height));
         let matches = matches!(
             (self.level0.as_ref(), dims),
             (Some(level0), Some((w, h))) if level0.width == w && level0.height == h
@@ -984,7 +958,8 @@ impl super::PictureViewRust {
                 patch_buffer_region(level0, &region, x0, y0);
             }
         } else {
-            self.level0 = self.current_source().map(level0_buffer);
+            self.level0 = self.doc.as_ref().map(level0_buffer);
+            self.frame_revision = self.frame_revision.wrapping_add(1);
         }
     }
 
@@ -1080,16 +1055,14 @@ impl qobject::PictureView {
     /// captured document's composite is the current rendered image.
     pub(super) fn record(mut self: Pin<&mut Self>, label: &str) {
         let t = Instant::now();
-        let snapshot = self.snapshot();
-        paint_timing::record("record_snapshot_clone", t.elapsed());
-        if let Some(snapshot) = snapshot {
-            let t = Instant::now();
-            let mut rust = self.as_mut().rust_mut();
-            rust.history.capture(snapshot, label);
+        let mut rust = self.as_mut().rust_mut();
+        let rust = &mut *rust;
+        if let Some(doc) = rust.doc.as_mut() {
+            rust.history.capture_live(doc, &rust.selection, label);
             rust.dirty = true;
             rust.content_revision = rust.content_revision.wrapping_add(1);
-            paint_timing::record("record_history_capture", t.elapsed());
         }
+        paint_timing::record("record_history_capture", t.elapsed());
     }
 
     /// As [`record`], but without bumping `content_revision`.
@@ -1097,9 +1070,10 @@ impl qobject::PictureView {
     /// Only for moves of the topmost pixel layer, which leave the composite
     /// below that layer unchanged, so a cached move-preview base stays valid.
     pub(super) fn record_move(mut self: Pin<&mut Self>, label: &str) {
-        if let Some(snapshot) = self.snapshot() {
-            let mut rust = self.as_mut().rust_mut();
-            rust.history.capture(snapshot, label);
+        let mut rust = self.as_mut().rust_mut();
+        let rust = &mut *rust;
+        if let Some(doc) = rust.doc.as_mut() {
+            rust.history.capture_live(doc, &rust.selection, label);
             rust.dirty = true;
         }
     }

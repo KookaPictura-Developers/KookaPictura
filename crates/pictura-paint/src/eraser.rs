@@ -412,14 +412,19 @@ mod tests {
             ..StrokeConfig::default()
         };
         let mut stroke = begin_erase(doc, "0", cfg, mode, history).expect("begin");
+        let mut out = doc.clone();
         for x in [8.0, 16.0, 24.0] {
-            stroke.sample(StrokeSample {
-                x,
-                y: 10.0,
-                pressure: 1.0,
-            });
+            stroke.sample(
+                &mut out,
+                StrokeSample {
+                    x,
+                    y: 10.0,
+                    pressure: 1.0,
+                },
+            );
         }
-        stroke.finish().expect("erased").document
+        stroke.finish().expect("erased");
+        out
     }
 
     fn pixel(doc: &Document, x: i32, y: i32) -> [u8; 4] {
@@ -453,13 +458,18 @@ mod tests {
             opacity: 50,
             ..StrokeConfig::default()
         };
-        let mut stroke = begin_erase(&doc(false), "0", cfg, EraserMode::Brush, None).unwrap();
-        stroke.sample(StrokeSample {
-            x: 16.0,
-            y: 10.0,
-            pressure: 1.0,
-        });
-        let a = pixel(&stroke.finish().unwrap().document, 16, 10)[3];
+        let mut out = doc(false);
+        let mut stroke = begin_erase(&out, "0", cfg, EraserMode::Brush, None).unwrap();
+        stroke.sample(
+            &mut out,
+            StrokeSample {
+                x: 16.0,
+                y: 10.0,
+                pressure: 1.0,
+            },
+        );
+        stroke.finish().unwrap();
+        let a = pixel(&out, 16, 10)[3];
         assert!((a as i32 - 128).abs() <= 1, "alpha {a}");
     }
 
@@ -469,13 +479,17 @@ mod tests {
             opacity: 10,
             ..StrokeConfig::default()
         };
-        let mut stroke = begin_erase(&doc(false), "0", cfg, EraserMode::Block, None).unwrap();
-        stroke.sample(StrokeSample {
-            x: 20.0,
-            y: 10.0,
-            pressure: 1.0,
-        });
-        let out = stroke.finish().unwrap().document;
+        let mut out = doc(false);
+        let mut stroke = begin_erase(&out, "0", cfg, EraserMode::Block, None).unwrap();
+        stroke.sample(
+            &mut out,
+            StrokeSample {
+                x: 20.0,
+                y: 10.0,
+                pressure: 1.0,
+            },
+        );
+        stroke.finish().unwrap();
         // The square's corner is erased; a round 16 px tip would miss it.
         assert_eq!(pixel(&out, 13, 3)[3], 0);
         assert_eq!(pixel(&out, 11, 10)[3], 255);
@@ -527,12 +541,17 @@ mod tests {
         let mut stroke =
             Stroke::begin_kind(doc, "0", cfg, crate::StrokeKind::BackgroundErase(options))
                 .expect("begin");
-        stroke.sample(StrokeSample {
-            x,
-            y: 10.0,
-            pressure: 1.0,
-        });
-        stroke.finish().map_or_else(|| doc.clone(), |o| o.document)
+        let mut out = doc.clone();
+        stroke.sample(
+            &mut out,
+            StrokeSample {
+                x,
+                y: 10.0,
+                pressure: 1.0,
+            },
+        );
+        stroke.finish();
+        out
     }
 
     #[test]
@@ -568,12 +587,16 @@ mod tests {
             ..StrokeConfig::default()
         };
         let kind = crate::StrokeKind::BackgroundErase(options);
-        let mut stroke = Stroke::begin_kind(&split(), "0", cfg, kind).unwrap();
-        stroke.sample(StrokeSample {
-            x: 8.0,
-            y: 10.0,
-            pressure: 1.0,
-        });
+        let mut out = split();
+        let mut stroke = Stroke::begin_kind(&out, "0", cfg, kind).unwrap();
+        stroke.sample(
+            &mut out,
+            StrokeSample {
+                x: 8.0,
+                y: 10.0,
+                pressure: 1.0,
+            },
+        );
         assert!(stroke.finish().is_none(), "a protected colour was erased");
     }
 

@@ -61,17 +61,8 @@ impl PictureViewRust {
         rect: PsdRect,
     ) -> Option<(i32, i32, PsdRect, PixelBuffer)> {
         let painting = self.stroke.is_some();
-        let dims = self
-            .stroke
-            .as_ref()
-            .map(|stroke| (stroke.document().width, stroke.document().height))
-            .or_else(|| self.doc.as_ref().map(|doc| (doc.width, doc.height)));
-        let (x0, y0, w, h) = dims.and_then(|(width, height)| clamp_region(rect, width, height))?;
-        let source: &Document = if painting {
-            self.stroke.as_ref().unwrap().document()
-        } else {
-            self.doc.as_ref()?
-        };
+        let source: &Document = self.doc.as_ref()?;
+        let (x0, y0, w, h) = clamp_region(rect, source.width, source.height)?;
         let gpu_compute = self.gpu_compute;
         let t = Instant::now();
         let buffer = pictura_render::composite_region_active(source, rect, gpu_compute).0;
@@ -96,6 +87,20 @@ impl PictureViewRust {
             right: x0 + w as i32,
         };
         Some((x0, y0, clipped, srgb))
+    }
+
+    /// Abandon the live stroke, putting back the pixels it changed (or the
+    /// whole pre-stroke document when the stroke changed its structure), and
+    /// return the document rectangle it had painted.
+    pub(super) fn cancel_stroke(&mut self) -> Option<PsdRect> {
+        let stroke = self.stroke.take()?;
+        let dirty = stroke.dirty();
+        match (self.stroke_base.take(), self.doc.as_mut()) {
+            (Some(base), _) => self.doc = Some(base),
+            (None, Some(doc)) => stroke.cancel(doc),
+            (None, None) => {}
+        }
+        dirty
     }
 
     /// Fold a refreshed region into level 0, the damage account and the pyramid.
@@ -394,11 +399,11 @@ impl qobject::PictureView {
                     .and_then(|doc| preview_level(cfg.diameter as i32, doc.width, doc.height));
                 let gpu_mode = gpu_paint_mode(cfg.mode).filter(|_| !cfg.auto_erase);
                 if level.is_some() && rust.gpu_compute {
-                    let seeded = match (gpu_mode, rust.stroke.as_ref()) {
-                        (Some(mode), Some(stroke)) if !stroke.transparency_locked() => {
+                    let seeded = match (gpu_mode, rust.stroke.as_ref(), rust.doc.as_ref()) {
+                        (Some(mode), Some(stroke), Some(doc)) if !stroke.transparency_locked() => {
                             let t = Instant::now();
-                            let seed = stroke.base_layer_rgba_doc();
-                            let (w, h) = (stroke.document().width, stroke.document().height);
+                            let seed = stroke.base_layer_rgba_doc(doc);
+                            let (w, h) = (doc.width, doc.height);
                             paint_timing::record("gpu_seed_interleave", t.elapsed());
                             let tip = stroke.tip_params();
                             let params = GpuStrokeParams {
@@ -462,14 +467,18 @@ impl qobject::PictureView {
         }
         let dirty = {
             let mut rust = self.as_mut().rust_mut();
+            let rust = &mut *rust;
             let t = Instant::now();
-            let painted = match rust.stroke.as_mut() {
-                Some(stroke) => stroke.sample(StrokeSample {
-                    x: x as f32,
-                    y: y as f32,
-                    pressure: pressure as f32,
-                }),
-                None => return false,
+            let painted = match (rust.stroke.as_mut(), rust.doc.as_mut()) {
+                (Some(stroke), Some(doc)) => stroke.sample(
+                    doc,
+                    StrokeSample {
+                        x: x as f32,
+                        y: y as f32,
+                        pressure: pressure as f32,
+                    },
+                ),
+                _ => return false,
             };
             paint_timing::record("cpu_stroke_sample", t.elapsed());
             if !painted {
@@ -611,6 +620,7 @@ impl qobject::PictureView {
         let mut changed: Option<PsdRect> = None;
         {
             let mut rust = self.as_mut().rust_mut();
+            let rust = &mut *rust;
             let Some(placer) = rust.gpu_placer.as_mut() else {
                 return false;
             };
@@ -629,10 +639,12 @@ impl qobject::PictureView {
                     continue;
                 };
                 let t = Instant::now();
-                let patched = rust
-                    .stroke
-                    .as_mut()
-                    .is_some_and(|stroke| stroke.patch_working_layer(rect, plane_stride, &planes));
+                let patched = match (rust.stroke.as_mut(), rust.doc.as_mut()) {
+                    (Some(stroke), Some(doc)) => {
+                        stroke.patch_working_layer(doc, rect, plane_stride, &planes)
+                    }
+                    _ => false,
+                };
                 paint_timing::record("gpu_patch_working_layer", t.elapsed());
                 if !patched {
                     continue;
@@ -685,6 +697,7 @@ impl qobject::PictureView {
             rust.clear_pending_present();
             rust.gpu_stroke = None;
             rust.gpu_placer = None;
+            rust.stroke_base = None;
             (
                 rust.stroke.take(),
                 rust.stroke_label.clone(),
@@ -700,10 +713,14 @@ impl qobject::PictureView {
                 // stroke that rasterized at full resolution from the first dab.
                 if let Some(preview) = preview {
                     let t = Instant::now();
-                    for sample in preview.samples {
-                        stroke.sample(sample);
-                        if let Some(rect) = stroke.take_dirty() {
-                            self.as_mut().rust_mut().stroke_tiles.mark(rect);
+                    let mut rust = self.as_mut().rust_mut();
+                    let rust = &mut *rust;
+                    if let Some(doc) = rust.doc.as_mut() {
+                        for sample in preview.samples {
+                            stroke.sample(doc, sample);
+                            if let Some(rect) = stroke.take_dirty() {
+                                rust.stroke_tiles.mark(rect);
+                            }
                         }
                     }
                     paint_timing::record("commit_replay_cpu_stroke", t.elapsed());
@@ -716,8 +733,7 @@ impl qobject::PictureView {
                         self.as_mut().recomposite();
                         false
                     }
-                    Some(outcome) => {
-                        let rect = outcome.dirty;
+                    Some(rect) => {
                         // The commit is a described change: refresh only the
                         // stroke's dirty tiles. Decomposing them into disjoint
                         // rectangles keeps a diagonal stroke from recompositing
@@ -726,11 +742,7 @@ impl qobject::PictureView {
                         // tiles are not worth splitting. Patching level 0 and
                         // rebuilding from it is also what overwrites the preview
                         // level, so the canvas returns to the zoom-selected one.
-                        let regions = {
-                            let mut rust = self.as_mut().rust_mut();
-                            rust.doc = Some(outcome.document);
-                            rust.take_stroke_regions(rect)
-                        };
+                        let regions = self.as_mut().rust_mut().take_stroke_regions(rect);
                         self.as_mut().refresh_regions(&regions);
                         let t = Instant::now();
                         self.as_mut().record(&label);
@@ -746,12 +758,14 @@ impl qobject::PictureView {
     }
 
     pub fn cancel_paint(mut self: Pin<&mut Self>) {
-        // The document composite was never patched mid-stroke, so restoring the
-        // stroke's extent from it is enough; only the level-0/pyramid and the
-        // displayed canvas carry the in-progress paint. A region still pending
-        // is dropped: the restore below repaints the whole extent anyway.
+        // The stroke puts back the layer pixels it changed. The document
+        // composite was never patched mid-stroke, so presenting the stroke's
+        // extent from it is enough; only the level-0/pyramid and the displayed
+        // canvas carry the in-progress paint. A region still pending is
+        // dropped: the restore below repaints the whole extent anyway.
         let dirty = {
             let mut rust = self.as_mut().rust_mut();
+            let rust = &mut *rust;
             rust.clear_pending_present();
             // The restore below refreshes the stroke's extent from level 0,
             // which rebuilds the stored levels and so drops the preview too.
@@ -759,14 +773,15 @@ impl qobject::PictureView {
             rust.gpu_stroke = None;
             rust.gpu_placer = None;
             rust.stroke_tiles = Default::default();
-            rust.stroke.take()
-        }
-        .and_then(|stroke| stroke.finish())
-        .map(|outcome| outcome.dirty);
+            rust.cancel_stroke()
+        };
         match dirty {
             Some(rect) => {
                 let t = Instant::now();
-                self.as_mut().refresh_region(rect);
+                let blit = self.as_mut().rust_mut().refresh_from_composite(rect);
+                if let Some((image, x, y)) = blit {
+                    self.as_mut().region_blitted(image, x, y);
+                }
                 paint_timing::record("cancel_refresh_region", t.elapsed());
             }
             None => {

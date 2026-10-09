@@ -294,13 +294,16 @@ fn mid_stroke_pyramid_matches_a_full_recomposite_of_the_working_document() {
     use pictura_paint::{Stroke, StrokeConfig, StrokeSample};
 
     let rgba = vec![40u8; 128 * 128 * 4];
-    let doc = Document::from_rgba("paint", 128, 128, &rgba);
+    let mut doc = Document::from_rgba("paint", 128, 128, &rgba);
     let mut stroke = Stroke::begin_at(&doc, "0", StrokeConfig::default()).expect("begin stroke");
-    assert!(stroke.sample(StrokeSample {
-        x: 64.0,
-        y: 64.0,
-        pressure: 1.0,
-    }));
+    assert!(stroke.sample(
+        &mut doc,
+        StrokeSample {
+            x: 64.0,
+            y: 64.0,
+            pressure: 1.0,
+        }
+    ));
     let rect = stroke.take_dirty().expect("a dab dirties a region");
 
     let mut rust = PictureViewRust {
@@ -308,11 +311,11 @@ fn mid_stroke_pyramid_matches_a_full_recomposite_of_the_working_document() {
         stroke: Some(stroke),
         ..Default::default()
     };
-    // A full rebuild while a stroke is live must use the working document's
+    // A full rebuild while a stroke is live must use the painted document's
     // composited layers, not its stale cached `composite`.
     rust.reset_pyramid();
     {
-        let working = rust.stroke.as_ref().unwrap().document();
+        let working = rust.doc.as_ref().unwrap();
         let reference_level0 = level0_composited(working, false);
         let reference = ViewPyramid::rebuild(planes_of(&reference_level0).unwrap());
         assert_pyramids_equal(&rust.pyramid, &reference, &reference_level0);
@@ -320,11 +323,12 @@ fn mid_stroke_pyramid_matches_a_full_recomposite_of_the_working_document() {
 
     // A mid-stroke region refresh keeps the pyramid equal to a full rebuild, so
     // the present path can crop it instead of resampling the full image.
-    let working = rust.stroke.as_ref().unwrap().document();
+    let working = rust.doc.as_ref().unwrap();
     let region = pictura_render::composite_region_active(working, rect, false).0;
-    rust.refresh_level0_region(level0_from_buffer(working, &region), rect.left, rect.top);
+    let level0 = level0_from_buffer(working, &region);
+    rust.refresh_level0_region(level0, rect.left, rect.top);
     rust.update_pyramid(rect);
-    let working = rust.stroke.as_ref().unwrap().document();
+    let working = rust.doc.as_ref().unwrap();
     let reference_level0 = level0_composited(working, false);
     let reference = ViewPyramid::rebuild(planes_of(&reference_level0).unwrap());
     assert_pyramids_equal(&rust.pyramid, &reference, &reference_level0);
@@ -335,31 +339,33 @@ fn paint_commit_region_patch_equals_a_full_recomposite() {
     use pictura_paint::{Stroke, StrokeConfig, StrokeSample};
 
     let rgba = vec![30u8; 128 * 128 * 4];
-    let doc = Document::from_rgba("paint", 128, 128, &rgba);
+    let mut doc = Document::from_rgba("paint", 128, 128, &rgba);
     let cfg = StrokeConfig {
         diameter: 24,
         ..StrokeConfig::default()
     };
     let mut stroke = Stroke::begin_at(&doc, "0", cfg).expect("begin stroke");
     for i in 0..8 {
-        assert!(stroke.sample(StrokeSample {
-            x: 20.0 + i as f32 * 8.0,
-            y: 64.0,
-            pressure: 1.0,
-        }));
+        assert!(stroke.sample(
+            &mut doc,
+            StrokeSample {
+                x: 20.0 + i as f32 * 8.0,
+                y: 64.0,
+                pressure: 1.0,
+            }
+        ));
         stroke.take_dirty();
     }
-    let outcome = stroke.finish().expect("the stroke painted pixels");
-    let rect = outcome.dirty;
+    let rect = stroke.finish().expect("the stroke painted pixels");
 
     // Replay `end_paint`'s region commit against the committed bytes.
-    let mut committed = outcome.document.clone();
+    let mut committed = doc.clone();
     let buffer = pictura_render::composite_region_active(&committed, rect, false).0;
     let x0 = rect.left.max(0);
     let y0 = rect.top.max(0);
     patch_composite_region(&mut committed, &buffer, x0, y0);
 
-    let full = current_buffer(&outcome.document, false);
+    let full = current_buffer(&doc, false);
     assert_eq!(
         committed.composite.data, full.data,
         "the stroke's committed region equals a full recomposite"
@@ -414,7 +420,7 @@ fn a_multi_rect_stroke_commit_equals_a_full_recomposite() {
     use pictura_paint::{Stroke, StrokeConfig, StrokeSample};
 
     let rgba = vec![30u8; 512 * 512 * 4];
-    let doc = Document::from_rgba("paint", 512, 512, &rgba);
+    let mut doc = Document::from_rgba("paint", 512, 512, &rgba);
     let cfg = StrokeConfig {
         diameter: 6,
         ..StrokeConfig::default()
@@ -423,21 +429,24 @@ fn a_multi_rect_stroke_commit_equals_a_full_recomposite() {
     let mut tiles = TileSet::default();
     tiles.reset(512, 512);
     for i in 0..32 {
-        assert!(stroke.sample(StrokeSample {
-            x: 20.0 + i as f32 * 15.0,
-            y: 20.0 + i as f32 * 15.0,
-            pressure: 1.0,
-        }));
+        assert!(stroke.sample(
+            &mut doc,
+            StrokeSample {
+                x: 20.0 + i as f32 * 15.0,
+                y: 20.0 + i as f32 * 15.0,
+                pressure: 1.0,
+            }
+        ));
         if let Some(rect) = stroke.take_dirty() {
             tiles.mark(rect);
         }
     }
-    let outcome = stroke.finish().expect("the stroke painted pixels");
-    let regions = tiles.regions(outcome.dirty);
+    let dirty = stroke.finish().expect("the stroke painted pixels");
+    let regions = tiles.regions(dirty);
     assert!(regions.len() > 1, "a diagonal decomposes into tiles");
 
     // Replay `end_paint`'s per-rect commit against the committed bytes.
-    let mut committed = outcome.document.clone();
+    let mut committed = doc.clone();
     for region in &regions {
         let buffer = pictura_render::composite_region_active(&committed, *region, false).0;
         patch_composite_region(
@@ -447,7 +456,7 @@ fn a_multi_rect_stroke_commit_equals_a_full_recomposite() {
             region.top.max(0),
         );
     }
-    let full = current_buffer(&outcome.document, false);
+    let full = current_buffer(&doc, false);
     assert_eq!(
         committed.composite.data, full.data,
         "the per-rect commit equals a full recomposite"

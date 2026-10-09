@@ -1,0 +1,158 @@
+// Stroke boundaries on large documents (#185): a bounded undo/redo restores a
+// stroke's pixels without rebuilding the canvas frame, an undo during a stroke
+// cancels it, the Move tool does not warm a preview it may not use, and a layer
+// property repaints no more than the layer it changed.
+
+#include <QtTest/QtTest>
+
+#include "commands.h"
+#include "selftest_paint_fixture.h"
+
+#include "pictura_app/src/cxxqt_object/impl_history/display.cxxqt.h"
+
+#include "qt_test_support.h"
+
+namespace {
+
+using paint_fixture::Fixture;
+
+constexpr quint32 kRed = 0xFFFF0000u;
+constexpr quint32 kWhite = 0xFFFFFFFFu;
+
+bool beginRed(pictura::PictureView& view)
+{
+    return view.begin_paint(kRed, kWhite, 12, 100, 100, 0, 100, 100, 25,
+                            QStringLiteral("normal"), false, false);
+}
+
+// One committed horizontal stroke along row `y`.
+bool paintLine(pictura::PictureView& view, double y)
+{
+    if (!beginRed(view)) {
+        return false;
+    }
+    for (double x = 10.0; x <= 70.0; x += 6.0) {
+        view.paint_dab(x, y, 1.0);
+    }
+    return view.end_paint();
+}
+
+QRgb canvasPixel(const pictura::ImageView& canvas, int x, int y)
+{
+    return canvas.image().pixel(x, y);
+}
+
+} // namespace
+
+class LargeDocumentTest : public QObject {
+    Q_OBJECT
+
+private slots:
+    void initTestCase();
+    void boundedUndoKeepsTheFrame();
+    void undoDuringAStrokeCancelsIt();
+    void moveDoesNotWarmTheBackground();
+    void layerPropertiesRepaintOnlyTheLayer();
+
+private:
+    pictura::test::ScopedStateHome stateHome_;
+    std::unique_ptr<pictura::PicturaMainWindow> window_;
+};
+
+void LargeDocumentTest::initTestCase()
+{
+    QVERIFY(stateHome_.isValid());
+    window_ = pictura::test::makeMainWindow();
+    QVERIFY(window_ != nullptr);
+}
+
+void LargeDocumentTest::boundedUndoKeepsTheFrame()
+{
+    QImage seed(120, 60, QImage::Format_RGB32);
+    seed.fill(Qt::white);
+    Fixture f(*window_, seed, QStringLiteral("pictura_bounded_undo"));
+    QVERIFY2(f.ok(), "bounded undo fixture");
+
+    QVERIFY(paintLine(*f.view, 20.0));
+    QCOMPARE(f.view->sample_argb(40, 20), kRed);
+    QCOMPARE(canvasPixel(*f.canvas, 40, 20), QRgb(kRed));
+    const quint64 frame = pictura::frame_revision(*f.view);
+
+    QVERIFY(window_->registry()->dispatch(QStringLiteral("edit.undo")));
+    QCOMPARE(f.view->sample_argb(40, 20), kWhite);
+    QCOMPARE(canvasPixel(*f.canvas, 40, 20), QRgb(kWhite));
+    QCOMPARE(quint64(pictura::frame_revision(*f.view)), frame);
+
+    QVERIFY(window_->registry()->dispatch(QStringLiteral("edit.stepForward")));
+    QCOMPARE(f.view->sample_argb(40, 20), kRed);
+    QCOMPARE(canvasPixel(*f.canvas, 40, 20), QRgb(kRed));
+    QCOMPARE(quint64(pictura::frame_revision(*f.view)), frame);
+}
+
+void LargeDocumentTest::undoDuringAStrokeCancelsIt()
+{
+    QImage seed(120, 60, QImage::Format_RGB32);
+    seed.fill(Qt::white);
+    Fixture f(*window_, seed, QStringLiteral("pictura_undo_mid_stroke"));
+    QVERIFY2(f.ok(), "undo mid-stroke fixture");
+
+    QVERIFY(beginRed(*f.view));
+    f.view->paint_dab(40.0, 30.0, 1.0);
+    QVERIFY2(!f.view->undo(), "nothing to undo yet: the stroke must survive");
+    QVERIFY(f.view->is_painting());
+    QVERIFY(f.view->end_paint());
+
+    QVERIFY(paintLine(*f.view, 10.0));
+    QVERIFY(beginRed(*f.view));
+    f.view->paint_dab(40.0, 50.0, 1.0);
+    QVERIFY(f.view->undo());
+    QVERIFY(!f.view->is_painting());
+    QCOMPARE(f.view->sample_argb(40, 50), kWhite);
+    QCOMPARE(f.view->sample_argb(40, 10), kWhite);
+    QCOMPARE(f.view->sample_argb(40, 30), kRed);
+}
+
+void LargeDocumentTest::moveDoesNotWarmTheBackground()
+{
+    QImage seed(80, 40, QImage::Format_RGB32);
+    seed.fill(Qt::white);
+    Fixture f(*window_, seed, QStringLiteral("pictura_move_warm"));
+    QVERIFY2(f.ok(), "move warm fixture");
+
+    QVERIFY2(!f.view->prepare_move_preview(), "a Background may not be moved");
+    QVERIFY(f.view->move_preview_base().isNull());
+
+    const int added = f.view->add_layer(0);
+    f.view->set_active_layer(QString::number(added));
+    QVERIFY(f.view->prepare_move_preview());
+    QVERIFY(!f.view->move_preview_base().isNull());
+}
+
+void LargeDocumentTest::layerPropertiesRepaintOnlyTheLayer()
+{
+    QImage seed(120, 60, QImage::Format_RGB32);
+    seed.fill(Qt::white);
+    Fixture f(*window_, seed, QStringLiteral("pictura_layer_properties"));
+    QVERIFY2(f.ok(), "layer properties fixture");
+    const int added = f.view->add_layer(0);
+    f.view->set_active_layer(QString::number(added));
+    QVERIFY(paintLine(*f.view, 20.0));
+    const QStringList paths{QString::number(added)};
+
+    const quint64 canvas = f.view->canvas_revision();
+    const quint64 frame = pictura::frame_revision(*f.view);
+    QCOMPARE(f.view->set_layers_lock(paths, QStringLiteral("pixels"), true), 1);
+    QVERIFY(f.view->layer_lock(added) != 0);
+    QCOMPARE(f.view->canvas_revision(), canvas);
+    QCOMPARE(quint64(pictura::frame_revision(*f.view)), frame);
+
+    QCOMPARE(f.view->set_layers_blend(paths, QStringLiteral("mul ")), 1);
+    QCOMPARE(f.view->layer_blend(added), QStringLiteral("mul "));
+    QVERIFY2(f.view->canvas_revision() != canvas, "the blend change was not presented");
+    QCOMPARE(quint64(pictura::frame_revision(*f.view)), frame);
+    QCOMPARE(f.view->sample_argb(40, 20), kRed);
+    QCOMPARE(canvasPixel(*f.canvas, 40, 20), QRgb(kRed));
+}
+
+QTEST_MAIN(LargeDocumentTest)
+#include "tst_large_document.moc"

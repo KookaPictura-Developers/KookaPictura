@@ -358,14 +358,18 @@ mod tests {
             ..StrokeConfig::default()
         };
         let mut stroke = Stroke::begin_art_history(doc, "0", cfg, source, options).ok()?;
+        let mut out = doc.clone();
         for x in [24.0, 32.0, 40.0] {
-            stroke.sample(StrokeSample {
-                x,
-                y: 32.0,
-                pressure: 1.0,
-            });
+            stroke.sample(
+                &mut out,
+                StrokeSample {
+                    x,
+                    y: 32.0,
+                    pressure: 1.0,
+                },
+            );
         }
-        stroke.finish().map(|o| o.document)
+        stroke.finish().map(|_| out)
     }
 
     fn painted(doc: &Document, colour: [u8; 4]) -> Vec<(i32, i32)> {

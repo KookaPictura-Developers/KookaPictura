@@ -198,14 +198,19 @@ mod tests {
             ..StrokeConfig::default()
         };
         let mut stroke = Stroke::begin_smudge(d, "0", cfg, options, sampled).expect("begin");
+        let mut out = d.clone();
         for x in from..=to {
-            stroke.sample(StrokeSample {
-                x: x as f32,
-                y: 20.0,
-                pressure: 1.0,
-            });
+            stroke.sample(
+                &mut out,
+                StrokeSample {
+                    x: x as f32,
+                    y: 20.0,
+                    pressure: 1.0,
+                },
+            );
         }
-        stroke.finish().map_or_else(|| d.clone(), |o| o.document)
+        stroke.finish();
+        out
     }
 
     fn at(strength: f32) -> SmudgeOptions {

@@ -1,5 +1,6 @@
+use super::planes::TILE;
 use super::*;
-use pictura_core::{BitDepth, Channel, CharacterOverrides, ColorMode};
+use pictura_core::{BitDepth, Channel, CharacterOverrides, ColorMode, Layer};
 
 fn doc(w: u32, h: u32, seed: u8) -> Document {
     let mut doc = Document::new(w, h, ColorMode::Rgb, BitDepth::Eight);
@@ -795,4 +796,183 @@ fn a_style_operation_records_one_undoable_state_each() {
         .text_styles
         .character_style("Heading")
         .is_some());
+}
+
+/// A deterministic generator for the model test (splitmix64).
+struct Rng(u64);
+
+impl Rng {
+    fn next(&mut self) -> u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+
+    fn below(&mut self, n: usize) -> usize {
+        (self.next() % n as u64) as usize
+    }
+}
+
+fn model_layer(name: &str, w: u32, h: u32, seed: u8) -> Layer {
+    let n = (w * h) as usize;
+    Layer {
+        name: name.into(),
+        rect: pictura_core::PsdRect {
+            top: 0,
+            left: 0,
+            bottom: h as i32,
+            right: w as i32,
+        },
+        channels: (0..4)
+            .map(|c| Channel {
+                id: c - 1,
+                data: (0..n)
+                    .map(|i| {
+                        (i as u8)
+                            .wrapping_mul(7)
+                            .wrapping_add(seed.wrapping_add(c as u8))
+                    })
+                    .collect(),
+            })
+            .collect(),
+        ..Default::default()
+    }
+}
+
+/// Every plane of `a` is a different allocation from every plane of `b`.
+fn shares_no_plane(a: &Document, b: &Document) -> bool {
+    let mut theirs = Vec::new();
+    planes::each_plane(b, &mut |p, _, _| theirs.push(p.clone()));
+    let mut ok = true;
+    planes::each_plane(a, &mut |p, _, _| {
+        ok &= p.is_empty() || theirs.iter().all(|q| !p.shares(q));
+    });
+    ok
+}
+
+#[test]
+fn live_restores_match_a_full_snapshot_history() {
+    let (w, h) = (70u32, 45u32);
+    for seed in 0..12u64 {
+        let mut rng = Rng(seed);
+        let mut live = doc(w, h, 3);
+        live.composite.data = (0..(w * h * 3) as usize).map(|i| (i % 251) as u8).collect();
+        live.layers = vec![model_layer("base", w, h, 1)];
+        let mut selection: Option<Selection> = None;
+        let mut history = History::default();
+        history.capture_live(&mut live, &selection, "Open");
+        let mut reference = vec![Snapshot {
+            doc: live.clone(),
+            selection: selection.clone(),
+        }];
+        let mut cursor = 0usize;
+
+        for step in 0..160 {
+            let op = rng.below(14);
+            let restore = op >= 9;
+            if restore {
+                let before = live.composite.data.clone();
+                let restored = match op {
+                    9 => history.undo_live(&mut live, &mut selection),
+                    10 => history.redo_live(&mut live, &mut selection),
+                    11 => {
+                        let i = rng.below(reference.len());
+                        history.jump_live(i, &mut live, &mut selection)
+                    }
+                    _ => history.undo().map(|s| {
+                        live = s.doc;
+                        selection = s.selection;
+                        Restored::Everywhere
+                    }),
+                };
+                let target = match op {
+                    9 => cursor.checked_sub(1),
+                    10 => (cursor + 1 < reference.len()).then_some(cursor + 1),
+                    11 => Some(history.index()),
+                    _ => cursor.checked_sub(1),
+                };
+                assert_eq!(
+                    restored.is_some(),
+                    target.is_some(),
+                    "seed {seed} step {step}"
+                );
+                if let Some(t) = target {
+                    cursor = t;
+                }
+                if let Some(Restored::Region(r)) = restored {
+                    let hh = h as usize;
+                    for (i, (a, b)) in before.iter().zip(live.composite.data.iter()).enumerate() {
+                        let (x, y) = ((i % w as usize) as i32, ((i / w as usize) % hh) as i32);
+                        let inside = x >= r.left && x < r.right && y >= r.top && y < r.bottom;
+                        assert!(
+                            a == b || inside,
+                            "seed {seed} step {step}: composite changed outside {r:?}"
+                        );
+                    }
+                }
+            } else {
+                match op {
+                    0..=4 => {
+                        let li = rng.below(live.layers.len());
+                        let c = rng.below(4);
+                        let (x, y) = (rng.below(w as usize), rng.below(h as usize));
+                        let (rw, rh) = (1 + rng.below(30), 1 + rng.below(20));
+                        let v = rng.next() as u8;
+                        for yy in y..(y + rh).min(h as usize) {
+                            for xx in x..(x + rw).min(w as usize) {
+                                live.layers[li].channels[c].data[yy * w as usize + xx] = v;
+                                let k = (c % 3) * h as usize + yy;
+                                live.composite.data[k * w as usize + xx] = v ^ 0x5A;
+                            }
+                        }
+                    }
+                    5 => live
+                        .layers
+                        .push(model_layer("added", w, h, rng.next() as u8)),
+                    6 if live.layers.len() > 1 => {
+                        live.layers.pop();
+                    }
+                    7 => live.layers[0].opacity = rng.next() as u8,
+                    _ => selection = Some(Selection::rect(w, h, 2, 3, 1 + rng.below(20) as i32, 4)),
+                }
+                history.capture_live(&mut live, &selection, "Edit");
+                reference.truncate(cursor + 1);
+                reference.push(Snapshot {
+                    doc: live.clone(),
+                    selection: selection.clone(),
+                });
+                if reference.len() > MAX_DEPTH + 1 {
+                    reference.remove(0);
+                }
+                cursor = reference.len() - 1;
+            }
+            assert_eq!(history.index(), cursor, "seed {seed} step {step}");
+            assert_eq!(history.count(), reference.len(), "seed {seed} step {step}");
+            assert!(
+                live == reference[cursor].doc,
+                "seed {seed} step {step} op {op}: live document differs from the reference"
+            );
+            assert!(
+                selection == reference[cursor].selection,
+                "seed {seed} step {step}: selection differs"
+            );
+            if op < 12 {
+                let current = &history.current.as_ref().expect("current").doc;
+                assert!(
+                    shares_no_plane(&live, current),
+                    "seed {seed} step {step} op {op}: live shares a plane with history"
+                );
+            }
+            assert!(
+                history.full_state_count() <= history.anchor_count() + 1,
+                "seed {seed} step {step}: the cursor's anchor must be hollow"
+            );
+        }
+        for (i, expected) in reference.iter().enumerate() {
+            let snap = history.jump(i).expect("state");
+            assert!(snap.doc == expected.doc, "seed {seed}: jump {i} differs");
+        }
+    }
 }

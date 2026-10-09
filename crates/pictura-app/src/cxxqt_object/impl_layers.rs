@@ -129,7 +129,7 @@ impl qobject::PictureView {
         };
         // ponytail: no type/shape layers yet, so nothing forces a lock;
         // the "cannot unlock a forced lock" rule is M37's.
-        self.as_mut().mutate_layer(i, "Lock", |layer, background| {
+        self.as_mut().mutate_meta(i, "Lock", |layer, background| {
             if background {
                 false
             } else {
@@ -148,7 +148,7 @@ impl qobject::PictureView {
             return false;
         }
         self.as_mut()
-            .mutate_layer(i, "Layer Color", |layer, background| {
+            .mutate_meta(i, "Layer Color", |layer, background| {
                 if background {
                     false
                 } else {
@@ -487,6 +487,7 @@ impl qobject::PictureView {
             }
         };
         if changed == 0 {
+            paint_timing::report();
             return 0;
         }
         match region {
@@ -507,22 +508,23 @@ impl qobject::PictureView {
             return 0;
         };
         self.as_mut()
-            .batch_changed(paths, "Blend Mode", |doc, paths| {
+            .batch_property(paths, "Blend Mode", true, |doc, paths| {
                 pictura_render::set_blend_paths(doc, paths, mode)
             })
     }
 
     pub fn set_layers_opacity(mut self: Pin<&mut Self>, paths: &QStringList, value: i32) -> i32 {
         let value = value.clamp(0, 255) as u8;
-        self.as_mut().batch_changed(paths, "Opacity", |doc, paths| {
-            pictura_render::set_opacity_paths(doc, paths, value)
-        })
+        self.as_mut()
+            .batch_property(paths, "Opacity", true, |doc, paths| {
+                pictura_render::set_opacity_paths(doc, paths, value)
+            })
     }
 
     pub fn set_layers_fill(mut self: Pin<&mut Self>, paths: &QStringList, value: i32) -> i32 {
         let value = value.clamp(0, 255) as u8;
         self.as_mut()
-            .batch_changed(paths, "Fill Opacity", |doc, paths| {
+            .batch_property(paths, "Fill Opacity", true, |doc, paths| {
                 pictura_render::set_fill_paths(doc, paths, value)
             })
     }
@@ -610,9 +612,10 @@ impl qobject::PictureView {
         let Some(bit) = lock_bit(flag.to_string().as_str()) else {
             return 0;
         };
-        self.as_mut().batch_changed(paths, "Lock", |doc, paths| {
-            pictura_render::set_lock_paths(doc, paths, bit, on)
-        })
+        self.as_mut()
+            .batch_property(paths, "Lock", false, |doc, paths| {
+                pictura_render::set_lock_paths(doc, paths, bit, on)
+            })
     }
 
     pub fn set_layers_color(mut self: Pin<&mut Self>, paths: &QStringList, value: i32) -> i32 {
@@ -621,7 +624,7 @@ impl qobject::PictureView {
         }
         let color = ColorLabel::from_byte(value as u8);
         self.as_mut()
-            .batch_changed(paths, "Layer Color", |doc, paths| {
+            .batch_property(paths, "Layer Color", false, |doc, paths| {
                 pictura_render::set_color_paths(doc, paths, color)
             })
     }
@@ -747,6 +750,7 @@ impl qobject::PictureView {
         label: &str,
         f: impl FnOnce(&mut Layer, bool) -> bool,
     ) -> bool {
+        paint_timing::start(label);
         let (changed, region) = if let Some(doc) = self.as_mut().rust_mut().doc.as_mut() {
             let background = is_background_layer(doc, i);
             match doc.layers.get_mut(i as usize) {
@@ -766,6 +770,31 @@ impl qobject::PictureView {
                 None => self.as_mut().recomposite(),
             }
             self.as_mut().record(label);
+        }
+        paint_timing::report();
+        changed
+    }
+
+    /// As [`Self::mutate_layer`] for a property that changes no pixel: record
+    /// and notify without repainting.
+    fn mutate_meta(
+        mut self: Pin<&mut Self>,
+        i: i32,
+        label: &str,
+        f: impl FnOnce(&mut Layer, bool) -> bool,
+    ) -> bool {
+        let changed = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => {
+                let background = is_background_layer(doc, i);
+                doc.layers
+                    .get_mut(i as usize)
+                    .is_some_and(|layer| f(layer, background))
+            }
+            None => false,
+        };
+        if changed {
+            self.as_mut().record(label);
+            self.as_mut().changed();
         }
         changed
     }
@@ -807,6 +836,51 @@ impl qobject::PictureView {
             self.as_mut().recomposite();
             self.as_mut().record(label);
         }
+        changed as i32
+    }
+
+    /// As [`Self::batch_changed`] for a per-layer property: repaint only the
+    /// changed layers' bounds, or nothing when `repaint` is false (a lock or a
+    /// colour label changes no pixel). A layer whose reach is not its bounds (a
+    /// group, a layer with effects) falls back to the full recomposite.
+    fn batch_property(
+        mut self: Pin<&mut Self>,
+        paths: &QStringList,
+        label: &str,
+        repaint: bool,
+        op: impl FnOnce(&mut Document, &[&str]) -> usize,
+    ) -> i32 {
+        paint_timing::start(label);
+        let owned = list_of_strings(paths);
+        let refs = as_str_slice(&owned);
+        let (changed, region) = match self.as_mut().rust_mut().doc.as_mut() {
+            Some(doc) => {
+                let changed = op(doc, &refs);
+                // `None`: unbounded; `Some(None)`: no pixel to repaint.
+                let region =
+                    refs.iter()
+                        .try_fold(None, |union: Option<pictura_core::PsdRect>, path| {
+                            let rect = pictura_render::resolve_path(doc, path)
+                                .and_then(layer_visibility_region)?;
+                            Some(Some(union.map_or(rect, |u| union_rect(u, rect))))
+                        });
+                (changed, if repaint { region } else { Some(None) })
+            }
+            None => (0, None),
+        };
+        if changed == 0 {
+            return 0;
+        }
+        match region {
+            None => self.as_mut().recomposite(),
+            Some(Some(rect)) => self.as_mut().refresh_region(rect),
+            Some(None) => {}
+        }
+        self.as_mut().record(label);
+        if region.is_some() {
+            self.as_mut().changed();
+        }
+        paint_timing::report();
         changed as i32
     }
 }

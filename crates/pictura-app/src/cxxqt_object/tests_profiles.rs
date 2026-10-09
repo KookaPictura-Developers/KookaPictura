@@ -148,18 +148,25 @@ fn stroke_split_profile_4000() {
                 ..StrokeConfig::default()
             };
 
-            // Stroke start: two document clones (refcount bumps) plus the coverage buffers.
+            // Each diameter paints its own copy; the clone shares every plane,
+            // so the first dab still pays the plane fork a live stroke no
+            // longer does (its document shares nothing with the history).
+            let mut work = doc.clone();
+            // Stroke start: the coverage buffers and the saved-tile bookkeeping.
             let t = std::time::Instant::now();
-            let mut stroke = Stroke::begin_at(&doc, "0", cfg).expect("stroke begins");
+            let mut stroke = Stroke::begin_at(&work, "0", cfg).expect("stroke begins");
             let begin = t.elapsed();
 
             // Rasterization: the first sample places exactly one dab, unrefreshed.
             let t = std::time::Instant::now();
-            let changed = stroke.sample(StrokeSample {
-                x: 2000.0,
-                y: 2000.0,
-                pressure: 1.0,
-            });
+            let changed = stroke.sample(
+                &mut work,
+                StrokeSample {
+                    x: 2000.0,
+                    y: 2000.0,
+                    pressure: 1.0,
+                },
+            );
             let raster = t.elapsed();
             let rect = stroke.take_dirty().expect("a dab dirties a region");
 
@@ -167,17 +174,20 @@ fn stroke_split_profile_4000() {
             // whose painted planes have already forked off the document, so only
             // rasterization remains (the first dab also pays that one-time fork).
             let t = std::time::Instant::now();
-            let steady_changed = stroke.sample(StrokeSample {
-                x: 2600.0,
-                y: 2000.0,
-                pressure: 1.0,
-            });
+            let steady_changed = stroke.sample(
+                &mut work,
+                StrokeSample {
+                    x: 2600.0,
+                    y: 2000.0,
+                    pressure: 1.0,
+                },
+            );
             let steady = t.elapsed();
             let steady_rect = stroke.take_dirty();
 
             // Present: the region composite and display conversion `refresh_region` runs.
             let t = std::time::Instant::now();
-            let (buffer, _) = pictura_render::composite_region_active(stroke.document(), rect, gpu);
+            let (buffer, _) = pictura_render::composite_region_active(&work, rect, gpu);
             let composite = t.elapsed();
             let t = std::time::Instant::now();
             let _ = buffer_to_image(&buffer);
@@ -316,21 +326,25 @@ fn large_brush_profile_4000() {
             spacing: SpacingMode::Fixed(25),
             ..StrokeConfig::default()
         };
+        let mut work = doc.clone();
         let t = std::time::Instant::now();
-        let mut stroke = Stroke::begin_at(&doc, "0", cfg).expect("stroke begins");
+        let mut stroke = Stroke::begin_at(&work, "0", cfg).expect("stroke begins");
         let begin = t.elapsed();
 
         let t = std::time::Instant::now();
-        let changed = stroke.sample(StrokeSample {
-            x: 2000.0,
-            y: 2000.0,
-            pressure: 1.0,
-        });
+        let changed = stroke.sample(
+            &mut work,
+            StrokeSample {
+                x: 2000.0,
+                y: 2000.0,
+                pressure: 1.0,
+            },
+        );
         let raster = t.elapsed();
         let rect = stroke.take_dirty().expect("a dab dirties a region");
 
         let t = std::time::Instant::now();
-        let (buffer, _) = pictura_render::composite_region_active(stroke.document(), rect, gpu);
+        let (buffer, _) = pictura_render::composite_region_active(&work, rect, gpu);
         let composite = t.elapsed();
         let t = std::time::Instant::now();
         let _ = buffer_to_image(&buffer);
@@ -348,4 +362,120 @@ fn large_brush_profile_4000() {
         );
         drop(stroke);
     }
+}
+
+/// Print-only: every stroke-boundary cost on a document the size of the
+/// 16507×16196 world map (issue #185) — the first dab, the in-stroke dabs, the
+/// commit refresh, the history capture, and an undo with its canvas rebuild —
+/// so each is measured on the engine alone, without the GUI. No pass/fail budget.
+#[test]
+#[ignore = "16507x16196 stroke-boundary profile; run explicitly with --ignored --nocapture"]
+fn large_document_stroke_profile() {
+    use super::helpers::paint_timing;
+    use super::PictureViewRust;
+    use pictura_paint::{spacing::SpacingMode, Stroke, StrokeConfig, StrokeSample};
+    use std::time::Instant;
+
+    let (w, h) = (16507u32, 16196u32);
+    let mut doc = Document::new(w, h, ColorMode::Rgb, BitDepth::Eight);
+    doc.layers = vec![pixel_layer("Background", w, h, (30, 60, 90))];
+    doc.composite = pictura_render::composite_active(&doc, false).0;
+    let mut rust = PictureViewRust {
+        doc: Some(doc),
+        ..Default::default()
+    };
+    rust.reset_pyramid();
+    let t = Instant::now();
+    let r = &mut rust;
+    r.history
+        .capture_live(r.doc.as_mut().expect("document"), &None, "Open");
+    println!(
+        "large_document_open history_capture={:.2}ms",
+        t.elapsed().as_secs_f64() * 1000.0
+    );
+
+    let cfg = StrokeConfig {
+        color: rgba_from_argb(0xFFFF0000),
+        diameter: 40,
+        hardness: 100,
+        spacing: SpacingMode::Fixed(25),
+        ..StrokeConfig::default()
+    };
+    let dab = |rust: &mut PictureViewRust, i: u32| -> f64 {
+        let t = Instant::now();
+        let stroke = rust.stroke.as_mut().expect("stroke");
+        stroke.sample(
+            rust.doc.as_mut().expect("document"),
+            StrokeSample {
+                x: 8000.0 + i as f32 * 12.0,
+                y: 8000.0 + i as f32 * 8.0,
+                pressure: 1.0,
+            },
+        );
+        if let Some(rect) = stroke.take_dirty() {
+            rust.stroke_tiles.mark(rect);
+            if let Some((x0, y0, clipped, srgb)) = rust.refresh_region_buffer(rect) {
+                rust.apply_refreshed_region(x0, y0, clipped, srgb);
+            }
+        }
+        t.elapsed().as_secs_f64() * 1000.0
+    };
+
+    for round in 0..2 {
+        paint_timing::start("large document stroke");
+        let t = Instant::now();
+        let stroke = Stroke::begin_at(rust.doc.as_ref().expect("document"), "0", cfg);
+        rust.stroke = Some(stroke.expect("stroke begins"));
+        rust.stroke_tiles.reset(w, h);
+        let begin = t.elapsed().as_secs_f64() * 1000.0;
+        let first = dab(&mut rust, 0);
+        let rest: Vec<f64> = (1..120).map(|i| dab(&mut rust, i)).collect();
+        let worst = rest.iter().copied().fold(0.0, f64::max);
+        let avg = rest.iter().sum::<f64>() / rest.len() as f64;
+
+        let t = Instant::now();
+        let dirty = rust
+            .stroke
+            .take()
+            .expect("stroke")
+            .finish()
+            .expect("painted");
+        let regions = rust.take_stroke_regions(dirty);
+        let _ = rust.refresh_regions(&regions);
+        let refresh = t.elapsed().as_secs_f64() * 1000.0;
+
+        let t = Instant::now();
+        let r = &mut rust;
+        r.history
+            .capture_live(r.doc.as_mut().expect("document"), &None, "Brush");
+        let capture = t.elapsed().as_secs_f64() * 1000.0;
+        paint_timing::report();
+
+        println!(
+            "large_document_stroke round={round} begin={begin:.2}ms first_dab={first:.2}ms \
+             dab_avg={avg:.3}ms dab_max={worst:.2}ms commit_refresh={refresh:.2}ms \
+             history_capture={capture:.2}ms regions={}",
+            regions.len()
+        );
+    }
+
+    let t = Instant::now();
+    let r = &mut rust;
+    let restored = r
+        .history
+        .undo_live(r.doc.as_mut().expect("document"), &mut r.selection)
+        .expect("a stroke to undo");
+    let history_undo = t.elapsed().as_secs_f64() * 1000.0;
+    let t = Instant::now();
+    let crate::history::Restored::Region(rect) = restored else {
+        panic!("undoing a stroke is bounded, got {restored:?}");
+    };
+    let _ = rust.refresh_from_composite(rect);
+    let refresh = t.elapsed().as_secs_f64() * 1000.0;
+    println!(
+        "large_document_undo history_undo={history_undo:.2}ms canvas_refresh={refresh:.2}ms \
+         region={}x{}",
+        rect.width(),
+        rect.height()
+    );
 }

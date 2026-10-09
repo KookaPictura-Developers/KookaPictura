@@ -319,14 +319,19 @@ mod tests {
             ..StrokeConfig::default()
         };
         let mut stroke = Stroke::begin_source(doc, "0", cfg, source).expect("begin");
+        let mut out = doc.clone();
         for &x in xs {
-            stroke.sample(StrokeSample {
-                x,
-                y: 16.0,
-                pressure: 1.0,
-            });
+            stroke.sample(
+                &mut out,
+                StrokeSample {
+                    x,
+                    y: 16.0,
+                    pressure: 1.0,
+                },
+            );
         }
-        stroke.finish().expect("painted").document
+        stroke.finish().expect("painted");
+        out
     }
 
     #[test]
