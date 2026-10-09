@@ -50,6 +50,7 @@ use pictura_core::{BlendMode, Document, Knockout, Layer, PixelBuffer, PsdRect};
 
 use crate::decode_adjustment;
 
+mod assemble;
 mod backend;
 mod shader;
 mod stroke;
@@ -60,7 +61,7 @@ use backend::{devices, Gpu};
 pub(crate) use backend::{grid_2d, shared_device};
 
 #[cfg(test)]
-use backend::{
+use assemble::{
     assemble_mask, assemble_mask_fill, assemble_mask_per_pixel, assemble_source,
     assemble_source_per_pixel, assemble_source_rowwise, mask_has_data, mask_influence_rect,
     source_geom, Region,
@@ -411,6 +412,19 @@ mod tests {
         SmartObject, SmartObjectKind,
     };
     use std::time::Instant;
+
+    #[test]
+    fn a_software_adapter_is_no_gpu() {
+        assert!(!backend::accelerates(wgpu::DeviceType::Cpu));
+        for real in [
+            wgpu::DeviceType::DiscreteGpu,
+            wgpu::DeviceType::IntegratedGpu,
+            wgpu::DeviceType::VirtualGpu,
+            wgpu::DeviceType::Other,
+        ] {
+            assert!(backend::accelerates(real), "{real:?}");
+        }
+    }
 
     #[test]
     fn grid_2d_tiles_without_gaps_or_overlap() {
