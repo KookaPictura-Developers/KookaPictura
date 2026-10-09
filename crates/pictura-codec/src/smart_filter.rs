@@ -167,6 +167,114 @@ fn filter_entry_mut(desc: &mut DescValue, index: usize) -> Option<&mut Vec<(Vec<
     Some(entry)
 }
 
+/// Mutable access to the `filterFX.filterFXList` array inside a descriptor.
+fn filter_list_mut(desc: &mut DescValue) -> Option<&mut Vec<DescValue>> {
+    let filter_fx = filter_fx_mut(desc)?;
+    match get_object_item_mut(filter_fx, b"filterFXList") {
+        Some(DescValue::List(list)) => Some(list),
+        _ => None,
+    }
+}
+
+/// Drop the whole `filterFX` object from a descriptor; the empty stack has no
+/// `filterFXStyle`/`filterFXList` left to author.
+fn remove_filter_fx(desc: &mut DescValue) {
+    if let DescValue::Object { items, .. } = desc {
+        items.retain(|(key, _)| key.as_slice() != b"filterFX");
+    }
+}
+
+/// Remove the smart filter at `filter_index` from `layer`.
+///
+/// A preserved `SoLd`/`SoLE` descriptor's `filterFXList` entry is removed and the
+/// block rewritten; when the list becomes empty the whole `filterFX` object is
+/// dropped. The typed `smart_filters` view is kept in step. Without a preserved
+/// block only the typed view changes. An out-of-range index is an error.
+pub fn delete_smart_filter(layer: &mut Layer, filter_index: usize) -> Result<(), PsdError> {
+    let mut removed = false;
+    if let Some(block_idx) = config_block_index(layer) {
+        let mut desc = parse_config(layer, block_idx)?;
+        match filter_list_mut(&mut desc) {
+            Some(list) if filter_index < list.len() => {
+                list.remove(filter_index);
+                if list.is_empty() {
+                    remove_filter_fx(&mut desc);
+                }
+                removed = true;
+            }
+            Some(_) => return Err(malformed("filter index out of range")),
+            None => return Err(malformed("missing filterFXList")),
+        }
+        let data = serialize_config(&layer.extra_blocks[block_idx].data, &desc);
+        store_config(layer, block_idx, data);
+    }
+    if let Some(so) = layer.smart_object.as_mut() {
+        if filter_index < so.smart_filters.len() {
+            so.smart_filters.remove(filter_index);
+            removed = true;
+        }
+    }
+    if !removed {
+        return Err(malformed("filter index out of range"));
+    }
+    Ok(())
+}
+
+/// Move the smart filter at `from` to `to` on `layer`.
+///
+/// Both the preserved `filterFXList` order and the typed `smart_filters` order
+/// change, so the applied order (bottom-up on render) follows the panel order.
+/// `from == to` and equal indices are a no-op; an out-of-range index errors.
+pub fn reorder_smart_filters(layer: &mut Layer, from: usize, to: usize) -> Result<(), PsdError> {
+    let len = layer
+        .smart_object
+        .as_ref()
+        .map_or(0, |so| so.smart_filters.len());
+    if from >= len || to >= len {
+        return Err(malformed("filter index out of range"));
+    }
+    if from == to {
+        return Ok(());
+    }
+    if let Some(block_idx) = config_block_index(layer) {
+        let mut desc = parse_config(layer, block_idx)?;
+        match filter_list_mut(&mut desc) {
+            Some(list) if from < list.len() && to < list.len() => {
+                let entry = list.remove(from);
+                list.insert(to, entry);
+            }
+            Some(_) => return Err(malformed("filter index out of range")),
+            None => return Err(malformed("missing filterFXList")),
+        }
+        let data = serialize_config(&layer.extra_blocks[block_idx].data, &desc);
+        store_config(layer, block_idx, data);
+    }
+    if let Some(so) = layer.smart_object.as_mut() {
+        let entry = so.smart_filters.remove(from);
+        so.smart_filters.insert(to, entry);
+    }
+    Ok(())
+}
+
+/// Remove every smart filter from `layer`.
+///
+/// The preserved `SoLd`/`SoLE` descriptor's whole `filterFX` object is dropped
+/// (a stack with no filters authors no descriptor) and the typed view is
+/// cleared. The filter mask flags are left for the writer to omit with the rest
+/// of `filterFX`.
+pub fn clear_smart_filters(layer: &mut Layer) -> Result<(), PsdError> {
+    if let Some(block_idx) = config_block_index(layer) {
+        let mut desc = parse_config(layer, block_idx)?;
+        remove_filter_fx(&mut desc);
+        let data = serialize_config(&layer.extra_blocks[block_idx].data, &desc);
+        store_config(layer, block_idx, data);
+    }
+    if let Some(so) = layer.smart_object.as_mut() {
+        so.smart_filters.clear();
+    }
+    Ok(())
+}
+
 /// Set the `enab` flag of the smart filter at `filter_index` on `layer`.
 ///
 /// A preserved `SoLd`/`SoLE` descriptor is rewritten in place (every unmodeled
@@ -505,5 +613,165 @@ mod tests {
             get_object_item(&items, b"Dhze"),
             Some(&DescValue::Long(-14))
         );
+    }
+
+    fn fixture_layer_mut(doc: &mut pictura_core::Document) -> &mut Layer {
+        doc.layers
+            .iter_mut()
+            .find(|l| l.name == "Layer 1 copy")
+            .expect("Layer 1 copy present")
+    }
+
+    fn filter_ids(layer: &Layer) -> Vec<i32> {
+        layer
+            .smart_object
+            .as_ref()
+            .expect("smart object")
+            .smart_filters
+            .iter()
+            .map(|filter| filter.filter_id)
+            .collect()
+    }
+
+    #[test]
+    fn reorder_delete_and_clear_round_trip_on_the_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../assets/test_with_smart_object02.psd");
+        let Ok(bytes) = std::fs::read(&path) else {
+            eprintln!("skipping: {} not found", path.display());
+            return;
+        };
+        let mut doc = crate::read_psd(&bytes).expect("fixture parses");
+        let second = SmartFilter {
+            filter_id: 4242,
+            name: "Second".to_string(),
+            enabled: true,
+            options: Vec::new(),
+        };
+        crate::attach_smart_filter(fixture_layer_mut(&mut doc), second).expect("append second");
+        assert_eq!(filter_ids(fixture_layer_mut(&mut doc)), vec![2683, 4242]);
+
+        reorder_smart_filters(fixture_layer_mut(&mut doc), 0, 1).expect("reorder");
+        assert_eq!(filter_ids(fixture_layer_mut(&mut doc)), vec![4242, 2683]);
+
+        let written = crate::write_psd(&doc).expect("fixture writes");
+        let back = crate::read_psd(&written).expect("written fixture re-reads");
+        let so = back
+            .layers
+            .iter()
+            .find(|l| l.name == "Layer 1 copy")
+            .and_then(|l| l.smart_object.as_ref())
+            .expect("smart object survives");
+        let ids: Vec<i32> = so.smart_filters.iter().map(|f| f.filter_id).collect();
+        assert_eq!(ids, vec![4242, 2683], "the reordered list persists");
+
+        let mut doc = crate::read_psd(&bytes).expect("fixture parses");
+        crate::attach_smart_filter(
+            fixture_layer_mut(&mut doc),
+            SmartFilter {
+                filter_id: 4242,
+                name: "Second".to_string(),
+                enabled: true,
+                options: Vec::new(),
+            },
+        )
+        .expect("append second");
+        delete_smart_filter(fixture_layer_mut(&mut doc), 0).expect("delete first");
+        assert_eq!(filter_ids(fixture_layer_mut(&mut doc)), vec![4242]);
+        let back = crate::read_psd(&crate::write_psd(&doc).expect("writes")).expect("re-reads");
+        let ids: Vec<i32> = back
+            .layers
+            .iter()
+            .find(|l| l.name == "Layer 1 copy")
+            .and_then(|l| l.smart_object.as_ref())
+            .expect("survives")
+            .smart_filters
+            .iter()
+            .map(|f| f.filter_id)
+            .collect();
+        assert_eq!(ids, vec![4242], "the deleted entry is gone");
+
+        let mut doc = crate::read_psd(&bytes).expect("fixture parses");
+        clear_smart_filters(fixture_layer_mut(&mut doc)).expect("clear");
+        assert!(filter_ids(fixture_layer_mut(&mut doc)).is_empty());
+        let back = crate::read_psd(&crate::write_psd(&doc).expect("writes")).expect("re-reads");
+        let so = back
+            .layers
+            .iter()
+            .find(|l| l.name == "Layer 1 copy")
+            .and_then(|l| l.smart_object.as_ref())
+            .expect("survives");
+        assert!(
+            so.smart_filters.is_empty(),
+            "a cleared stack authors no filterFX"
+        );
+    }
+
+    #[test]
+    fn out_of_range_delete_and_reorder_are_errors() {
+        let mut layer = Layer {
+            smart_object: Some(SmartObject {
+                smart_filters: vec![SmartFilter {
+                    filter_id: 2683,
+                    name: "only".to_string(),
+                    enabled: true,
+                    options: Vec::new(),
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert!(delete_smart_filter(&mut layer, 3).is_err());
+        assert!(reorder_smart_filters(&mut layer, 0, 2).is_err());
+        assert_eq!(filter_ids(&layer), vec![2683], "refusals do not mutate");
+    }
+
+    /// A layer carrying a preserved `SoLd` block whose `filterFXList` holds
+    /// `list_len` entries (`None` omits the list entirely) and a typed view of
+    /// `typed_len` entries.
+    fn layer_with_preserved_filter_list(list_len: Option<usize>, typed_len: usize) -> Layer {
+        let mut filter_fx: Vec<(&[u8], DescValue)> = Vec::new();
+        if let Some(n) = list_len {
+            filter_fx.push((b"filterFXList", DescValue::List(vec![object(vec![]); n])));
+        }
+        let desc = object(vec![(b"filterFX", object(filter_fx))]);
+        let mut data = b"soLD".to_vec();
+        data.extend_from_slice(&0u32.to_be_bytes());
+        data.extend_from_slice(&descriptor::write_descriptor(&desc));
+        Layer {
+            extra_blocks: vec![LayerBlock {
+                key: *b"SoLd",
+                data,
+            }],
+            smart_object: Some(SmartObject {
+                smart_filters: (0..typed_len)
+                    .map(|_| SmartFilter {
+                        filter_id: 2683,
+                        name: "f".to_string(),
+                        enabled: true,
+                        options: Vec::new(),
+                    })
+                    .collect(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn reorder_refuses_a_preserved_list_that_cannot_follow() {
+        // The preserved list is shorter than the typed view.
+        let mut short = layer_with_preserved_filter_list(Some(1), 2);
+        assert!(reorder_smart_filters(&mut short, 0, 1).is_err());
+        assert_eq!(
+            filter_ids(&short),
+            vec![2683, 2683],
+            "the refusal leaves the typed order untouched"
+        );
+
+        // The preserved descriptor carries no filterFXList at all.
+        let mut missing = layer_with_preserved_filter_list(None, 2);
+        assert!(reorder_smart_filters(&mut missing, 0, 1).is_err());
+        assert_eq!(filter_ids(&missing), vec![2683, 2683]);
     }
 }

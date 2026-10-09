@@ -5,10 +5,33 @@
 //! successful command recomposites then records exactly one undo state; a
 //! refusal records nothing.
 
+use super::helpers_composite::selection_to_mask;
 use super::qobject;
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::QString;
+
+/// CS6 "Use Default Masks on Fill Layers": when enabled and a selection is
+/// active, the just-created fill layer at `path` takes that selection as a
+/// layer mask. A no-op when the option is off, there is no selection, or the
+/// path did not resolve.
+fn apply_default_mask(
+    doc: &mut pictura_core::Document,
+    path: &str,
+    selection: Option<&pictura_select::Selection>,
+    use_default_masks: bool,
+) {
+    if !use_default_masks || path.is_empty() {
+        return;
+    }
+    let Some(selection) = selection else {
+        return;
+    };
+    let mask = selection_to_mask(selection, doc);
+    if let Some(layer) = pictura_render::resolve_path_mut(doc, path) {
+        layer.mask = Some(mask);
+    }
+}
 
 impl qobject::PictureView {
     /// Append a solid-color fill layer for `rgba` (`0xAARRGGBB`) at the top of
@@ -21,9 +44,18 @@ impl qobject::PictureView {
             rgba as u8,
             (rgba >> 24) as u8,
         ];
-        let created = match self.as_mut().rust_mut().doc.as_mut() {
-            Some(doc) => pictura_render::add_solid_fill(doc, "", color),
-            None => String::new(),
+        let created = {
+            let mut rust = self.as_mut().rust_mut();
+            let rust = &mut *rust;
+            let use_mask = rust.use_default_masks;
+            match rust.doc.as_mut() {
+                Some(doc) => {
+                    let path = pictura_render::add_solid_fill(doc, "", color);
+                    apply_default_mask(doc, &path, rust.selection.as_ref(), use_mask);
+                    path
+                }
+                None => String::new(),
+            }
         };
         if !created.is_empty() {
             self.as_mut().clear_link_sets();
@@ -37,9 +69,18 @@ impl qobject::PictureView {
     /// stack. Records one "Gradient Fill" state on success. Returns the new
     /// path, or empty without a document.
     pub fn add_gradient_fill(mut self: Pin<&mut Self>) -> QString {
-        let created = match self.as_mut().rust_mut().doc.as_mut() {
-            Some(doc) => pictura_render::add_gradient_fill(doc, ""),
-            None => String::new(),
+        let created = {
+            let mut rust = self.as_mut().rust_mut();
+            let rust = &mut *rust;
+            let use_mask = rust.use_default_masks;
+            match rust.doc.as_mut() {
+                Some(doc) => {
+                    let path = pictura_render::add_gradient_fill(doc, "");
+                    apply_default_mask(doc, &path, rust.selection.as_ref(), use_mask);
+                    path
+                }
+                None => String::new(),
+            }
         };
         if !created.is_empty() {
             self.as_mut().clear_link_sets();

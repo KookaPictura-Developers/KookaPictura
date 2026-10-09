@@ -36,6 +36,16 @@ pub mod ffi {
         /// Whether the layer at `path` carries any effect, on or off.
         fn layer_style_has(view: &PictureView, path: &QString) -> bool;
 
+        /// Whether the projection row at `i` carries any effect, on or off.
+        fn layer_row_has_style(view: &PictureView, i: i32) -> bool;
+
+        /// Whether the projection row at `i` carries a customised Blend If: a
+        /// non-default typed view, or a raw `blending_ranges` block with no view.
+        fn layer_row_has_blend_if(view: &PictureView, i: i32) -> bool;
+
+        /// The ten effect dialog keys, in CS6 list order.
+        fn layer_style_effect_names() -> QStringList;
+
         /// The value of `key` (`"<effect>.<field>"`, `"<effect>.on"`, `"fx.visible"` or `"blending.<option>"`) on the layer at `path`; colours pack as 0xRRGGBB, blend modes and choices are indices. NaN for an unknown key or path.
         fn layer_style_value(view: &PictureView, path: &QString, key: &QString) -> f64;
 
@@ -45,6 +55,16 @@ pub mod ffi {
             path: &QString,
             key: &QString,
             value: f64,
+        ) -> bool;
+
+        /// Set the composite-source Blend If range on the layer at `path` and
+        /// recomposite, without a history state; `(0, 65535)` restores the
+        /// default. False when refused or unchanged.
+        fn layer_style_set_blend_if(
+            view: Pin<&mut PictureView>,
+            path: &QString,
+            source_black: i32,
+            source_white: i32,
         ) -> bool;
 
         /// The built-in patterns a Pattern Overlay offers, in `patternOverlay.pattern` order.
@@ -102,6 +122,34 @@ fn layer_style_has(view: &PictureView, path: &QString) -> bool {
     with_layer(view, path, pictura_render::has_layer_style).unwrap_or(false)
 }
 
+fn layer_row_has_style(view: &PictureView, i: i32) -> bool {
+    let path = view.layer_row_path(i);
+    !path.is_empty() && layer_style_has(view, &path)
+}
+
+/// A layer's Blend If is customised when its typed view is non-default, or when
+/// a raw `blending_ranges` block is present but could not be parsed into a view
+/// (empty means absent).
+fn layer_is_blend_if_customised(layer: &pictura_core::Layer) -> bool {
+    match layer.blend_if.as_ref() {
+        Some(view) => !view.is_default(),
+        None => !layer.blending_ranges.is_empty(),
+    }
+}
+
+fn layer_row_has_blend_if(view: &PictureView, i: i32) -> bool {
+    let path = view.layer_row_path(i);
+    !path.is_empty() && with_layer(view, &path, layer_is_blend_if_customised).unwrap_or(false)
+}
+
+fn layer_style_effect_names() -> QStringList {
+    let mut names = QStringList::default();
+    for name in pictura_render::layer_style_effect_names() {
+        names.append(QString::from(name));
+    }
+    names
+}
+
 fn layer_style_value(view: &PictureView, path: &QString, key: &QString) -> f64 {
     let key = key.to_string();
     with_layer(view, path, |layer| {
@@ -122,6 +170,42 @@ fn layer_style_set(
         view.as_mut().rust_mut().doc.as_mut().is_some_and(|doc| {
             pictura_render::set_document_layer_style_value(doc, &path, &key, value)
         });
+    if changed {
+        view.as_mut().recomposite();
+        let mut rust = view.as_mut().rust_mut();
+        rust.content_revision = rust.content_revision.wrapping_add(1);
+    }
+    changed
+}
+
+fn layer_style_set_blend_if(
+    mut view: Pin<&mut PictureView>,
+    path: &QString,
+    source_black: i32,
+    source_white: i32,
+) -> bool {
+    const FULL: (u16, u16) = (0, 65535);
+    let path = path.to_string();
+    let range = pictura_core::BlendIf {
+        composite_source: (
+            source_black.clamp(0, 65535) as u16,
+            source_white.clamp(0, 65535) as u16,
+        ),
+        composite_dest: FULL,
+        channel_ranges: Vec::new(),
+    };
+    let next = (!range.is_default()).then_some(range);
+    let changed = view.as_mut().rust_mut().doc.as_mut().is_some_and(|doc| {
+        let Some(layer) = pictura_render::resolve_path_mut(doc, &path) else {
+            return false;
+        };
+        if layer.blend_if == next {
+            return false;
+        }
+        layer.blend_if = next;
+        layer.blending_ranges.clear();
+        true
+    });
     if changed {
         view.as_mut().recomposite();
         let mut rust = view.as_mut().rust_mut();
@@ -209,4 +293,42 @@ fn layer_style_set_all_visible(mut view: Pin<&mut PictureView>, visible: bool) -
         view.as_mut().record(label);
     }
     changed as i32
+}
+
+#[cfg(test)]
+mod tests {
+    use super::layer_is_blend_if_customised;
+    use pictura_core::{BlendIf, Layer};
+
+    fn view(composite_source: (u16, u16)) -> BlendIf {
+        BlendIf {
+            composite_source,
+            composite_dest: (0, 65535),
+            channel_ranges: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn blend_if_customised_only_when_non_default() {
+        let mut layer = Layer::default();
+        assert!(!layer_is_blend_if_customised(&layer), "absent is default");
+
+        layer.blend_if = Some(view((0, 65535)));
+        assert!(
+            !layer_is_blend_if_customised(&layer),
+            "an all-full view is the default and must not badge"
+        );
+
+        layer.blend_if = Some(view((0, 40000)));
+        assert!(layer_is_blend_if_customised(&layer), "narrowed range");
+
+        let raw = Layer {
+            blending_ranges: vec![1, 2, 3],
+            ..Layer::default()
+        };
+        assert!(
+            layer_is_blend_if_customised(&raw),
+            "a raw block with no typed view is customised"
+        );
+    }
 }

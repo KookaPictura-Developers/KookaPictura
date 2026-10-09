@@ -18,6 +18,7 @@ mod raster_import;
 mod rasterize;
 mod region;
 mod smart_object;
+mod smart_object_actions;
 mod vector_fill;
 mod vector_mask;
 

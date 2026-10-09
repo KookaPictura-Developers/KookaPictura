@@ -175,6 +175,16 @@ pub struct PictureViewRust {
     /// Why the most recent filter apply/preview was refused, for surfacing the
     /// failure to the user. Cleared at the start of every attempt.
     pub(super) filter_error: Option<String>,
+    /// Layers Panel Options: name a duplicate `"<name> copy"` (CS6 "Add copy to
+    /// Copied Layers and Groups", default on).
+    pub(super) add_copy: bool,
+    /// Layers Panel Options: a fill/adjustment layer created with an active
+    /// selection takes that selection as a layer mask (CS6 "Use Default Masks
+    /// on Fill Layers", default on).
+    pub(super) use_default_masks: bool,
+    /// The Copy Shape Attributes clipboard: the last shape layer's fill and
+    /// stroke, pasted onto another shape layer. Session state, never saved.
+    pub(super) shape_attributes: Option<pictura_render::ShapeAttributes>,
 }
 
 /// The pre-filter layer clone backing a live filter preview.
@@ -259,6 +269,9 @@ impl Default for PictureViewRust {
             mode_preview: None,
             last_filter: None,
             filter_error: None,
+            add_copy: true,
+            use_default_masks: true,
+            shape_attributes: None,
         }
     }
 }

@@ -140,11 +140,26 @@ pub mod ffi {
         /// Whether Layers row `i` is a shape layer (a fill cut by a vector mask).
         fn shape_row_is_shape(view: &PictureView, i: i32) -> bool;
 
+        /// Whether the layer at `path` is a shape layer.
+        fn shape_is_shape(view: &PictureView, path: &QString) -> bool;
+
         /// Whether Layers row `i` is a live shape.
         fn shape_row_is_live(view: &PictureView, i: i32) -> bool;
 
         /// Shape layer row `i` drawn into a `size` square laid out like the whole document (fill color where the outline covers, transparent elsewhere); null when the row is not a shape layer.
         fn shape_row_thumbnail(view: &PictureView, i: i32, size: i32) -> QImage;
+
+        /// Copy the shape layer at `path`'s fill and stroke into the shape-attributes clipboard. False (clipboard kept) when `path` is not a shape layer; no history.
+        fn shape_copy_attributes(view: Pin<&mut PictureView>, path: &QString) -> bool;
+
+        /// Paste the shape-attributes clipboard onto the shape layer at `path`, replacing its fill and stroke; one "Paste Shape Attributes" state when it changed. False (no state) when `path` is not a shape layer or nothing changed.
+        fn shape_paste_attributes(view: Pin<&mut PictureView>, path: &QString) -> bool;
+
+        /// Whether the shape-attributes clipboard holds a copy.
+        fn shape_can_paste_attributes(view: &PictureView) -> bool;
+
+        /// Rasterize the shape layer at `path` to ordinary pixels, dropping its shape/vector definition; one "Rasterize Shape" state. False (no state) when `path` is not a shape layer.
+        fn shape_rasterize(view: Pin<&mut PictureView>, path: &QString) -> bool;
     }
 }
 
@@ -458,6 +473,15 @@ fn shape_row_is_shape(view: &PictureView, i: i32) -> bool {
     shape_row(view, i).is_some()
 }
 
+/// Whether the layer at `path` is a shape layer.
+fn shape_is_shape(view: &PictureView, path: &QString) -> bool {
+    view.rust()
+        .doc
+        .as_ref()
+        .and_then(|doc| pictura_render::resolve_path(doc, &path.to_string()))
+        .is_some_and(pictura_render::is_shape_layer)
+}
+
 fn shape_row_is_live(view: &PictureView, i: i32) -> bool {
     shape_row(view, i).is_some_and(|(_, layer)| pictura_render::layer_live_shape(layer).is_some())
 }
@@ -488,4 +512,68 @@ fn shape_row_thumbnail(view: &PictureView, i: i32, size: i32) -> QImage {
         }
     }
     rgba_image(rgba, size, size)
+}
+
+/// Copy the shape layer at `path`'s fill and stroke into the clipboard. False
+/// (clipboard kept) for a non-shape layer; records no state.
+fn shape_copy_attributes(mut view: Pin<&mut PictureView>, path: &QString) -> bool {
+    let path = path.to_string();
+    let attributes = {
+        let rust = view.as_mut().rust_mut();
+        rust.doc
+            .as_ref()
+            .and_then(|doc| pictura_render::resolve_path(doc, &path))
+            .and_then(pictura_render::copy_shape_attributes)
+    };
+    match attributes {
+        Some(attributes) => {
+            view.as_mut().rust_mut().shape_attributes = Some(attributes);
+            true
+        }
+        None => false,
+    }
+}
+
+/// Paste the clipboard onto the shape layer at `path`; one state when changed.
+fn shape_paste_attributes(mut view: Pin<&mut PictureView>, path: &QString) -> bool {
+    let Some(attributes) = view.rust().shape_attributes else {
+        return false;
+    };
+    let path = path.to_string();
+    let changed = {
+        let mut rust = view.as_mut().rust_mut();
+        match rust.doc.as_mut() {
+            Some(doc) => pictura_render::resolve_path_mut(doc, &path)
+                .is_some_and(|layer| pictura_render::paste_shape_attributes(layer, &attributes)),
+            None => false,
+        }
+    };
+    if changed {
+        view.as_mut().recomposite();
+        view.as_mut().record("Paste Shape Attributes");
+    }
+    changed
+}
+
+fn shape_can_paste_attributes(view: &PictureView) -> bool {
+    view.rust().shape_attributes.is_some()
+}
+
+/// Rasterize the shape layer at `path`; one "Rasterize Shape" state when it
+/// changed.
+fn shape_rasterize(mut view: Pin<&mut PictureView>, path: &QString) -> bool {
+    let path = path.to_string();
+    let changed = {
+        let mut rust = view.as_mut().rust_mut();
+        match rust.doc.as_mut() {
+            Some(doc) => pictura_render::rasterize_shape(doc, &path),
+            None => false,
+        }
+    };
+    if changed {
+        view.as_mut().clear_link_sets();
+        view.as_mut().recomposite();
+        view.as_mut().record("Rasterize Shape");
+    }
+    changed
 }

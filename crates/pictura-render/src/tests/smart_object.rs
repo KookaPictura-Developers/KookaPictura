@@ -17,11 +17,11 @@ fn solid_doc(w: u32, h: u32, rgb: [u8; 3]) -> Document {
     d
 }
 
-fn payload_of(rgb: [u8; 3]) -> Vec<u8> {
+pub(super) fn payload_of(rgb: [u8; 3]) -> Vec<u8> {
     write_psd(&solid_doc(2, 2, rgb)).expect("payload writes")
 }
 
-fn payload_2x2(colors: [[u8; 3]; 4]) -> Vec<u8> {
+pub(super) fn payload_2x2(colors: [[u8; 3]; 4]) -> Vec<u8> {
     let mut d = Document::new(2, 2, ColorMode::Rgb, BitDepth::Eight);
     for (i, c) in colors.iter().enumerate() {
         d.composite.data[i] = c[0];
@@ -39,7 +39,7 @@ fn absent_composite_layers_payload(rgb: (u8, u8, u8)) -> Vec<u8> {
     bytes[..38 + section_len].to_vec()
 }
 
-fn embedded(payload: Vec<u8>) -> SmartObject {
+pub(super) fn embedded(payload: Vec<u8>) -> SmartObject {
     SmartObject {
         filename: "source.psd".into(),
         kind: SmartObjectKind::Embedded,
@@ -48,7 +48,12 @@ fn embedded(payload: Vec<u8>) -> SmartObject {
     }
 }
 
-fn smart_layer(name: &str, r: PsdRect, so: SmartObject, channels: Vec<Channel>) -> Layer {
+pub(super) fn smart_layer(
+    name: &str,
+    r: PsdRect,
+    so: SmartObject,
+    channels: Vec<Channel>,
+) -> Layer {
     Layer {
         name: name.into(),
         rect: r,
@@ -58,7 +63,7 @@ fn smart_layer(name: &str, r: PsdRect, so: SmartObject, channels: Vec<Channel>) 
     }
 }
 
-fn green_proxy() -> Vec<Channel> {
+pub(super) fn green_proxy() -> Vec<Channel> {
     vec![
         Channel {
             id: 0,
@@ -642,6 +647,48 @@ fn rasterize_drops_preserved_config_and_linked_record_round_trip() {
     let reread = read_psd(&resaved).expect("second read");
     assert!(reread.layers[0].smart_object.is_none());
     assert!(!section_has_uuid(&reread.layer_section_extra, &uuid));
+}
+
+#[test]
+fn convert_keeps_a_linked_record_a_duplicate_still_references() {
+    let layer = solid("SO", full(4, 4), (10, 20, 30), 255, BlendMode::Normal, 255);
+    let mut d = doc(4, 4, vec![layer]);
+    assert!(convert_to_smart_object(&mut d, "0"));
+    let saved = write_psd(&d).expect("first write");
+    let mut back = read_psd(&saved).expect("first read");
+    let uuid = back.layers[0]
+        .smart_object
+        .as_ref()
+        .expect("resolved")
+        .uuid
+        .clone();
+    assert!(section_has_uuid(&back.layer_section_extra, &uuid));
+
+    // A duplicate shares the uuid, hence the one linked record.
+    assert_eq!(duplicate_layer(&mut back, 0), 1);
+    assert_eq!(back.layers[1].smart_object.as_ref().unwrap().uuid, uuid);
+
+    // Converting one instance must leave the record for the sibling.
+    assert!(convert_smart_object_to_layers(&mut back, "0"));
+    assert!(
+        section_has_uuid(&back.layer_section_extra, &uuid),
+        "the record survives while the duplicate references it"
+    );
+
+    // Converting the last reference drops it.
+    let remaining = back
+        .layers
+        .iter()
+        .position(|layer| layer.smart_object.is_some())
+        .expect("the duplicate is still a smart object");
+    assert!(convert_smart_object_to_layers(
+        &mut back,
+        &remaining.to_string()
+    ));
+    assert!(
+        !section_has_uuid(&back.layer_section_extra, &uuid),
+        "the record is gone once no layer references it"
+    );
 }
 
 #[test]

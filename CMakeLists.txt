@@ -134,6 +134,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/bitmap_mode_dialog.cpp
     crates/pictura-app/cpp/indexed_color_dialog.cpp
     crates/pictura-app/cpp/fill_dialog.cpp
+    crates/pictura-app/cpp/defringe_dialog.cpp
     crates/pictura-app/cpp/stroke_dialog.cpp
     crates/pictura-app/cpp/image_view.cpp
     crates/pictura-app/cpp/image_view_overlays.cpp
@@ -155,6 +156,9 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/frame_menus_align.cpp
     crates/pictura-app/cpp/frame_menus_layer_style.cpp
     crates/pictura-app/cpp/frame_menus_adjust.cpp
+    crates/pictura-app/cpp/frame_menus_layer_ops.cpp
+    crates/pictura-app/cpp/frame_menus_matting.cpp
+    crates/pictura-app/cpp/frame_menus_smart_object.cpp
     crates/pictura-app/cpp/frame_menus_image.cpp
     crates/pictura-app/cpp/frame_menus_image_mode.cpp
     crates/pictura-app/cpp/frame_recent.cpp
@@ -302,16 +306,19 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/bitmap_mode_dialog.h
     crates/pictura-app/cpp/indexed_color_dialog.h
     crates/pictura-app/cpp/fill_dialog.h
+    crates/pictura-app/cpp/defringe_dialog.h
     crates/pictura-app/cpp/stroke_dialog.h
     crates/pictura-app/cpp/image_view.h
     crates/pictura-app/cpp/pictura_debug_timing.h
     crates/pictura-app/cpp/canvas_range.h
     crates/pictura-app/cpp/canvas_scrollbars.h
     crates/pictura-app/cpp/icons.h
+    crates/pictura-app/cpp/layer_adjustments.h
     crates/pictura-app/cpp/svg_icon_engine.h
     crates/pictura-app/cpp/file_drop_router.h
     crates/pictura-app/cpp/frame.h
     crates/pictura-app/cpp/panels/layers_panel.h
+    crates/pictura-app/cpp/panels/layers_panel_model.h
     crates/pictura-app/cpp/panels/layers_filter_proxy.h
     crates/pictura-app/cpp/panels/layers_filter_bar.h
     crates/pictura-app/cpp/panels/percent_field.h

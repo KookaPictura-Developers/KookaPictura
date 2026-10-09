@@ -16,7 +16,13 @@
 #include <QtGui/QDropEvent>
 #include <QtGui/QImage>
 #include <QtGui/QPalette>
+#include <QtWidgets/QApplication>
+#include <QtWidgets/QComboBox>
+#include <QtWidgets/QMenu>
+#include <QtWidgets/QLineEdit>
 #include <QtWidgets/QTabBar>
+#include <QtWidgets/QToolButton>
+#include <QtWidgets/QTreeView>
 
 #include "file_drop_router.h"
 #include "frame.h"
@@ -26,6 +32,9 @@
 #include "theme.h"
 #include "commands.h"
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/impl_layers/layer_masks.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/impl_layers/vector_masks.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/layer_style.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/shapes.cxxqt.h"
 
 #include "qt_test_support.h"
@@ -120,6 +129,16 @@ private slots:
     void clippingMasks();
     void backgroundOnlyStaysActive();
     void activeLayerNotFirstRow();
+    void maskRowIndicators();
+    void maskRowActionsTargetTheClickedRow();
+    void vectorMaskRowIndicators();
+    void fillAdjustmentMenu();
+    void layerSurfaceCompleteness();
+    void panelOptionsFlags();
+    void renameTabNavigation();
+    void shapeRowActions();
+    void layerStylePanelIntegration();
+    void blendIfBadge();
 
 private:
     bool setupNest();
@@ -730,6 +749,504 @@ void LayersPanelTest::activeLayerNotFirstRow()
     QCOMPARE(view_->active_layer_path(), QStringLiteral("0"));
     QCOMPARE(panel_->currentPath(), QStringLiteral("0"));
     QCOMPARE(panel_->selectedPaths(), QStringList{QStringLiteral("0")});
+}
+
+// lmk_row_link / lmk_row_disabled / lmk_row_link_click / lmk_row_shift: a
+// masked row reports its linked and disabled states, the link-glyph click
+// toggles linkage, and a Shift-click on the mask thumbnail toggles enablement.
+void LayersPanelTest::maskRowIndicators()
+{
+    const bool created = window_->newDocument(QStringLiteral("MaskRow"), 16, 16,
+                                              QStringLiteral("rgb"), 8, QStringLiteral("white"));
+    view_ = window_->activeView();
+    panel_ = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    QVERIFY2(created && view_ && panel_, "mask row fixture");
+    const int doc = window_->activeDocumentIndex();
+    const QString layer = view_->layer_row_path(0);
+    QVERIFY(!layer.isEmpty());
+    view_->set_active_layer(layer);
+    QVERIFY2(pictura::layer_mask_add(*view_, QStringLiteral("reveal-all")), "add mask");
+    QVERIFY(pictura::layer_mask_linked(*view_));
+
+    panel_->setView(view_);
+    panel_->selectPaths({layer}, layer);
+    panel_->refresh();
+    window_->show();
+    QTest::qWait(50);
+
+    QVERIFY2(panel_->rowMaskLinkedForTest(layer), "row reports linked");
+    QVERIFY2(!panel_->rowMaskDisabledForTest(layer), "row reports enabled");
+
+    // Clicking the link glyph unlinks the mask and the row reflects it.
+    QVERIFY2(panel_->clickLinkGlyphForTest(layer), "link glyph target exists");
+    QCoreApplication::processEvents();
+    panel_->refresh();
+    QVERIFY2(!panel_->rowMaskLinkedForTest(layer), "glyph click unlinked the mask");
+
+    // A linked, disabled mask reports both flags.
+    QVERIFY(pictura::layer_mask_set_linked(*view_, true));
+    QVERIFY(pictura::layer_mask_set_enabled(*view_, false));
+    QCoreApplication::processEvents();
+    panel_->refresh();
+    QVERIFY2(panel_->rowMaskLinkedForTest(layer), "row reports linked again");
+    QVERIFY2(panel_->rowMaskDisabledForTest(layer), "row reports disabled");
+
+    // Shift-clicking the mask thumbnail re-enables the mask.
+    QVERIFY2(panel_->shiftClickMaskThumbnailForTest(layer), "mask thumbnail target exists");
+    QCoreApplication::processEvents();
+    panel_->refresh();
+    QVERIFY2(!panel_->rowMaskDisabledForTest(layer), "shift-click re-enabled the mask");
+
+    window_->closeDocument(doc, false);
+}
+
+// The row-click contract: a mask glyph click edits the clicked row, not the
+// active layer. A click on a non-active row must leave the active layer alone.
+void LayersPanelTest::maskRowActionsTargetTheClickedRow()
+{
+    const bool created = window_->newDocument(QStringLiteral("MaskTarget"), 16, 16,
+                                              QStringLiteral("rgb"), 8, QStringLiteral("white"));
+    view_ = window_->activeView();
+    panel_ = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    QVERIFY2(created && view_ && panel_, "mask target fixture");
+    const int doc = window_->activeDocumentIndex();
+    const QString active = view_->add_layer_in(QString());
+    const QString clicked = view_->add_layer_in(QString());
+    QVERIFY(!active.isEmpty() && !clicked.isEmpty());
+
+    view_->set_active_layer(active);
+    QVERIFY2(pictura::layer_mask_add(*view_, QStringLiteral("reveal-all")), "active mask");
+    view_->set_active_layer(clicked);
+    QVERIFY2(pictura::layer_mask_add(*view_, QStringLiteral("reveal-all")), "clicked mask");
+    QVERIFY(pictura::layer_mask_linked(*view_));
+    view_->set_active_layer(active);
+    QVERIFY(pictura::layer_mask_linked(*view_));
+
+    panel_->setView(view_);
+    panel_->selectPaths({active}, active);
+    panel_->refresh();
+    window_->show();
+    QTest::qWait(50);
+
+    QVERIFY2(panel_->clickLinkGlyphForTest(clicked), "clicked row has a link glyph");
+    QCoreApplication::processEvents();
+    panel_->refresh();
+
+    QCOMPARE(view_->active_layer_path(), active);
+    QVERIFY2(!panel_->rowMaskLinkedForTest(clicked), "the clicked row unlinked");
+    QVERIFY2(panel_->rowMaskLinkedForTest(active), "the active row is untouched");
+
+    // The row-menu mask actions are path-based too: deleting the clicked row's
+    // mask leaves the active row's mask alone.
+    QVERIFY2(panel_->performRowActionForTest(QStringLiteral("deleteLayerMask"), clicked),
+             "delete the clicked row's mask");
+    panel_->refresh();
+    QVERIFY2(!panel_->rowHasMaskForTest(clicked), "the row action hit the clicked row");
+    QVERIFY2(panel_->rowHasMaskForTest(active), "the active row keeps its mask");
+    QCOMPARE(view_->active_layer_path(), active);
+
+    window_->closeDocument(doc, false);
+}
+
+// vmk_row_vector / vmk_row_vector_disabled / vmk_row_vector_link_click /
+// vmk_row_vector_shift: a vector-masked row reports its linked and disabled
+// states, the vector link-glyph click toggles linkage, and a Shift-click on the
+// vector thumbnail toggles enablement.
+void LayersPanelTest::vectorMaskRowIndicators()
+{
+    const bool created = window_->newDocument(QStringLiteral("VectorMaskRow"), 16, 16,
+                                              QStringLiteral("rgb"), 8, QStringLiteral("white"));
+    view_ = window_->activeView();
+    panel_ = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    QVERIFY2(created && view_ && panel_, "vector mask row fixture");
+    const int doc = window_->activeDocumentIndex();
+    const QString layer = view_->layer_row_path(0);
+    QVERIFY(!layer.isEmpty());
+    view_->set_active_layer(layer);
+    QVERIFY2(pictura::vector_mask_add(*view_, QStringLiteral("reveal-all")), "add vector mask");
+    QVERIFY(pictura::vector_mask_present(*view_));
+    QVERIFY(pictura::vector_mask_linked(*view_));
+
+    panel_->setView(view_);
+    panel_->selectPaths({layer}, layer);
+    panel_->refresh();
+    window_->show();
+    QTest::qWait(50);
+
+    QVERIFY2(panel_->rowHasVectorMaskForTest(layer), "row reports a vector mask");
+    QVERIFY2(panel_->rowVectorMaskLinkedForTest(layer), "row reports linked");
+    QVERIFY2(!panel_->rowVectorMaskDisabledForTest(layer), "row reports enabled");
+
+    QVERIFY2(panel_->clickVectorLinkGlyphForTest(layer), "vector link glyph target exists");
+    QCoreApplication::processEvents();
+    panel_->refresh();
+    QVERIFY2(!panel_->rowVectorMaskLinkedForTest(layer), "glyph click unlinked");
+
+    QVERIFY(pictura::vector_mask_set_linked(*view_, true));
+    QVERIFY(pictura::vector_mask_set_enabled(*view_, false));
+    QCoreApplication::processEvents();
+    panel_->refresh();
+    QVERIFY2(panel_->rowVectorMaskLinkedForTest(layer), "row reports linked again");
+    QVERIFY2(panel_->rowVectorMaskDisabledForTest(layer), "row reports disabled");
+
+    QVERIFY2(panel_->shiftClickVectorMaskThumbnailForTest(layer), "vector thumbnail target exists");
+    QCoreApplication::processEvents();
+    panel_->refresh();
+    QVERIFY2(!panel_->rowVectorMaskDisabledForTest(layer), "shift-click re-enabled");
+
+    window_->closeDocument(doc, false);
+}
+
+// The New Fill / Adjustment strip menu offers the two implemented fill entries,
+// a disabled Pattern… entry, and all sixteen CS6 adjustment kinds; choosing a
+// kind creates its layer.
+void LayersPanelTest::fillAdjustmentMenu()
+{
+    QVERIFY2(setupNest(), "strip menu fixture");
+    const int doc = window_->activeDocumentIndex();
+    panel_->setView(view_);
+    panel_->refresh();
+
+    auto* button =
+        panel_->findChild<QToolButton*>(QStringLiteral("layersStripFillAdjustment"));
+    QVERIFY(button != nullptr);
+    QMenu* menu = button->menu();
+    QVERIFY(menu != nullptr);
+
+    QStringList texts;
+    for (QAction* action : menu->actions()) {
+        texts << (action->isSeparator() ? QString() : action->text());
+    }
+    const QStringList expected = {
+        QStringLiteral("Solid Color…"),        QStringLiteral("Gradient…"),
+        QStringLiteral("Pattern…"),            QString(),
+        QStringLiteral("Brightness/Contrast…"), QStringLiteral("Levels…"),
+        QStringLiteral("Curves…"),             QStringLiteral("Exposure…"),
+        QStringLiteral("Vibrance…"),           QStringLiteral("Hue/Saturation…"),
+        QStringLiteral("Color Balance…"),      QStringLiteral("Black & White…"),
+        QStringLiteral("Photo Filter…"),       QStringLiteral("Channel Mixer…"),
+        QStringLiteral("Color Lookup…"),       QStringLiteral("Invert"),
+        QStringLiteral("Posterize…"),          QStringLiteral("Threshold…"),
+        QStringLiteral("Gradient Map…"),       QStringLiteral("Selective Color…")};
+    QCOMPARE(texts, expected);
+
+    QAction* pattern = nullptr;
+    for (QAction* action : menu->actions()) {
+        if (action->text() == QStringLiteral("Pattern…")) {
+            pattern = action;
+        }
+    }
+    QVERIFY(pattern != nullptr);
+    QVERIFY2(!pattern->isEnabled(), "Pattern stays disabled until authoring exists");
+    QVERIFY(pattern->toolTip().contains(QStringLiteral("not implemented yet")));
+
+    const int before = view_->layer_row_count();
+    QAction* levels = nullptr;
+    for (QAction* action : menu->actions()) {
+        if (action->text() == QStringLiteral("Levels…")) {
+            levels = action;
+        }
+    }
+    QVERIFY(levels != nullptr);
+    levels->trigger();
+    QCOMPARE(view_->layer_row_count(), before + 1);
+    QVERIFY2(countNamed(view_, QStringLiteral("Levels")) == 1, "Levels layer created");
+
+    window_->closeDocument(doc, false);
+}
+
+// lpr_label_chip / lpr_smart_badge: a labeled row paints a colour chip at the
+// row content edge and a smart-object layer reports the smart-object role.
+void LayersPanelTest::layerSurfaceCompleteness()
+{
+    QVERIFY2(setupNest(), "surface fixture");
+    const int doc = window_->activeDocumentIndex();
+    panel_->setView(view_);
+    panel_->refresh();
+    panel_->expandForTest(group_);
+    window_->show();
+    QTest::qWait(50);
+
+    QVERIFY2(!panel_->rowLabelChipColorForTest(a_).isValid(), "no chip before a label");
+    QVERIFY2(view_->set_layers_color(QStringList{a_}, 1) == 1, "set red label");
+    panel_->refresh();
+    const QColor chip = panel_->rowLabelChipColorForTest(a_);
+    QVERIFY2(chip.isValid(), "labeled row paints a chip");
+    QCOMPARE(chip.rgb(), QColor(255, 0, 0).rgb());
+    const QColor gutter = panel_->rowGutterColorForTest(a_);
+    QVERIFY2(gutter.red() > gutter.green() && gutter.red() > gutter.blue(),
+             "label still tints the eye toggle");
+    QVERIFY2(!panel_->rowLabelChipColorForTest(b_).isValid(), "unlabeled row has no chip");
+
+    QVERIFY2(!panel_->rowSmartObjectForTest(a_), "plain layer is not a smart object");
+    QVERIFY2(view_->convert_to_smart_object(a_), "convert to smart object");
+    panel_->refresh();
+    QVERIFY2(panel_->rowSmartObjectForTest(a_), "smart-object row reports the role");
+
+    window_->closeDocument(doc, false);
+}
+
+// lpo_copy_name / lpo_default_mask: the two Panel Options flags gate duplicate
+// naming and the selection mask a new fill layer receives.
+void LayersPanelTest::panelOptionsFlags()
+{
+    QVERIFY2(setupNest(), "options fixture");
+    const int doc = window_->activeDocumentIndex();
+    panel_->setView(view_);
+    panel_->refresh();
+    QVERIFY2(panel_->addCopyOnDuplicateForTest(), "Add copy defaults on");
+    QVERIFY2(panel_->useDefaultMasksOnFillForTest(), "Default masks default on");
+
+    // Add "copy" off: the copy keeps the source name.
+    panel_->setOptionFlagsForTest(false, true);
+    const QStringList plain = view_->duplicate_layers(QStringList{a_});
+    QCOMPARE(plain.size(), 1);
+    QCOMPARE(view_->layer_row_name(rowOf(plain.first())), QStringLiteral("A"));
+
+    // Add "copy" on: duplicating that copy names it "<name> copy" again.
+    panel_->setOptionFlagsForTest(true, true);
+    const QStringList named = view_->duplicate_layers(QStringList{plain.first()});
+    QCOMPARE(named.size(), 1);
+    QCOMPARE(view_->layer_row_name(rowOf(named.first())), QStringLiteral("A copy"));
+
+    // Default masks on: a fill layer created with a selection carries a mask.
+    panel_->setOptionFlagsForTest(true, true);
+    view_->select_all();
+    const QString maskedFill = view_->add_solid_fill(0xff0000ffu);
+    QVERIFY(!maskedFill.isEmpty());
+    QVERIFY2(view_->layer_row_has_mask(rowOf(maskedFill)), "fill took the selection mask");
+
+    // Default masks off: a fill layer created with a selection has no mask.
+    panel_->setOptionFlagsForTest(true, false);
+    view_->select_all();
+    const QString plainFill = view_->add_solid_fill(0xff00ff00u);
+    QVERIFY(!plainFill.isEmpty());
+    QVERIFY2(!view_->layer_row_has_mask(rowOf(plainFill)), "fill has no mask when off");
+
+    window_->closeDocument(doc, false);
+}
+
+// m39_rename: Tab commits the inline editor and opens the next visible row,
+// Shift+Tab the previous, with no wrap at the ends.
+void LayersPanelTest::renameTabNavigation()
+{
+    QVERIFY2(setupNest(), "rename fixture");
+    const int doc = window_->activeDocumentIndex();
+    panel_->setView(view_);
+    panel_->refresh();
+    panel_->expandForTest(group_);
+    window_->show();
+    QTest::qWait(50);
+    auto* tree = panel_->findChild<QTreeView*>();
+    QVERIFY(tree != nullptr);
+    auto* delegate = static_cast<pictura::LayerRowDelegate*>(panel_->itemDelegateForTest());
+    QVERIFY(delegate != nullptr);
+
+    // Shift+Tab on the first visible row commits without wrapping to the last.
+    const QString first = view_->layer_row_path(0);
+    QVERIFY(panel_->beginRenameForTest(first));
+    QLineEdit* editor0 = tree->viewport()->findChild<QLineEdit*>();
+    QVERIFY(editor0 != nullptr);
+    const int firstBase = view_->history_count();
+    QKeyEvent backtab0(QEvent::KeyPress, Qt::Key_Backtab, Qt::ShiftModifier);
+    QVERIFY(delegate->eventFilter(editor0, &backtab0));
+    QCoreApplication::processEvents();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QVERIFY2(!panel_->inlineEditorOpenForTest(), "no wrap at the first visible row");
+    QCOMPARE(view_->history_count(), firstBase);
+
+    // Tab commits the edit and opens the next visible row's editor.
+    QVERIFY(panel_->beginRenameForTest(a_));
+    QLineEdit* editor = tree->viewport()->findChild<QLineEdit*>();
+    QVERIFY2(editor != nullptr, "inline editor exists");
+    editor->setText(QStringLiteral("A2"));
+    QKeyEvent tab(QEvent::KeyPress, Qt::Key_Tab, Qt::NoModifier);
+    QVERIFY(delegate->eventFilter(editor, &tab));
+    QCoreApplication::processEvents();
+    QCOMPARE(view_->layer_row_name(rowOf(a_)), QStringLiteral("A2"));
+    const QString nextPath = view_->layer_row_path(rowOf(a_) + 1);
+    QCOMPARE(panel_->currentPath(), nextPath);
+    QVERIFY2(panel_->inlineEditorOpenForTest(), "Tab opened the next row's editor");
+
+    // Shift+Tab returns to the previous visible row.
+    QLineEdit* editor2 = tree->viewport()->findChild<QLineEdit*>();
+    QVERIFY(editor2 != nullptr);
+    QKeyEvent backtab(QEvent::KeyPress, Qt::Key_Backtab, Qt::ShiftModifier);
+    QVERIFY(delegate->eventFilter(editor2, &backtab));
+    QCoreApplication::processEvents();
+    QCOMPARE(panel_->currentPath(), a_);
+
+    window_->closeDocument(doc, false);
+}
+
+// Shape rows offer Copy/Paste Shape Attributes and Rasterize Shape (not the
+// adjustment edit), and a shape layer forces the Transparency and Image locks
+// on and refuses to clear them.
+void LayersPanelTest::shapeRowActions()
+{
+    const bool created = window_->newDocument(QStringLiteral("ShapeRow"), 32, 32,
+                                              QStringLiteral("rgb"), 8, QStringLiteral("white"));
+    view_ = window_->activeView();
+    panel_ = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    QVERIFY2(created && view_ && panel_, "shape row fixture");
+    pictura::ShapeSpec square{};
+    square.kind = 0;
+    square.boxed = true;
+    square.x0 = 4;
+    square.y0 = 4;
+    square.x1 = 20;
+    square.y1 = 20;
+    const QString shape = pictura::shape_add_layer(*view_, square, 0xffff0000u);
+    QVERIFY(!shape.isEmpty());
+    panel_->refresh();
+    QCoreApplication::processEvents();
+
+    const QStringList texts = panel_->shapeRowMenuTextsForTest();
+    QVERIFY2(texts.contains(QStringLiteral("Copy Shape Attributes")), "copy row");
+    QVERIFY2(texts.contains(QStringLiteral("Paste Shape Attributes")), "paste row");
+    QVERIFY2(texts.contains(QStringLiteral("Rasterize Shape")), "rasterize row");
+    QVERIFY2(!texts.contains(QStringLiteral("Edit Adjustment…")), "no adjustment edit");
+    QVERIFY2(panel_->shapeRowMenuEnabledForTest(QStringLiteral("Rasterize Shape")),
+             "rasterize shape is enabled");
+
+    panel_->selectPaths({shape}, shape);
+    panel_->refresh();
+    QVERIFY2((view_->layer_row_lock(rowOf(shape)) & 0x03) == 0x03, "forced bits reported");
+    QVERIFY2(panel_->lockToggleCheckedForTest(0), "transparency checked");
+    QVERIFY2(panel_->lockToggleCheckedForTest(1), "image checked");
+    QVERIFY2(!panel_->lockToggleEnabledForTest(0), "transparency forced");
+    QVERIFY2(!panel_->lockToggleEnabledForTest(1), "image forced");
+
+    const int before = view_->history_count();
+    QCOMPARE(view_->set_layers_lock({shape}, QStringLiteral("transparency"), false), 0);
+    QCOMPARE(view_->history_count(), before);
+    QVERIFY2((view_->layer_row_lock(rowOf(shape)) & 0x01) != 0, "bit stays set");
+
+    window_->closeDocument(window_->activeDocumentIndex(), false);
+}
+
+// The Layers panel reaches the layer-style feature: the row menu style rows and
+// their enablement, the fx badge projection, the FX Alt-click toggle, and the
+// Effect filter dimension.
+void LayersPanelTest::layerStylePanelIntegration()
+{
+    QVERIFY(window_->newDocument(QStringLiteral("Style"), 40, 40, QStringLiteral("rgb"), 8,
+                                 QStringLiteral("white")));
+    view_ = window_->activeView();
+    panel_ = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    QVERIFY2(view_ && panel_, "layer style fixture");
+    const int doc = window_->activeDocumentIndex();
+    view_->select_rect(10, 10, 10, 10, QStringLiteral("new"), 0.0);
+    QVERIFY(!view_->layer_via_copy(QStringLiteral("0")).isEmpty());
+    view_->deselect();
+    QCoreApplication::processEvents();
+    panel_->setView(view_);
+    panel_->selectPaths({QStringLiteral("1")}, QStringLiteral("1"));
+    panel_->refresh();
+
+    const QString layer = QStringLiteral("1");
+    QVERIFY2(!panel_->rowHasStyleForTest(layer), "unstyled row reports no style");
+    QVERIFY2(panel_->rowFxRectForTest(layer).isEmpty(), "unstyled row paints no fx badge");
+    QVERIFY2(panel_->rowMenuEnabledForPathForTest(layer, QStringLiteral("Blending Options…")),
+             "Blending Options is enabled for a pixel layer");
+    QVERIFY2(!panel_->rowMenuEnabledForPathForTest(layer, QStringLiteral("Copy Layer Style")),
+             "Copy is disabled without a style");
+    QVERIFY2(!panel_->rowMenuEnabledForPathForTest(layer, QStringLiteral("Clear Layer Style")),
+             "Clear is disabled without a style");
+    QVERIFY2(!panel_->rowMenuEnabledForPathForTest(layer, QStringLiteral("Paste Layer Style")),
+             "Paste is disabled with an empty clipboard");
+    QVERIFY2(!panel_->rowMenuTextsForTest(QStringLiteral("adjustment"))
+                  .contains(QStringLiteral("Blending Options…")),
+             "adjustment rows omit the style commands");
+
+    // A color overlay makes the row project the style and enables Copy / Clear.
+    QVERIFY(pictura::layer_style_set(*view_, layer, QStringLiteral("colorOverlay.on"), 1.0));
+    pictura::layer_style_commit(*view_, QStringLiteral("Layer Style"));
+    QCoreApplication::processEvents();
+    panel_->refresh();
+    QVERIFY2(panel_->rowHasStyleForTest(layer), "styled row reports a style");
+    QVERIFY2(!panel_->rowFxRectForTest(layer).isEmpty(), "styled row paints the fx badge");
+    QVERIFY2(panel_->rowMenuEnabledForPathForTest(layer, QStringLiteral("Copy Layer Style")),
+             "Copy is enabled with a style");
+    QVERIFY2(panel_->rowMenuEnabledForPathForTest(layer, QStringLiteral("Clear Layer Style")),
+             "Clear is enabled with a style");
+    QVERIFY(pictura::layer_style_copy(*view_, layer));
+    panel_->refresh();
+    QVERIFY2(panel_->rowMenuEnabledForPathForTest(layer, QStringLiteral("Paste Layer Style")),
+             "Paste is enabled after a copy");
+
+    // The Effect dimension is populated from the effect keys and matches only a
+    // row whose layer carries that effect.
+    auto* effectCombo = panel_->findChild<QComboBox*>(QStringLiteral("layersFilterEffect"));
+    QVERIFY(effectCombo != nullptr);
+    QVERIFY(effectCombo->count() >= 10);
+    QVERIFY(effectCombo->findData(QStringLiteral("colorOverlay")) >= 0);
+    panel_->setFilterEffectForTest(QStringLiteral("colorOverlay"), true);
+    QVERIFY2(panel_->visiblePathsForTest().contains(layer), "styled row passes its effect filter");
+    QVERIFY2(!panel_->visiblePathsForTest().contains(QStringLiteral("0")),
+             "unstyled background is filtered out");
+    panel_->setFilterEffectForTest(QStringLiteral("dropShadow"), true);
+    QVERIFY2(!panel_->visiblePathsForTest().contains(layer),
+             "a row without the effect is filtered out");
+    panel_->setFilterEffectForTest(QString(), false);
+    panel_->refresh();
+
+    // Alt-clicking the fx badge toggles every layer's effects, one undo step.
+    QVERIFY2(panel_->rowHasStyleForTest(layer), "row still styled before the fx toggle");
+    QVERIFY2(!panel_->rowFxRectForTest(layer).isEmpty(), "fx badge present before the toggle");
+    const int before = view_->history_count();
+    panel_->altClickRowFxForTest(layer);
+    QCOMPARE(view_->history_label(view_->history_index()), QStringLiteral("Hide All Effects"));
+    panel_->altClickRowFxForTest(layer);
+    QCOMPARE(view_->history_count(), before + 2);
+    QCOMPARE(view_->history_label(view_->history_index()), QStringLiteral("Show All Effects"));
+
+    // The row-menu Clear removes the style and the badge, in one undo step.
+    QVERIFY(panel_->performRowActionForTest(QStringLiteral("clearLayerStyle"), layer));
+    QCoreApplication::processEvents();
+    panel_->refresh();
+    QCOMPARE(view_->history_label(view_->history_index()), QStringLiteral("Clear Layer Style"));
+    QVERIFY2(!panel_->rowHasStyleForTest(layer), "cleared row reports no style");
+    QVERIFY2(panel_->rowFxRectForTest(layer).isEmpty(), "cleared row paints no fx badge");
+
+    window_->closeDocument(doc, false);
+}
+
+void LayersPanelTest::blendIfBadge()
+{
+    QVERIFY(window_->newDocument(QStringLiteral("BlendIf"), 20, 20, QStringLiteral("rgb"), 8,
+                                 QStringLiteral("white")));
+    view_ = window_->activeView();
+    panel_ = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    QVERIFY2(view_ && panel_, "blend if fixture");
+    const int doc = window_->activeDocumentIndex();
+    view_->select_rect(2, 2, 8, 8, QStringLiteral("new"), 0.0);
+    QVERIFY(!view_->layer_via_copy(QStringLiteral("0")).isEmpty());
+    view_->deselect();
+    QCoreApplication::processEvents();
+    panel_->setView(view_);
+    panel_->selectPaths({QStringLiteral("1")}, QStringLiteral("1"));
+    panel_->refresh();
+
+    const QString layer = QStringLiteral("1");
+    QVERIFY2(!panel_->rowHasBlendIfForTest(layer), "default row has no Blend If badge");
+    QVERIFY2(panel_->rowBlendIfRectForTest(layer).isEmpty(), "default row paints no chip");
+
+    // A narrowed composite-source range customises Blend If.
+    QVERIFY(pictura::layer_style_set_blend_if(*view_, layer, 0, 40000));
+    QCoreApplication::processEvents();
+    panel_->refresh();
+    QVERIFY2(panel_->rowHasBlendIfForTest(layer), "customised row reports a Blend If badge");
+    QVERIFY2(!panel_->rowBlendIfRectForTest(layer).isEmpty(), "customised row paints the chip");
+
+    // Restoring the full default range removes the badge.
+    QVERIFY(pictura::layer_style_set_blend_if(*view_, layer, 0, 65535));
+    QCoreApplication::processEvents();
+    panel_->refresh();
+    QVERIFY2(!panel_->rowHasBlendIfForTest(layer), "restored default has no badge");
+    QVERIFY2(panel_->rowBlendIfRectForTest(layer).isEmpty(), "restored default paints no chip");
+
+    window_->closeDocument(doc, false);
 }
 
 QTEST_MAIN(LayersPanelTest)

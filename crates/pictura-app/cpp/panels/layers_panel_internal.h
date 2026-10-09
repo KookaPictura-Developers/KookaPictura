@@ -1,663 +1,10 @@
 #pragma once
 
-#include "layers_panel.h"
+#include "layers_panel_model.h"
 
-#include "blend_modes.h"
-
-#include "icons.h"
-#include "theme.h"
-
-#include "pictura_app/src/cxxqt_object.cxxqt.h"
-
-#include <QtCore/QAbstractItemModel>
-#include <QtCore/QHash>
-#include <QtCore/QModelIndex>
-#include <QtCore/QRect>
-#include <QtCore/QSize>
-#include <QtCore/QString>
-#include <QtCore/QStringList>
-#include <QtCore/QVariant>
-#include <QtCore/QVector>
-#include <QtGui/QColor>
-#include <QtGui/QCursor>
-#include <QtGui/QFont>
-#include <QtGui/QIcon>
-#include <QtGui/QImage>
-#include <QtGui/QPainter>
-#include <QtGui/QPalette>
-#include <QtGui/QPen>
-#include <QtGui/QPixmap>
-#include <QtGui/QRegion>
-#include <QtWidgets/QApplication>
-#include <QtWidgets/QStyle>
-#include <QtCore/QMimeData>
-#include <QtGui/QDrag>
-#include <QtGui/QDragEnterEvent>
-#include <QtGui/QDragLeaveEvent>
-#include <QtGui/QDropEvent>
-#include <QtGui/QPaintEvent>
-#include <QtWidgets/QStyledItemDelegate>
-#include <QtWidgets/QStyleOptionViewItem>
-#include <QtWidgets/QTreeView>
-
-#include <array>
-#include <functional>
-#include <memory>
-#include <vector>
+#include <QtGui/QFontMetrics>
 
 namespace pictura {
-
-/// MIME type carrying dragged layer paths between the tree and the strip buttons.
-inline constexpr char kLayerMimeType[] = "application/x-pictura-layer";
-/// MIME type tagging a layer drag with its document (the source PictureView's
-/// address, compared but never dereferenced until a frame lookup vouches for it).
-inline constexpr char kLayerSourceMimeType[] = "application/x-pictura-layer-source";
-
-inline const void* layerDragSource(const QMimeData* mime)
-{
-    return mime ? reinterpret_cast<const void*>(static_cast<quintptr>(
-                      mime->data(kLayerSourceMimeType).toULongLong()))
-                : nullptr;
-}
-
-// A layer drag's payload: the dragged panel `paths` tagged with their document.
-inline QMimeData* makeLayerDragMime(const void* source, const QStringList& paths)
-{
-    auto* mime = new QMimeData();
-    mime->setData(kLayerMimeType, paths.join(QLatin1Char('\n')).toUtf8());
-    mime->setData(kLayerSourceMimeType, QByteArray::number(reinterpret_cast<quintptr>(source)));
-    return mime;
-}
-
-// One bridge row, as read by refresh(). The model owns a tree of these.
-struct LayerRow {
-    QString path;
-    int depth = 0;
-    QString name;
-    QString kind;
-    bool visible = true;
-    QString blend;
-    int opacity = 255;
-    int fill = 255;
-    int lockBits = 0;
-    int color = 0;
-    bool clipping = false;
-    bool hasMask = false;
-    bool hasAdjustment = false;
-    bool expandable = false;
-    int childCount = 0;
-    bool linked = false;
-    bool placed = false;
-    bool shape = false;
-    QImage thumbnail;
-    QImage maskThumbnail;
-    int documentWidth = 0;
-    int documentHeight = 0;
-    /// A display-only row (the Smart Filters group and its children) with no
-    /// real layer behind its path: not editable, draggable, or a drop target.
-    bool synthetic = false;
-};
-
-QString layerTooltip(const LayerRow& layer);
-
-// CS6 sheet color for a label index (1..7); an invalid color for 0/unknown.
-QColor layerLabelColor(int label);
-
-QPixmap labelSwatch(int label);
-
-// How close (px) to the line between two rows an Alt-click must land to clip
-// or release the upper layer.
-constexpr int kClipLineGrab = 4;
-
-// Panel Options thumbnail sizes by enum order (None/Small/Medium/Large).
-constexpr std::array<int, 4> kThumbSizePx{0, 16, 24, 32};
-
-// Frozen per-row roles (see `docs/dev/m39-panel-anatomy.md` §3.6). ClipBaseRole
-// is panel-local: a row whose sibling displayed immediately above it is clipped
-// underlines its name as the clipping base.
-enum LayerRole {
-    PathRole = Qt::UserRole + 1,
-    DepthRole,
-    KindRole,
-    VisibleRole,
-    BlendRole,
-    OpacityRole,
-    FillRole,
-    LockRole,
-    ColorRole,
-    ClippingRole,
-    ClipBaseRole,
-    HasMaskRole,
-    HasAdjustmentRole,
-    ExpandableRole,
-    ChildCountRole,
-    ThumbnailRole,
-    MaskThumbnailRole,
-    LayerRowLinkedRole,
-    LayerRowPlacedRole,
-    DocumentWidthRole,
-    DocumentHeightRole,
-    LayerRowShapeRole,
-    SyntheticRole,
-};
-
-struct Node {
-    LayerRow row;
-    bool clipBase = false;
-    Node* parent = nullptr;
-    int rowInParent = 0;
-    std::vector<std::unique_ptr<Node>> children;
-};
-
-class LayersModel : public QAbstractItemModel {
-public:
-    explicit LayersModel(QObject* parent = nullptr)
-        : QAbstractItemModel(parent)
-        , root_(std::make_unique<Node>())
-    {
-    }
-
-    void setView(PictureView* view) { view_ = view; }
-
-    void setRows(QVector<LayerRow> rows)
-    {
-        beginResetModel();
-        root_ = std::make_unique<Node>();
-        byPath_.clear();
-
-        // Two-pass: materialize every node first, then attach by parent path.
-        // A forward reference (child before parent) or a partial list therefore
-        // cannot silently drop the row to `root_` mid-build, and well-formed
-        // pre-order input still attaches in encounter order.
-        std::vector<std::unique_ptr<Node>> nodes;
-        nodes.reserve(static_cast<size_t>(rows.size()));
-        for (LayerRow& row : rows) {
-            auto node = std::make_unique<Node>();
-            node->row = std::move(row);
-            byPath_.insert(node->row.path, node.get());
-            nodes.push_back(std::move(node));
-        }
-        for (auto& node : nodes) {
-            const int slash = node->row.path.lastIndexOf(QLatin1Char('/'));
-            Node* parent = root_.get();
-            if (slash >= 0) {
-                if (Node* found = byPath_.value(node->row.path.left(slash), nullptr)) {
-                    parent = found;
-                }
-            }
-            node->parent = parent;
-            node->rowInParent = static_cast<int>(parent->children.size());
-            parent->children.push_back(std::move(node));
-        }
-        for (Node* node : byPath_) {
-            const Node* parent = node->parent;
-            if (parent && node->rowInParent > 0
-                && parent->children[node->rowInParent - 1]->row.clipping) {
-                node->clipBase = true;
-            }
-        }
-        endResetModel();
-    }
-
-    QModelIndex index(int row, int column,
-                      const QModelIndex& parent = QModelIndex()) const override
-    {
-        if (!hasIndex(row, column, parent)) {
-            return {};
-        }
-        Node* node = parentNode(parent);
-        return createIndex(row, column, node->children[row].get());
-    }
-
-    QModelIndex parent(const QModelIndex& child) const override
-    {
-        if (!child.isValid()) {
-            return {};
-        }
-        Node* node = static_cast<Node*>(child.internalPointer());
-        if (!node || !node->parent || node->parent == root_.get()) {
-            return {};
-        }
-        return createIndex(node->parent->rowInParent, 0, node->parent);
-    }
-
-    int rowCount(const QModelIndex& parent = QModelIndex()) const override
-    {
-        if (parent.column() > 0) {
-            return 0;
-        }
-        const Node* node = parentNode(parent);
-        return node ? static_cast<int>(node->children.size()) : 0;
-    }
-
-    int columnCount(const QModelIndex& parent = QModelIndex()) const override
-    {
-        return parent.column() > 0 ? 0 : 1;
-    }
-
-    QVariant data(const QModelIndex& index, int role) const override
-    {
-        const Node* node = nodeFor(index);
-        if (!node) {
-            return {};
-        }
-        const LayerRow& row = node->row;
-        switch (role) {
-        case Qt::DisplayRole:
-        case Qt::EditRole:
-            return row.name;
-        case Qt::ToolTipRole:
-            return layerTooltip(row);
-        case PathRole:
-            return row.path;
-        case DepthRole:
-            return row.depth;
-        case KindRole:
-            return row.kind;
-        case VisibleRole:
-            return row.visible;
-        case BlendRole:
-            return row.blend;
-        case OpacityRole:
-            return row.opacity;
-        case FillRole:
-            return row.fill;
-        case LockRole:
-            return row.lockBits;
-        case ColorRole:
-            return row.color;
-        case ClippingRole:
-            return row.clipping;
-        case ClipBaseRole:
-            return node->clipBase;
-        case HasMaskRole:
-            return row.hasMask;
-        case HasAdjustmentRole:
-            return row.hasAdjustment;
-        case ExpandableRole:
-            return row.expandable;
-        case ChildCountRole:
-            return row.childCount;
-        case ThumbnailRole:
-            return row.thumbnail;
-        case MaskThumbnailRole:
-            return row.maskThumbnail;
-        case LayerRowLinkedRole:
-            return row.linked;
-        case LayerRowPlacedRole:
-            return row.placed;
-        case LayerRowShapeRole:
-            return row.shape;
-        case DocumentWidthRole:
-            return row.documentWidth;
-        case DocumentHeightRole:
-            return row.documentHeight;
-        case SyntheticRole:
-            return row.synthetic;
-        default:
-            return {};
-        }
-    }
-
-    Qt::ItemFlags flags(const QModelIndex& index) const override
-    {
-        if (!index.isValid()) {
-            // The invalid parent is the top-level drop surface; without the
-            // flag Qt computes no AboveItem/BelowItem indicator for root rows.
-            return Qt::ItemIsDropEnabled;
-        }
-        const Node* node = static_cast<const Node*>(index.internalPointer());
-        if (node && node->row.synthetic) {
-            // A synthetic Smart Filters row selects and expands but neither
-            // renames, drags, nor accepts a drop.
-            return Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-        }
-        return Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsEditable
-            | Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled;
-    }
-
-    // Drag-and-drop capability virtuals. Without these the view's private
-    // `canDrop()` is false, so `QTreeView::dragMoveEvent` never computes a real
-    // `dropIndicatorPosition` and every drop reads the stale position.
-    QStringList mimeTypes() const override
-    {
-        return {QString::fromLatin1(kLayerMimeType)};
-    }
-
-    Qt::DropActions supportedDropActions() const override { return Qt::MoveAction; }
-
-    bool canDropMimeData(const QMimeData*, Qt::DropAction, int, int,
-                         const QModelIndex&) const override
-    {
-        return true;
-    }
-
-    bool setData(const QModelIndex& index, const QVariant& value, int role) override
-    {
-        Node* node = index.isValid() ? static_cast<Node*>(index.internalPointer()) : nullptr;
-        if (!node || !view_) {
-            return false;
-        }
-        if (role == Qt::EditRole) {
-            if (node->row.synthetic) {
-                return false;
-            }
-            const QString name = value.toString().trimmed();
-            if (name.isEmpty() || name == node->row.name) {
-                return false;
-            }
-            return view_->set_layer_name_path(node->row.path, name);
-        }
-        return false;
-    }
-
-    QVariant headerData(int section, Qt::Orientation orientation, int role) const override
-    {
-        if (orientation != Qt::Horizontal || role != Qt::DisplayRole) {
-            return {};
-        }
-        return section == 0 ? QStringLiteral("Name") : QVariant();
-    }
-
-    QString pathForIndex(const QModelIndex& index) const
-    {
-        const Node* node = nodeFor(index);
-        return node ? node->row.path : QString();
-    }
-
-    QModelIndex indexForPath(const QString& path) const
-    {
-        Node* node = byPath_.value(path, nullptr);
-        if (!node || node == root_.get()) {
-            return {};
-        }
-        return createIndex(node->rowInParent, 0, node);
-    }
-
-    /// Every node's path and visibility, for the solo snapshot.
-    QHash<QString, bool> visibilityByPath() const
-    {
-        QHash<QString, bool> result;
-        for (auto it = byPath_.cbegin(); it != byPath_.cend(); ++it) {
-            result.insert(it.key(), it.value()->row.visible);
-        }
-        return result;
-    }
-
-    QStringList paths() const { return byPath_.keys(); }
-
-private:
-    Node* parentNode(const QModelIndex& parent) const
-    {
-        return parent.isValid() ? static_cast<Node*>(parent.internalPointer()) : root_.get();
-    }
-
-    const Node* nodeFor(const QModelIndex& index) const
-    {
-        if (!index.isValid()) {
-            return nullptr;
-        }
-        return static_cast<const Node*>(index.internalPointer());
-    }
-
-    PictureView* view_ = nullptr;
-    std::unique_ptr<Node> root_;
-    QHash<QString, Node*> byPath_;
-};
-
-// A QTreeView that draws no branch indicators (the row delegate owns the
-// nesting indentation and the disclosure icon, so the eye stays anchored at the
-// panel's left edge) and that owns a self-contained layer drag/drop gesture: a
-// drag carries the current row's path and a drop resolves the row under the
-// cursor to a target path plus a mode (0 above, 1 below, 2 into).
-class LayersTreeView : public QTreeView {
-public:
-    explicit LayersTreeView(QWidget* parent = nullptr)
-        : QTreeView(parent)
-    {
-        setDragEnabled(true);
-        setAcceptDrops(true);
-        // The view draws the CS6 drop indicator itself; Qt's stock primitive is
-        // off so only the custom line/outline shows.
-        setDropIndicatorShown(false);
-        setDragDropMode(QAbstractItemView::DragDrop);
-        setDefaultDropAction(Qt::MoveAction);
-    }
-
-    void setDragPathsProvider(std::function<QStringList()> provider)
-    {
-        dragPaths_ = std::move(provider);
-    }
-    void setPathResolver(std::function<QString(const QModelIndex&)> resolver)
-    {
-        pathForIndex_ = std::move(resolver);
-    }
-    void setDropHandler(std::function<bool(const QString&, const QString&, int)> handler)
-    {
-        dropHandler_ = std::move(handler);
-    }
-    // Dry-run predicate consulted before a drop is highlighted or committed.
-    // Returns true when the (dragged, target, mode) move is acceptable.
-    void setDropValidator(std::function<bool(const QString&, const QString&, int)> validator)
-    {
-        dropValidator_ = std::move(validator);
-    }
-    // The document a drag starts from; a layer drag from another document is
-    // not a drop on this tree (the frame copies it across instead).
-    void setDragSource(const void* source) { dragSource_ = source; }
-    bool isOwnLayerDrag(const QMimeData* mime) const
-    {
-        return mime->hasFormat(kLayerMimeType) && layerDragSource(mime) == dragSource_;
-    }
-
-    // Closed-hand cursor for the duration of a drag, restored when it ends.
-    void enterDragCursor()
-    {
-        dragCursor_ = viewport()->cursor();
-        viewport()->setCursor(Qt::ClosedHandCursor);
-    }
-    void leaveDragCursor() { viewport()->setCursor(dragCursor_); }
-    int cursorShapeForTest() const { return static_cast<int>(viewport()->cursor().shape()); }
-
-    // Self-test hooks: state() is protected on QAbstractItemView, and a model
-    // reset can leave the view in EditingState with no live editor, which wedges
-    // the next edit.
-    int editStateForTest() const { return static_cast<int>(state()); }
-    void resetEditStateForTest() { setState(NoState); }
-    int dropIndicatorForTest() const { return static_cast<int>(dropIndicatorPosition()); }
-    /// Whether the custom CS6 indicator currently has a valid target.
-    bool dropIndicatorShownForTest() const { return dropMode_ >= 0; }
-    /// 0 = none, 1 = sibling line, 2 = drop-into outline.
-    int dropIndicatorKindForTest() const
-    {
-        if (dropMode_ < 0 || dropRect_.isEmpty()) {
-            return 0;
-        }
-        return dropMode_ == 2 ? 2 : 1;
-    }
-    int dropModeAtForTest(const QPoint& pos) const
-    {
-        int mode = 0;
-        dropTargetFor(pos, &mode);
-        return mode;
-    }
-
-protected:
-    void drawBranches(QPainter*, const QRect&, const QModelIndex&) const override {}
-
-    // The CS6 drop indicator: a thin blue line at a sibling edge, or a thin
-    // blue outline around a group row for a drop-into. Drawn over the base
-    // paint so Qt's own primitive (disabled in the ctor) never competes.
-    void paintEvent(QPaintEvent* event) override
-    {
-        QTreeView::paintEvent(event);
-        if (dropMode_ < 0 || dropRect_.isEmpty()) {
-            return;
-        }
-        QPainter painter(viewport());
-        painter.setPen(QPen(QColor(0x33, 0x99, 0xDD), 1));
-        painter.setBrush(Qt::NoBrush);
-        if (dropMode_ == 2) {
-            painter.drawRect(dropRect_.adjusted(0, 0, -1, -1));
-        } else {
-            const int y = dropMode_ == 0 ? dropRect_.top() : dropRect_.bottom();
-            painter.drawLine(dropRect_.left(), y, dropRect_.right(), y);
-        }
-    }
-
-    void startDrag(Qt::DropActions) override
-    {
-        if (!dragPaths_) {
-            return;
-        }
-        const QStringList paths = dragPaths_();
-        if (paths.isEmpty()) {
-            return;
-        }
-        auto* drag = new QDrag(this);
-        drag->setMimeData(makeLayerDragMime(dragSource_, paths));
-        enterDragCursor();
-        // Copy is offered for a drop on another document's tab or canvas.
-        drag->exec(Qt::MoveAction | Qt::CopyAction, Qt::MoveAction);
-        leaveDragCursor();
-    }
-
-    void dragEnterEvent(QDragEnterEvent* event) override
-    {
-        if (event->mimeData()->hasFormat(kLayerMimeType) && !isOwnLayerDrag(event->mimeData())) {
-            event->ignore();
-            return;
-        }
-        if (event->mimeData()->hasFormat(kLayerMimeType)) {
-            // Enter the dragging state so the drop indicator paints (the base
-            // implementation would do this, but we handle the drag ourselves).
-            setState(QAbstractItemView::DraggingState);
-            event->acceptProposedAction();
-        } else {
-            QTreeView::dragEnterEvent(event);
-        }
-    }
-
-    void dragLeaveEvent(QDragLeaveEvent* event) override
-    {
-        clearDropIndicator();
-        QTreeView::dragLeaveEvent(event);
-    }
-
-    void dragMoveEvent(QDragMoveEvent* event) override
-    {
-        if (event->mimeData()->hasFormat(kLayerMimeType) && !isOwnLayerDrag(event->mimeData())) {
-            clearDropIndicator();
-            event->ignore();
-            return;
-        }
-        if (!event->mimeData()->hasFormat(kLayerMimeType) || !dropValidator_ || !pathForIndex_) {
-            QTreeView::dragMoveEvent(event);
-            return;
-        }
-        // Let Qt resolve the row under the cursor and its drop position first;
-        // then veto invalid targets so the indicator only marks a legal drop.
-        QTreeView::dragMoveEvent(event);
-        int mode = 0;
-        const QPoint pos = event->position().toPoint();
-        const QString target = dropTargetFor(pos, &mode);
-        const QStringList dragged =
-            QString::fromUtf8(event->mimeData()->data(kLayerMimeType))
-                .split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-        if (!dragged.isEmpty() && dropValidator_(dragged.first(), target, mode)) {
-            const QModelIndex index = indexAt(pos);
-            dropRect_ = index.isValid() ? visualRect(index)
-                                        : QRect(0, pos.y(), viewport()->width(), 1);
-            dropMode_ = mode;
-            viewport()->update();
-            event->acceptProposedAction();
-        } else {
-            clearDropIndicator();
-            event->ignore();
-        }
-    }
-
-    void dropEvent(QDropEvent* event) override
-    {
-        clearDropIndicator();
-        if (event->mimeData()->hasFormat(kLayerMimeType) && !isOwnLayerDrag(event->mimeData())) {
-            event->ignore();
-            return;
-        }
-        if (!event->mimeData()->hasFormat(kLayerMimeType) || !dropHandler_ || !pathForIndex_) {
-            QTreeView::dropEvent(event);
-            return;
-        }
-        int mode = 0;
-        const QString target = dropTargetFor(event->position().toPoint(), &mode);
-        const QStringList dragged =
-            QString::fromUtf8(event->mimeData()->data(kLayerMimeType))
-                .split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-        // ponytail: only the current row is dragged; a multi-row drag would need
-        // path re-sequencing as each move shifts the survivors.
-        if (dragged.isEmpty() || (dropValidator_ && !dropValidator_(dragged.first(), target, mode))) {
-            event->ignore();
-            return;
-        }
-        dropHandler_(dragged.first(), target, mode);
-        event->setDropAction(Qt::MoveAction);
-        event->accept();
-    }
-
-private:
-    // Resolve the drop row under `pos` to a target path plus mode (0 above,
-    // 1 below, 2 into an item); an invalid index is the empty-root target.
-    QString dropTargetFor(const QPoint& pos, int* mode) const
-    {
-        const QModelIndex index = indexAt(pos);
-        *mode = dropPositionFor(pos, index);
-        return index.isValid() ? pathForIndex_(index) : QString();
-    }
-
-    // The stock indicator is disabled, and Qt leaves `dropIndicatorPosition`
-    // stale then, so the bands are resolved here. Only a group accepts a drop
-    // into, so it keeps a centre band between quarter-height edges; any other
-    // row splits at its midpoint so the whole row is a sibling target.
-    int dropPositionFor(const QPoint& pos, const QModelIndex& index) const
-    {
-        if (!index.isValid()) {
-            return 1;
-        }
-        const QRect rect = visualRect(index);
-        const int offset = pos.y() - rect.top();
-        if (index.data(KindRole).toString() != QLatin1String("group")) {
-            return offset < rect.height() / 2 ? 0 : 1;
-        }
-        const int edge = qMax(2, rect.height() / 4);
-        if (offset < edge) {
-            return 0;
-        }
-        if (rect.bottom() - pos.y() < edge) {
-            return 1;
-        }
-        return 2;
-    }
-
-    void clearDropIndicator()
-    {
-        if (dropMode_ < 0 && dropRect_.isNull()) {
-            return;
-        }
-        dropMode_ = -1;
-        dropRect_ = QRect();
-        viewport()->update();
-    }
-
-    std::function<QStringList()> dragPaths_;
-    std::function<QString(const QModelIndex&)> pathForIndex_;
-    std::function<bool(const QString&, const QString&, int)> dropHandler_;
-    std::function<bool(const QString&, const QString&, int)> dropValidator_;
-    const void* dragSource_ = nullptr;
-    QCursor dragCursor_;
-    QRect dropRect_;
-    int dropMode_ = -1;
-};
-
 class LayerRowDelegate : public QStyledItemDelegate {
 public:
     explicit LayerRowDelegate(QObject* parent = nullptr)
@@ -675,6 +22,31 @@ public:
     static constexpr int kChevronWidth = 16;
     // The gap between the thumbnail (or clip glyph) and the name text.
     static constexpr int kNameGap = 8;
+    // The color-label chip's width and the gap that follows it, before the
+    // thumbnail. CS6 shows a label as a small bar next to the thumbnail.
+    static constexpr int kLabelChipWidth = 3;
+    static constexpr int kLabelChipGap = 3;
+
+    /// The horizontal space a row's color-label chip consumes before the
+    /// thumbnail, or 0 when the row has no label. Shared by paint, thumbRect,
+    /// and nameRect so the three never disagree.
+    int labelChipAdvance(const QModelIndex& index) const
+    {
+        return layerLabelColor(index.data(ColorRole).toInt()).isValid()
+            ? kLabelChipWidth + kLabelChipGap
+            : 0;
+    }
+
+    /// The color-label chip's rect at the start of a row's content, as painted;
+    /// empty when the row has no label.
+    QRect labelChipRect(const QRect& itemRect, const QModelIndex& index) const
+    {
+        if (!layerLabelColor(index.data(ColorRole).toInt()).isValid()) {
+            return {};
+        }
+        return QRect(contentLeft(itemRect, index), itemRect.top() + 3, kLabelChipWidth,
+                     qMax(1, itemRect.height() - 6));
+    }
 
     /// True when `pos` (row-local) lands in the non-selectable visibility
     /// gutter at the row's left edge.
@@ -698,6 +70,76 @@ public:
         const int side = qMax(12, thumbnailSize() > 0 ? thumbnailSize() : 16);
         return QRect(itemRect.right() - 3 - side,
                      itemRect.top() + (itemRect.height() - side) / 2, side, side);
+    }
+
+    /// Whether a row paints the fx badge: adjustment content or a layer style,
+    /// but never a shape row (its own badge owns the thumbnail corner).
+    bool showsFx(const QModelIndex& index) const
+    {
+        return !index.data(LayerRowShapeRole).toBool()
+            && (index.data(HasAdjustmentRole).toBool()
+                || index.data(HasLayerStyleRole).toBool());
+    }
+
+    /// The fx badge's rect at a row's right edge, immediately left of the lock
+    /// badge; empty when the row paints no fx badge.
+    QRect fxRect(const QRect& itemRect, const QModelIndex& index) const
+    {
+        if (!showsFx(index)) {
+            return {};
+        }
+        const int thumb = qMax(0, thumbnailSize_);
+        const int badge = qMax(12, thumb > 0 ? thumb : 16);
+        if (pictura::icon(QStringLiteral("layers.fx")).pixmap(badge, badge).isNull()) {
+            return {};
+        }
+        int right = itemRect.right() - 3;
+        if (index.data(LockRole).toInt() != 0
+            && !pictura::icon(QStringLiteral("layers.lockAll")).pixmap(badge, badge).isNull()) {
+            right -= badge + 3;
+        }
+        return QRect(right - badge, itemRect.top() + (itemRect.height() - badge) / 2, badge,
+                     badge);
+    }
+
+    /// The `Blend If` chip's font: the app font, a step smaller and bold, so the
+    /// chip reads as a badge rather than a second name.
+    static QFont blendIfFont()
+    {
+        QFont font = QApplication::font();
+        font.setBold(true);
+        if (font.pixelSize() > 0) {
+            font.setPixelSize(qMax(1, font.pixelSize() - 3));
+        } else if (font.pointSize() > 0) {
+            font.setPointSize(qMax(1, font.pointSize() - 1));
+        }
+        return font;
+    }
+
+    /// The `Blend If` chip's width, from the font it draws with plus padding.
+    static int blendIfChipWidth()
+    {
+        return QFontMetrics(blendIfFont()).horizontalAdvance(QStringLiteral("Blend If")) + 10;
+    }
+
+    /// The horizontal space a row's Blend If chip consumes at the right edge.
+    int blendIfAdvance(const QModelIndex& index) const
+    {
+        return index.data(HasBlendIfRole).toBool() ? blendIfChipWidth() + 3 : 0;
+    }
+
+    /// The `Blend If` chip's rect at a row's right edge, immediately left of the
+    /// fx/lock badges; empty when the row's Blend If is default or absent.
+    QRect blendIfRect(const QRect& itemRect, const QModelIndex& index) const
+    {
+        if (!index.data(HasBlendIfRole).toBool()) {
+            return {};
+        }
+        const int width = blendIfChipWidth();
+        const int right = badgesRight(itemRect, index) + width + 3;
+        const int height = qBound(12, itemRect.height() - 8, 18);
+        return QRect(right - width, itemRect.top() + (itemRect.height() - height) / 2, width,
+                     height);
     }
 
     /// The x where a row's content begins: the eye gutter plus the per-depth
@@ -758,11 +200,97 @@ public:
             return {};
         }
         int x = contentLeft(itemRect, index);
+        x += labelChipAdvance(index);
         if (index.data(ClippingRole).toBool()) {
             x += qMax(10, thumb - 8) + 2;
         }
         const QRect box(x, itemRect.top() + (itemRect.height() - thumb) / 2, thumb, thumb);
         return letterboxedThumb(box, index);
+    }
+
+    /// The right edge left for the mask thumbnail after the lock and fx badges,
+    /// mirroring paint()'s walk so the mask and link rects agree with it.
+    int badgesRight(const QRect& itemRect, const QModelIndex& index) const
+    {
+        const int thumb = qMax(0, thumbnailSize_);
+        const int badge = qMax(12, thumb > 0 ? thumb : 16);
+        int right = itemRect.right() - 3;
+        if (index.data(LockRole).toInt() != 0
+            && !pictura::icon(QStringLiteral("layers.lockAll")).pixmap(badge, badge).isNull()) {
+            right -= badge + 3;
+        }
+        if (showsFx(index)
+            && !pictura::icon(QStringLiteral("layers.fx")).pixmap(badge, badge).isNull()) {
+            right -= badge + 3;
+        }
+        right -= blendIfAdvance(index);
+        return right;
+    }
+
+    /// Side of the link/chain glyph slot left of the mask thumbnail.
+    static int linkSide(int thumb) { return qMax(8, thumb / 2); }
+
+    /// The mask thumbnail's rect at a row's right edge, as painted; empty when
+    /// thumbnails are off or the row carries no mask.
+    QRect maskThumbRect(const QRect& itemRect, const QModelIndex& index) const
+    {
+        const int thumb = qMax(0, thumbnailSize_);
+        if (thumb <= 0 || index.data(MaskThumbnailRole).value<QImage>().isNull()) {
+            return {};
+        }
+        return QRect(badgesRight(itemRect, index) - thumb,
+                     itemRect.top() + (itemRect.height() - thumb) / 2, thumb, thumb);
+    }
+
+    /// The link/chain glyph's slot immediately left of the mask thumbnail;
+    /// empty when thumbnails are off or the row carries no mask.
+    QRect linkGlyphRect(const QRect& itemRect, const QModelIndex& index) const
+    {
+        const int thumb = qMax(0, thumbnailSize_);
+        if (thumb <= 0 || index.data(MaskThumbnailRole).value<QImage>().isNull()) {
+            return {};
+        }
+        const int side = linkSide(thumb);
+        return QRect(badgesRight(itemRect, index) - thumb - 2 - side,
+                     itemRect.top() + (itemRect.height() - side) / 2, side, side);
+    }
+
+    /// The x advance consumed at the right edge by the raster mask block (thumb
+    /// plus gap plus link slot); 0 when the row carries no raster mask.
+    int rasterMaskAdvance(const QModelIndex& index) const
+    {
+        const int thumb = qMax(0, thumbnailSize_);
+        if (thumb <= 0 || index.data(MaskThumbnailRole).value<QImage>().isNull()) {
+            return 0;
+        }
+        return thumb + 3 + linkSide(thumb) + 2;
+    }
+
+    /// The vector-mask thumbnail's rect, immediately left of the raster-mask
+    /// thumbnail (or at the right edge without one); empty when thumbnails are
+    /// off or the row carries no vector mask.
+    QRect vectorMaskThumbRect(const QRect& itemRect, const QModelIndex& index) const
+    {
+        const int thumb = qMax(0, thumbnailSize_);
+        if (thumb <= 0 || index.data(VectorMaskThumbnailRole).value<QImage>().isNull()) {
+            return {};
+        }
+        return QRect(badgesRight(itemRect, index) - rasterMaskAdvance(index) - thumb,
+                     itemRect.top() + (itemRect.height() - thumb) / 2, thumb, thumb);
+    }
+
+    /// The vector link/chain glyph's slot immediately left of the vector-mask
+    /// thumbnail; empty when thumbnails are off or the row carries no vector
+    /// mask.
+    QRect vectorLinkGlyphRect(const QRect& itemRect, const QModelIndex& index) const
+    {
+        const int thumb = qMax(0, thumbnailSize_);
+        if (thumb <= 0 || index.data(VectorMaskThumbnailRole).value<QImage>().isNull()) {
+            return {};
+        }
+        const int side = linkSide(thumb);
+        return QRect(badgesRight(itemRect, index) - rasterMaskAdvance(index) - thumb - 2 - side,
+                     itemRect.top() + (itemRect.height() - side) / 2, side, side);
     }
 
     /// The name text's hit-target, mirroring the geometry paint() lays out: the
@@ -773,6 +301,7 @@ public:
     {
         const int thumb = qMax(0, thumbnailSize_);
         int x = contentLeft(itemRect, index);
+        x += labelChipAdvance(index);
         const bool clipping = index.data(ClippingRole).toBool();
         if (clipping) {
             const int side = qMax(10, thumb > 0 ? thumb - 8 : 12);
@@ -790,12 +319,16 @@ public:
             && !pictura::icon(QStringLiteral("layers.lockAll")).pixmap(badge, badge).isNull()) {
             right -= badge + 3;
         }
-        if (index.data(HasAdjustmentRole).toBool() && !index.data(LayerRowShapeRole).toBool()
+        if (showsFx(index)
             && !pictura::icon(QStringLiteral("layers.fx")).pixmap(badge, badge).isNull()) {
             right -= badge + 3;
         }
+        right -= blendIfAdvance(index);
         if (thumb > 0 && !index.data(MaskThumbnailRole).value<QImage>().isNull()) {
-            right -= thumb + 3;
+            right -= thumb + 3 + linkSide(thumb) + 2;
+        }
+        if (thumb > 0 && !index.data(VectorMaskThumbnailRole).value<QImage>().isNull()) {
+            right -= thumb + 3 + linkSide(thumb) + 2;
         }
         const int nameLeft = x + (clipping ? 12 : 0);
         const int nameRight = qMax(nameLeft, right - 4);
@@ -829,6 +362,40 @@ public:
         Q_UNUSED(option);
         Q_UNUSED(index);
         return QSize(200, rowHeight());
+    }
+
+    /// CS6 rename navigation. The view installs this delegate as the editor's
+    /// event filter, whose base implementation commits `Tab`/`Shift+Tab` and
+    /// closes the editor without moving. Handling the keys here lets the close
+    /// hint move the editor to the adjacent visible row, with no wrap at the
+    /// ends.
+    bool eventFilter(QObject* object, QEvent* event) override
+    {
+        if (event->type() == QEvent::KeyPress) {
+            auto* key = static_cast<QKeyEvent*>(event);
+            if (key->key() == Qt::Key_Tab || key->key() == Qt::Key_Backtab) {
+                const bool back = key->key() == Qt::Key_Backtab
+                    || (key->modifiers() & Qt::ShiftModifier);
+                const auto* view = qobject_cast<QTreeView*>(parent());
+                bool haveNeighbour = false;
+                if (view) {
+                    const QModelIndex current = view->currentIndex();
+                    haveNeighbour = (back ? view->indexAbove(current)
+                                          : view->indexBelow(current))
+                                        .isValid();
+                }
+                if (auto* editor = qobject_cast<QWidget*>(object)) {
+                    emit commitData(editor);
+                    emit closeEditor(editor, haveNeighbour
+                                                 ? (back
+                                                        ? QAbstractItemDelegate::EditPreviousItem
+                                                        : QAbstractItemDelegate::EditNextItem)
+                                                 : QAbstractItemDelegate::NoHint);
+                }
+                return true;
+            }
+        }
+        return QStyledItemDelegate::eventFilter(object, event);
     }
 
     void paint(QPainter* painter, const QStyleOptionViewItem& option,
@@ -880,6 +447,13 @@ public:
         const int thumb = qMax(0, thumbnailSize_);
         int x = contentLeft(rect, index);
         QRect thumbBox;
+        // A small color-label chip sits at the content start, before the
+        // thumbnail (CS6 draws the label as a bar next to the thumbnail).
+        const QColor chipColor = layerLabelColor(index.data(ColorRole).toInt());
+        if (chipColor.isValid()) {
+            painter->fillRect(labelChipRect(rect, index), chipColor);
+        }
+        x += labelChipAdvance(index);
         if (index.data(ExpandableRole).toBool()) {
             const auto* treeView = qobject_cast<const QTreeView*>(option.widget);
             const bool expanded = treeView && treeView->isExpanded(index);
@@ -952,6 +526,19 @@ public:
                     painter->drawPixmap(corner, shapeBadge);
                 }
             }
+            // A smart-object layer shows the CS6 page badge at the same
+            // lower-right corner (embedded or placed).
+            if (index.data(SmartObjectRole).toBool()) {
+                const int side = qMax(8, thumb / 2);
+                const QPixmap soBadge =
+                    pictura::icon(QStringLiteral("layers.kindSmartObject")).pixmap(side, side);
+                if (!soBadge.isNull()) {
+                    const QRect corner(box.right() - side + 3, box.bottom() - side + 3, side,
+                                       side);
+                    painter->fillRect(corner, palette.color(QPalette::Base));
+                    painter->drawPixmap(corner, soBadge);
+                }
+            }
         }
         x += thumb + kNameGap;
 
@@ -970,8 +557,7 @@ public:
                 right -= badge + 3;
             }
         }
-        if (index.data(HasAdjustmentRole).toBool() && !index.data(LayerRowShapeRole).toBool()
-            && !fxIcon.isNull()) {
+        if (showsFx(index) && !fxIcon.isNull()) {
             const QPixmap badgePix = fxIcon.pixmap(badge, badge);
             if (!badgePix.isNull()) {
                 painter->drawPixmap(
@@ -980,11 +566,74 @@ public:
                 right -= badge + 3;
             }
         }
+        // A customised Blend If shows a text chip, left of the fx/lock badges.
+        if (index.data(HasBlendIfRole).toBool()) {
+            const QRect chip = blendIfRect(rect, index);
+            painter->save();
+            painter->setRenderHint(QPainter::Antialiasing, true);
+            painter->setPen(QPen(palette.color(QPalette::Mid), 1));
+            painter->setBrush(Theme::shade(palette.color(QPalette::Window), 2));
+            painter->drawRoundedRect(chip.adjusted(0, 0, -1, -1), 3, 3);
+            painter->setFont(blendIfFont());
+            painter->setPen(selected ? palette.color(QPalette::HighlightedText)
+                                     : palette.color(QPalette::Text));
+            painter->drawText(chip, Qt::AlignCenter, QStringLiteral("Blend If"));
+            painter->restore();
+            right -= blendIfChipWidth() + 3;
+        }
         const QImage mask = index.data(MaskThumbnailRole).value<QImage>();
         if (!mask.isNull() && thumb > 0) {
-            painter->drawImage(
-                QRect(right - thumb, rect.top() + (height - thumb) / 2, thumb, thumb), mask);
-            right -= thumb + 3;
+            // The link/chain glyph sits in a slot immediately left of the mask
+            // thumbnail, so the name elides before both and nothing overlaps.
+            const int side = linkSide(thumb);
+            if (index.data(MaskLinkedRole).toBool()) {
+                const QPixmap linkPix =
+                    pictura::icon(QStringLiteral("layers.link")).pixmap(side, side);
+                if (!linkPix.isNull()) {
+                    painter->drawPixmap(QRect(right - thumb - 2 - side,
+                                              rect.top() + (height - side) / 2, side, side),
+                                        linkPix);
+                }
+            }
+            const QRect maskRect(right - thumb, rect.top() + (height - thumb) / 2, thumb, thumb);
+            painter->drawImage(maskRect, mask);
+            if (index.data(MaskDisabledRole).toBool()) {
+                // A red cross over the thumbnail, the CS6 disabled-mask mark.
+                painter->save();
+                painter->setPen(QPen(QColor(0xE0, 0x20, 0x20), qMax(1, thumb / 10)));
+                const QRect cross = maskRect.adjusted(2, 2, -2, -2);
+                painter->drawLine(cross.topLeft(), cross.bottomRight());
+                painter->drawLine(cross.topRight(), cross.bottomLeft());
+                painter->restore();
+            }
+            right -= thumb + 3 + side + 2;
+        }
+
+        // The vector-mask thumbnail sits immediately left of the raster mask,
+        // with its own link glyph and disabled red cross, mirroring the mask.
+        const QImage vectorMask = index.data(VectorMaskThumbnailRole).value<QImage>();
+        if (!vectorMask.isNull() && thumb > 0) {
+            const int side = linkSide(thumb);
+            if (index.data(VectorMaskLinkedRole).toBool()) {
+                const QPixmap linkPix =
+                    pictura::icon(QStringLiteral("layers.link")).pixmap(side, side);
+                if (!linkPix.isNull()) {
+                    painter->drawPixmap(QRect(right - thumb - 2 - side,
+                                              rect.top() + (height - side) / 2, side, side),
+                                        linkPix);
+                }
+            }
+            const QRect maskRect(right - thumb, rect.top() + (height - thumb) / 2, thumb, thumb);
+            painter->drawImage(maskRect, vectorMask);
+            if (index.data(VectorMaskDisabledRole).toBool()) {
+                painter->save();
+                painter->setPen(QPen(QColor(0xE0, 0x20, 0x20), qMax(1, thumb / 10)));
+                const QRect cross = maskRect.adjusted(2, 2, -2, -2);
+                painter->drawLine(cross.topLeft(), cross.bottomRight());
+                painter->drawLine(cross.topRight(), cross.bottomLeft());
+                painter->restore();
+            }
+            right -= thumb + 3 + side + 2;
         }
 
         // Name, with the extra clipping indent and the base underline.
@@ -1066,5 +715,6 @@ private:
 
     int thumbnailSize_ = 24;
 };
+
 
 } // namespace pictura

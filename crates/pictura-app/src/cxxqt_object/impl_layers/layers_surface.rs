@@ -1,0 +1,80 @@
+//! Layers-panel surface bridge: the smart-object row projection, the CS6
+//! Panel Options that gate duplicate naming and default fill masks, and the
+//! `Layer > Lock All Layers In Group…` batch.
+//!
+//! Free functions over a [`PictureView`] (their own bridge, so the
+//! `PictureView` declaration list in `cxxqt_object.rs` stays at its size
+//! ceiling). Each lock edit recomposites and records one state.
+//!
+//! [`PictureView`]: super::super::qobject::PictureView
+
+use super::super::qobject::PictureView;
+use core::pin::Pin;
+use cxx_qt::CxxQtType;
+use cxx_qt_lib::QString;
+
+#[cxx_qt::bridge]
+pub mod ffi {
+    unsafe extern "C++" {
+        include!("cxx-qt-lib/qstring.h");
+        type QString = cxx_qt_lib::QString;
+
+        include!("pictura_app/src/cxxqt_object.cxxqt.h");
+        #[namespace = "pictura"]
+        type PictureView = super::PictureView;
+    }
+
+    #[namespace = "pictura"]
+    extern "Rust" {
+        /// Whether row `i`'s layer is a smart object (embedded or placed).
+        fn layer_row_is_smart_object(view: &PictureView, i: i32) -> bool;
+
+        /// Apply the CS6 Layers Panel Options that gate bridge behaviour:
+        /// `add_copy` (name a duplicate `"<name> copy"`) and
+        /// `use_default_masks` (a fill/adjustment layer created with a
+        /// selection takes it as a mask).
+        fn set_layers_panel_options(
+            view: Pin<&mut PictureView>,
+            add_copy: bool,
+            use_default_masks: bool,
+        );
+
+        /// Apply the full lock set to every descendant of the group at
+        /// `group_path`; one "Lock Group Layers" state. Returns the number of
+        /// layers changed, `0` when `group_path` is not a group.
+        fn lock_group_layers_run(view: Pin<&mut PictureView>, group_path: &QString) -> i32;
+    }
+}
+
+fn layer_row_is_smart_object(view: &PictureView, i: i32) -> bool {
+    let Some(doc) = view.rust().doc.as_ref() else {
+        return false;
+    };
+    let path = view.layer_row_path(i).to_string();
+    if path.is_empty() {
+        return false;
+    }
+    pictura_render::resolve_path(doc, &path).is_some_and(|layer| layer.smart_object.is_some())
+}
+
+fn set_layers_panel_options(
+    mut view: Pin<&mut PictureView>,
+    add_copy: bool,
+    use_default_masks: bool,
+) {
+    let mut rust = view.as_mut().rust_mut();
+    rust.add_copy = add_copy;
+    rust.use_default_masks = use_default_masks;
+}
+
+fn lock_group_layers_run(mut view: Pin<&mut PictureView>, group_path: &QString) -> i32 {
+    let changed = match view.as_mut().rust_mut().doc.as_mut() {
+        Some(doc) => pictura_render::lock_group_layers(doc, &group_path.to_string()),
+        None => 0,
+    };
+    if changed > 0 {
+        view.as_mut().recomposite();
+        view.as_mut().record("Lock Group Layers");
+    }
+    changed as i32
+}

@@ -6,6 +6,7 @@ use super::paths::{
     container_mut, container_of, container_of_mut, edit_paths, flatten_rows, format_segments,
     is_background, parse_path, resolve_path, resolve_path_mut, selected_paths, unique,
 };
+use super::shape_layer::has_forced_locks;
 
 /// Set the eye on every listed path (the Background included). Returns the
 /// number of nodes changed.
@@ -114,13 +115,22 @@ pub fn set_fill_paths(doc: &mut Document, paths: &[&str], value: u8) -> usize {
 }
 
 /// Set (`on`) or clear a lock bit. Skips the Background; a fully-locked node is
-/// still eligible (that is how a lock is released). Returns the number changed.
+/// still eligible (that is how a lock is released). Transparency and Image
+/// cannot be cleared on a layer that forces them (a type or shape layer); any
+/// other requested bit still clears. Returns the number changed.
 pub fn set_lock_paths(doc: &mut Document, paths: &[&str], flag: u8, on: bool) -> usize {
     edit_paths(
         doc,
         paths,
         |doc, path, _| !is_background(doc, path),
         |layer| {
+            let mut flag = flag;
+            if !on && has_forced_locks(layer) {
+                flag &= !(LockFlags::TRANSPARENCY | LockFlags::PIXELS);
+            }
+            if flag == 0 {
+                return false;
+            }
             let next = layer.lock.with(flag, on);
             if next == layer.lock {
                 false
@@ -148,6 +158,26 @@ pub fn set_color_paths(doc: &mut Document, paths: &[&str], color: ColorLabel) ->
             }
         },
     )
+}
+
+/// Apply the full lock set to every descendant of the group at `path`, leaving
+/// the group node's own locks untouched. Returns the number of layers changed;
+/// `0` when `path` is not a group or that group has no descendants.
+pub fn lock_group_layers(doc: &mut Document, path: &str) -> usize {
+    if !resolve_path(doc, path).is_some_and(|layer| layer.is_group) {
+        return 0;
+    }
+    let prefix = format!("{path}/");
+    let descendants: Vec<String> = flatten_rows(doc)
+        .into_iter()
+        .map(|(path, _)| path)
+        .filter(|candidate| candidate.starts_with(&prefix))
+        .collect();
+    if descendants.is_empty() {
+        return 0;
+    }
+    let refs: Vec<&str> = descendants.iter().map(String::as_str).collect();
+    set_lock_paths(doc, &refs, LockFlags::all().bits(), true)
 }
 
 /// Delete every listed node. Skips the Background and fully-locked nodes; a
@@ -502,5 +532,104 @@ pub fn move_path_to(doc: &mut Document, path: &str, target: &str, mode: i32) -> 
     };
     let at = dest_index.map_or(container.len(), |index| index.min(container.len()));
     container.insert(at, removed);
+    true
+}
+
+/// Where [`arrange_path`] moves the node within its own container. `Front` is
+/// the top of the stack (the highest child index; `doc.layers` is bottom-first).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Arrange {
+    Front,
+    Forward,
+    Backward,
+    Back,
+}
+
+/// The child index [`arrange_path`] would move `path` to, or `None` when the
+/// path does not resolve or the node carries no reorder (Background/locked).
+fn arrange_target(doc: &Document, path: &str, arrange: Arrange) -> Option<usize> {
+    let segments = parse_path(path)?;
+    if is_background(doc, path) || resolve_path(doc, path).is_some_and(|layer| layer.lock.is_all())
+    {
+        return None;
+    }
+    let (last, parent) = segments.split_last()?;
+    let container = container_of(doc, parent)?;
+    if *last >= container.len() {
+        return None;
+    }
+    let index = *last;
+    let front = container.len() - 1;
+    Some(match arrange {
+        Arrange::Front => front,
+        Arrange::Forward => (index + 1).min(front),
+        Arrange::Backward => index.saturating_sub(1),
+        Arrange::Back => 0,
+    })
+}
+
+/// Move the node at `path` to [`Arrange`]'s position within its own container.
+/// Refuses the Background, fully-locked nodes, a boundary no-op, and a path
+/// that does not resolve. Returns whether the order changed.
+pub fn arrange_path(doc: &mut Document, path: &str, arrange: Arrange) -> bool {
+    let Some(target) = arrange_target(doc, path, arrange) else {
+        return false;
+    };
+    let Some(segments) = parse_path(path) else {
+        return false;
+    };
+    let index = *segments.last().expect("arrange_target checked non-empty") as i32;
+    move_path(doc, path, target as i32 - index)
+}
+
+/// Dry-run form of [`arrange_path`]: whether the move would change the order.
+pub fn can_arrange_path(doc: &Document, path: &str, arrange: Arrange) -> bool {
+    let Some(segments) = parse_path(path) else {
+        return false;
+    };
+    let Some(target) = arrange_target(doc, path, arrange) else {
+        return false;
+    };
+    segments.last().copied() != Some(target)
+}
+
+/// Reverse the stacking order of the selected nodes. The selection MUST be two
+/// or more nodes sharing one container that form a contiguous run of child
+/// indices; otherwise nothing changes. Refuses the Background and fully-locked
+/// nodes. Returns whether the order changed.
+pub fn reverse_paths(doc: &mut Document, paths: &[&str]) -> bool {
+    let selected = selected_paths(doc, paths, true);
+    if selected.len() < 2 {
+        return false;
+    }
+    let parent: Vec<usize> = match selected[0].0.split_last() {
+        Some((_, parent)) => parent.to_vec(),
+        None => return false,
+    };
+    if selected.iter().any(|(segments, _)| {
+        segments.len() != parent.len() + 1 || segments[..segments.len() - 1] != parent[..]
+    }) {
+        return false;
+    }
+    for (_, path) in &selected {
+        if is_background(doc, path)
+            || resolve_path(doc, path).is_some_and(|layer| layer.lock.is_all())
+        {
+            return false;
+        }
+    }
+    let mut indices: Vec<usize> = selected
+        .iter()
+        .map(|(segments, _)| *segments.last().expect("non-empty"))
+        .collect();
+    indices.sort_unstable();
+    if indices.windows(2).any(|window| window[1] != window[0] + 1) {
+        return false;
+    }
+    let (start, end) = (indices[0], indices[indices.len() - 1]);
+    let Some(container) = container_of_mut(doc, &parent) else {
+        return false;
+    };
+    container[start..=end].reverse();
     true
 }

@@ -97,7 +97,8 @@ pub use pictura_color::{Policy, Profile};
 pub use probe::{probe_image, ImageBudget, ImageFormat, ImageProbe, ImportError, LimitKind};
 pub use read::{read_psd, read_psd_with};
 pub use smart_filter::{
-    set_camera_raw_option, set_smart_filter_enabled, set_smart_filters_enabled,
+    clear_smart_filters, delete_smart_filter, reorder_smart_filters, set_camera_raw_option,
+    set_smart_filter_enabled, set_smart_filters_enabled,
 };
 pub use smart_object::remove_linked_source;
 pub use type_tool::encode_type_tool;

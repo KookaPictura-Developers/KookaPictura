@@ -296,7 +296,7 @@ fn channel_mut(layer: &mut Layer, id: i16) -> Option<&mut [u8]> {
 /// Mask coverage at a document pixel. `255` when there is no mask or the mask
 /// is disabled; outside the mask rect (or with no decoded data) the mask's
 /// `default_color` applies.
-fn coverage(mask: Option<&LayerMask>, x: i32, y: i32) -> u8 {
+pub(crate) fn coverage(mask: Option<&LayerMask>, x: i32, y: i32) -> u8 {
     let Some(mask) = mask else {
         return 255;
     };

@@ -128,7 +128,15 @@ compositing an unsupported adjustment may error or drop its bytes.
 
 ### Requirement: Additional adjustment-layer kinds
 
-The New Adjustment Layer menu and the adjustment-layer creation path SHALL additionally support `Levels`, `Curves`, `Exposure`, `Vibrance`, and `Black & White`, each creating a non-destructive adjustment layer whose block carries CS6's dialog defaults and whose display name matches the menu entry. An unrecognised kind SHALL still be refused without adding a layer.
+The New Adjustment Layer menu, the Layers panel New Fill / Adjustment menu, and
+the adjustment-layer creation path SHALL support all sixteen CS6 adjustment
+kinds — Brightness/Contrast, Levels, Curves, Exposure, Vibrance, Hue/Saturation,
+Color Balance, Black & White, Photo Filter, Channel Mixer, Color Lookup, Invert,
+Posterize, Threshold, Gradient Map, and Selective Color — each creating a
+non-destructive adjustment layer whose block carries CS6's dialog defaults and
+whose display name matches the menu entry. The Layers panel creation menu SHALL
+additionally offer the Solid Color… and Gradient… fill layers. An unrecognised
+kind SHALL still be refused without adding a layer.
 
 #### Scenario: Every supported kind creates a named layer
 
@@ -144,3 +152,8 @@ The New Adjustment Layer menu and the adjustment-layer creation path SHALL addit
 
 - **WHEN** a Levels, Curves, Exposure, Vibrance, or Black & White layer is created
 - **THEN** its parameters are that kind's CS6 dialog defaults, so a Curves layer opens as the identity
+
+#### Scenario: The panel creation menu offers every kind
+
+- **WHEN** the Layers panel New Fill / Adjustment menu is opened
+- **THEN** it lists the Solid Color… and Gradient… fill entries and all sixteen adjustment kinds, and choosing an adjustment kind adds that layer
