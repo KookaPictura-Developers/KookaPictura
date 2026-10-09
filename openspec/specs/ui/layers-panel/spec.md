@@ -1363,9 +1363,12 @@ vector-mask thumbnail with its own link glyph when linked and red cross when
 disabled. Clicking a mask's link glyph SHALL toggle that mask's linked state,
 and `Shift`-clicking a mask thumbnail SHALL toggle that mask's enabled state,
 through the matching bridge; those clicks SHALL be consumed so they do not start
-a rename, select another row, or begin a drag. The model SHALL expose the
-per-row mask and vector-mask linked and disabled states through roles populated
-from the bridge.
+a rename, select another row, or begin a drag. A plain click on a layer mask
+thumbnail SHALL make that mask the view's mask edit target through the bridge,
+and a plain click on the layer thumbnail SHALL clear the target, so the mask
+thumbnail of the targeted row SHALL draw a focus border. The model SHALL expose
+the per-row mask and vector-mask linked and disabled states through roles
+populated from the bridge.
 
 #### Scenario: A linked mask shows the link glyph [lmk_row_link]
 
@@ -1386,6 +1389,18 @@ from the bridge.
 
 - **WHEN** the user `Shift`-clicks the mask thumbnail of an enabled mask
 - **THEN** the mask is disabled in one undoable step
+
+#### Scenario: A plain click activates the mask [lmk_row_activate]
+
+- **WHEN** the user clicks the mask thumbnail of a row that carries a mask
+- **THEN** that mask becomes the mask edit target and the thumbnail draws a focus
+  border, with no history state
+
+#### Scenario: A layer-thumbnail click deactivates the mask [lmk_row_deactivate]
+
+- **WHEN** a mask is the edit target and the user clicks that row's layer
+  thumbnail
+- **THEN** the mask edit target is cleared and the focus border disappears
 
 #### Scenario: A vector mask shows its own indicator [vmk_row_vector]
 
