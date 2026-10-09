@@ -10,7 +10,7 @@
 
 use super::filter_map::filter_from_kind_params;
 use super::helpers::{active_layer_visible, active_pixel_layer};
-use super::helpers_composite::buffer_to_image;
+use super::helpers_composite::{buffer_to_image, selection_to_mask};
 use super::impl_filters::{
     apply_filter_active, apply_filter_active_region, apply_op_active_region, cancel_filter_preview,
     ActiveOp,
@@ -129,6 +129,24 @@ pub mod ffi {
             kinds: &QStringList,
             params: &QList_f64,
         ) -> bool;
+
+        /// The gallery stack (as for [`filter_stack_preview`]) rendered on a
+        /// reduced copy of the document rect `(x, y, w, h)`, `scale` proxy
+        /// pixels per document pixel (at most 1), as a straight-alpha image.
+        /// Neither the document nor the canvas changes. A stack that cannot
+        /// apply shows the region unfiltered; an empty region yields a null
+        /// image.
+        #[allow(clippy::too_many_arguments)]
+        fn filter_gallery_preview(
+            view: Pin<&mut PictureView>,
+            kinds: &QStringList,
+            params: &QList_f64,
+            x: i32,
+            y: i32,
+            w: i32,
+            h: i32,
+            scale: f64,
+        ) -> QImage;
 
         /// `kind` with `params` applied to a `width`×`height` straight-alpha
         /// RGBA8888 image, for a gallery thumbnail. A null image when the
@@ -369,6 +387,45 @@ fn apply_filter_stack(
     params: &QList<f64>,
 ) -> bool {
     run_stack(view, kinds, params, true, None)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn filter_gallery_preview(
+    view: Pin<&mut PictureView>,
+    kinds: &QStringList,
+    params: &QList<f64>,
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+    scale: f64,
+) -> QImage {
+    let rust = view.rust();
+    let Some(doc) = rust.doc.as_ref() else {
+        return QImage::default();
+    };
+    let region = pictura_core::PsdRect {
+        top: y,
+        left: x,
+        bottom: y + h.max(0),
+        right: x + w.max(0),
+    };
+    let selection = rust.selection.as_ref().map(|s| selection_to_mask(s, doc));
+    let Some(proxy) = pictura_render::FilterProxy::new(doc, selection.as_ref(), region, scale)
+    else {
+        return QImage::default();
+    };
+    let index = rust
+        .active_layer
+        .as_deref()
+        .and_then(|p| p.parse::<usize>().ok());
+    let filtered = match (resolve_stack(kinds, params), index) {
+        (Some(filters), Some(index)) => proxy.render(index, &filters, rust.gpu_compute).ok(),
+        _ => None,
+    };
+    filtered
+        .or_else(|| proxy.render(0, &[], false).ok())
+        .map_or_else(QImage::default, |buffer| buffer_to_image(&buffer))
 }
 
 fn filter_thumbnail(

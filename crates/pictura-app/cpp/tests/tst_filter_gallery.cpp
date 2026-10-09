@@ -43,7 +43,8 @@ private slots:
     void init();
     void categoriesFollowCs6();
     void menuEntryIsEnabled();
-    void stackPreviewsAndCancelRestores();
+    void stackPreviewsInThePaneOnly();
+    void largePicturePreviewsReduced();
     void okCommitsOneHistoryState();
     void effectLayersAddDeleteAndHide();
     void thumbnailsRender();
@@ -102,16 +103,46 @@ void FilterGalleryTest::menuEntryIsEnabled()
     QVERIFY(found);
 }
 
-void FilterGalleryTest::stackPreviewsAndCancelRestores()
+// The stack previews in the dialog's pane; the canvas and document stay as
+// they were until OK.
+void FilterGalleryTest::stackPreviewsInThePaneOnly()
 {
     pictura::PictureView* view = window_->activeView();
     const QImage before = view->image();
+    const int states = view->history_count();
     pictura::FilterGalleryDialog dialog(view);
+    while (dialog.effects().size() > 1) {
+        dialog.deleteEffect();
+    }
     dialog.selectFilter(QStringLiteral("grain"));
+    dialog.setEffectVisible(0, false);
     dialog.show();
-    QTRY_VERIFY_WITH_TIMEOUT(view->image() != before, 3000);
+    QTRY_VERIFY_WITH_TIMEOUT(!dialog.previewImage().isNull(), 3000);
+    const QImage plain = dialog.previewImage();
+    dialog.setEffectVisible(0, true);
+    QTRY_VERIFY_WITH_TIMEOUT(dialog.previewImage() != plain, 3000);
+    QCOMPARE(view->image(), before);
     dialog.reject();
     QCOMPARE(view->image(), before);
+    QCOMPARE(view->history_count(), states);
+}
+
+// A picture far larger than the pane is previewed on a reduced copy, about
+// one pixel per pane pixel, never at document resolution.
+void FilterGalleryTest::largePicturePreviewsReduced()
+{
+    QVERIFY(window_->newDocument(QStringLiteral("Large"), 4000, 3000, QStringLiteral("rgb"), 8,
+                                 QStringLiteral("white")));
+    pictura::PictureView* view = window_->activeView();
+    pictura::FilterGalleryDialog dialog(view);
+    dialog.selectFilter(QStringLiteral("grain"));
+    dialog.resize(900, 600);
+    dialog.show();
+    QTRY_VERIFY_WITH_TIMEOUT(!dialog.previewImage().isNull(), 3000);
+    const QImage preview = dialog.previewImage();
+    QVERIFY2(preview.width() < 1000 * dialog.devicePixelRatioF(), qPrintable(QString::number(preview.width())));
+    QCOMPARE(preview.width() * 3 / 4, preview.height());
+    dialog.reject();
 }
 
 void FilterGalleryTest::okCommitsOneHistoryState()
@@ -126,7 +157,6 @@ void FilterGalleryTest::okCommitsOneHistoryState()
     QCOMPARE(kinds(dialog.effects()), (QStringList{QStringLiteral("grain"),
                                                    QStringLiteral("texturizer")}));
     dialog.show();
-    QTRY_VERIFY_WITH_TIMEOUT(view->image() != before, 3000);
     QVERIFY(dialog.commit() == pictura::FilterGalleryDialog::CommitResult::Applied);
     QVERIFY(view->image() != before);
     QCOMPARE(view->history_count(), states + 1);
@@ -194,7 +224,8 @@ void FilterGalleryTest::clickingTheEyeHidesTheEffect()
     dialog.selectFilter(QStringLiteral("grain"));
     dialog.setEffectVisible(0, true);
     dialog.show();
-    QTRY_VERIFY_WITH_TIMEOUT(view->image() != before, 3000);
+    QTRY_VERIFY_WITH_TIMEOUT(!dialog.previewImage().isNull(), 3000);
+    const QImage filtered = dialog.previewImage();
     auto* list = dialog.findChild<QListWidget*>(QStringLiteral("galleryEffects"));
     QVERIFY(list != nullptr);
     const QRect row = list->visualItemRect(list->item(0));
@@ -202,10 +233,10 @@ void FilterGalleryTest::clickingTheEyeHidesTheEffect()
     QTest::mouseClick(list->viewport(), Qt::LeftButton, {}, QPoint(row.left() + 10, row.center().y()));
     QVERIFY(!dialog.effects().at(0).visible);
     // Hidden, the effect leaves the preview.
-    QTRY_COMPARE_WITH_TIMEOUT(view->image(), before, 3000);
+    QTRY_VERIFY_WITH_TIMEOUT(dialog.previewImage() != filtered, 3000);
     QTest::mouseClick(list->viewport(), Qt::LeftButton, {}, QPoint(row.left() + 10, row.center().y()));
     QVERIFY(dialog.effects().at(0).visible);
-    QTRY_VERIFY_WITH_TIMEOUT(view->image() != before, 3000);
+    QTRY_COMPARE_WITH_TIMEOUT(dialog.previewImage(), filtered, 3000);
     dialog.reject();
     QCOMPARE(view->image(), before);
 }

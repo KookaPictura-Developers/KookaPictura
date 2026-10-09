@@ -8,9 +8,11 @@
 #include <QtCore/QStringList>
 #include <QtCore/QTimer>
 #include <QtGui/QMouseEvent>
+#include <QtGui/QPainter>
 #include <QtGui/QPixmap>
 #include <QtGui/QShowEvent>
 #include <QtWidgets/QAbstractItemView>
+#include <QtWidgets/QApplication>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QGridLayout>
 #include <QtWidgets/QHBoxLayout>
@@ -23,6 +25,7 @@
 #include <QtWidgets/QVBoxLayout>
 
 #include <algorithm>
+#include <cmath>
 
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/filter_tools.cxxqt.h"
@@ -34,8 +37,13 @@ namespace {
 const QSize kThumbnailSize(80, 56);
 const double kZoomSteps[] = {0.0625, 0.125, 0.25, 0.333, 0.5, 0.667, 1.0, 2.0, 4.0};
 const int kZoomStepCount = 9;
-// Hold the canvas preview until the controls settle.
+// Hold the preview until the controls settle.
 const int kPreviewDelayMs = 120;
+// Screen pixels filtered past each edge of the pane, so a filter that reads
+// its neighbourhood sees real pixels at the visible border.
+const int kPreviewMargin = 16;
+// The thumbnails' source: the picture with its shorter side reduced to this.
+const int kThumbnailSourceSide = 160;
 
 // The gallery's membership in CS6: every Artistic filter, every Brush Strokes
 // filter, three Distort, every Sketch filter, Glowing Edges, every Texture
@@ -81,6 +89,24 @@ QList<FilterGalleryDialog::Effect>& lastStack()
 
 } // namespace
 
+// The preview pane's content: the last rendered proxy, drawn over the part of
+// the zoomed picture it covers.
+class GalleryPreviewCanvas : public QWidget {
+public:
+    using QWidget::QWidget;
+
+    QImage image;
+    QRectF target;
+
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform);
+        painter.drawImage(target, image);
+    }
+};
+
 QImage FilterGalleryDialog::thumbnailSample(const QImage& picture)
 {
     if (picture.isNull()) {
@@ -119,8 +145,13 @@ FilterGalleryDialog::FilterGalleryDialog(PictureView* view, QWidget* parent)
     setObjectName(QStringLiteral("filterGallery"));
     setWindowTitle(QStringLiteral("Filter Gallery"));
     if (view_) {
-        // Sampled once; every filter's thumbnail renders from the same bytes.
-        thumbnailSample_ = thumbnailSample(view_->image());
+        // Sampled once, from a reduced copy; every filter's thumbnail renders
+        // from the same bytes.
+        const QSize doc = documentSize();
+        const double scale =
+            std::min(1.0, double(kThumbnailSourceSide) / std::max(1, std::min(doc.width(), doc.height())));
+        thumbnailSample_ = thumbnailSample(
+            filter_gallery_preview(*view_, {}, {}, 0, 0, doc.width(), doc.height(), scale));
         for (int y = 0; y < thumbnailSample_.height(); ++y) {
             thumbnailRgba_.append(reinterpret_cast<const char*>(thumbnailSample_.constScanLine(y)),
                                   thumbnailSample_.width() * 4);
@@ -243,7 +274,6 @@ FilterGalleryDialog::FilterGalleryDialog(PictureView* view, QWidget* parent)
     rebuildList();
     selectEffect(selected_);
 
-    connect(this, &QDialog::rejected, this, &FilterGalleryDialog::discardPreview);
     resize(parent ? parent->size() * 0.9 : QSize(1200, 800));
     QTimer::singleShot(0, this, &FilterGalleryDialog::renderNextThumbnail);
 }
@@ -257,10 +287,10 @@ QWidget* FilterGalleryDialog::buildPreview()
     previewArea_->setObjectName(QStringLiteral("galleryPreview"));
     previewArea_->setAlignment(Qt::AlignCenter);
     previewArea_->setBackgroundRole(QPalette::Dark);
-    previewLabel_ = new QLabel;
-    // Drags pan the viewport, so the label lets presses through to it.
-    previewLabel_->setAttribute(Qt::WA_TransparentForMouseEvents);
-    previewArea_->setWidget(previewLabel_);
+    previewCanvas_ = new GalleryPreviewCanvas;
+    // Drags pan the viewport, so the canvas lets presses through to it.
+    previewCanvas_->setAttribute(Qt::WA_TransparentForMouseEvents);
+    previewArea_->setWidget(previewCanvas_);
     previewArea_->viewport()->installEventFilter(this);
     previewArea_->viewport()->setCursor(Qt::OpenHandCursor);
     for (QScrollBar* bar :
@@ -499,49 +529,71 @@ void FilterGalleryDialog::runPreview()
             params.append(effect.values);
         }
     }
-    // Only what the pane shows is filtered; the commit filters the layer.
-    const QImage image = view_->image();
+    // Only what the pane shows is filtered, on a copy reduced to about one
+    // pixel per device pixel; the document is untouched until OK filters the
+    // layer at full resolution.
+    const QSize doc = documentSize();
     const QSize viewport = previewArea_->viewport()->size();
-    const int x = static_cast<int>(previewArea_->horizontalScrollBar()->value() / zoom_);
-    const int y = static_cast<int>(previewArea_->verticalScrollBar()->value() / zoom_);
-    const int w = qMin(image.width(), static_cast<int>(viewport.width() / zoom_) + 2);
-    const int h = qMin(image.height(), static_cast<int>(viewport.height() / zoom_) + 2);
-    if (filter_stack_preview(*view_, kinds, params, x, y, w, h)) {
-        previewShown_ = true;
-    }
-    showPreviewImage();
-}
-
-void FilterGalleryDialog::showPreviewImage()
-{
-    if (!view_ || !view_->has_document()) {
+    const double margin = kPreviewMargin / zoom_;
+    const double left = previewArea_->horizontalScrollBar()->value() / zoom_ - margin;
+    const double top = previewArea_->verticalScrollBar()->value() / zoom_ - margin;
+    const int x0 = std::max(0, static_cast<int>(std::floor(left)));
+    const int y0 = std::max(0, static_cast<int>(std::floor(top)));
+    const int x1 = std::min(doc.width(),
+                            static_cast<int>(std::ceil(left + viewport.width() / zoom_ + 2 * margin)));
+    const int y1 = std::min(doc.height(),
+                            static_cast<int>(std::ceil(top + viewport.height() / zoom_ + 2 * margin)));
+    if (x1 <= x0 || y1 <= y0) {
         return;
     }
-    const QImage image = view_->image();
-    const QSize size(qMax(1, qRound(image.width() * zoom_)), qMax(1, qRound(image.height() * zoom_)));
-    previewLabel_->setPixmap(QPixmap::fromImage(image.scaled(
-        size, Qt::IgnoreAspectRatio,
-        zoom_ < 1.0 ? Qt::SmoothTransformation : Qt::FastTransformation)));
-    previewLabel_->resize(size);
+    const double scale = std::min(1.0, zoom_ * devicePixelRatioF());
+    const QImage image =
+        filter_gallery_preview(*view_, kinds, params, x0, y0, x1 - x0, y1 - y0, scale);
+    if (image.isNull()) {
+        return;
+    }
+    previewCanvas_->image = image;
+    previewRegion_ = QRect(x0, y0, x1 - x0, y1 - y0);
+    layoutPreview();
+}
+
+void FilterGalleryDialog::layoutPreview()
+{
+    const QSize doc = documentSize();
+    previewCanvas_->resize(qMax(1, qRound(doc.width() * zoom_)), qMax(1, qRound(doc.height() * zoom_)));
+    previewCanvas_->target = QRectF(previewRegion_.x() * zoom_, previewRegion_.y() * zoom_,
+                                    previewRegion_.width() * zoom_, previewRegion_.height() * zoom_);
+    previewCanvas_->update();
     zoomLabel_->setText(QStringLiteral("%1%").arg(qRound(zoom_ * 1000.0) / 10.0));
+}
+
+QSize FilterGalleryDialog::documentSize() const
+{
+    return view_ && view_->has_document() ? QSize(view_->document_width(), view_->document_height())
+                                          : QSize();
+}
+
+QImage FilterGalleryDialog::previewImage() const
+{
+    return previewCanvas_->image;
 }
 
 double FilterGalleryDialog::fitZoom() const
 {
-    const QImage image = view_ ? view_->image() : QImage();
-    if (image.isNull()) {
+    const QSize doc = documentSize();
+    if (doc.isEmpty()) {
         return 1.0;
     }
     const QSize room = previewArea_->viewport()->size() - QSize(8, 8);
-    const double fit = qMin(static_cast<double>(room.width()) / image.width(),
-                            static_cast<double>(room.height()) / image.height());
+    const double fit = qMin(static_cast<double>(room.width()) / doc.width(),
+                            static_cast<double>(room.height()) / doc.height());
     return qBound(kZoomSteps[0], fit, 1.0);
 }
 
 void FilterGalleryDialog::setZoom(double zoom)
 {
     zoom_ = zoom;
-    showPreviewImage();
+    layoutPreview();
     schedulePreview();
 }
 
@@ -630,24 +682,15 @@ FilterGalleryDialog::CommitResult FilterGalleryDialog::commit()
     }
     lastStack() = effects_;
     if (kinds.isEmpty()) {
-        discardPreview();
         return CommitResult::NothingVisible;
     }
-    if (view_ && apply_filter_stack(*view_, kinds, params)) {
-        previewShown_ = false;
-        return CommitResult::Applied;
+    if (!view_) {
+        return CommitResult::Refused;
     }
-    discardPreview();
-    return CommitResult::Refused;
-}
-
-void FilterGalleryDialog::discardPreview()
-{
-    previewTimer_->stop();
-    if (previewShown_ && view_) {
-        filter_preview_cancel(*view_);
-        previewShown_ = false;
-    }
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    const bool applied = apply_filter_stack(*view_, kinds, params);
+    QApplication::restoreOverrideCursor();
+    return applied ? CommitResult::Applied : CommitResult::Refused;
 }
 
 } // namespace pictura
