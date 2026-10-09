@@ -23,7 +23,7 @@ pub use annotations::{
     MAX_COLOR_SAMPLERS,
 };
 pub use crs::{CrsSettings, PicturaRawSettings};
-pub use plane::Plane;
+pub use plane::{fresh_stamp, Plane};
 pub use samples::{Sample, Samples};
 pub use text_render::{
     layout_lines, FontPolicy, GlyphMask, LayoutLine, LayoutParams, PlacedGlyph, RasterRequest,
