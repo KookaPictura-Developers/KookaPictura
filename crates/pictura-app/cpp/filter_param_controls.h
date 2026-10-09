@@ -13,6 +13,7 @@
 class QCheckBox;
 class QComboBox;
 class QDoubleSpinBox;
+class QButtonGroup;
 class QPushButton;
 class QSlider;
 class QWidget;
@@ -41,6 +42,9 @@ public:
 signals:
     // A value changed. A slider drag holds this until release.
     void changed();
+    // A value changed mid-drag, before `changed`. Cheap consumers (the dialog's
+    // own preview pane) update; the canvas waits for the release.
+    void changedLive();
 
 private:
     struct Control {
@@ -55,6 +59,8 @@ private:
         QDoubleSpinBox* y = nullptr;
         QWidget* pad = nullptr;    // Placement crosshair pad
         QWidget* center = nullptr; // Radial Blur centre pad
+        QWidget* shear = nullptr;  // Shear curve box
+        QButtonGroup* group = nullptr; // Radio group
     };
 
     void addControl(const FilterParamSpec& spec);

@@ -13,6 +13,7 @@ crate-type = ["staticlib", "rlib"]
 [dependencies]
 pictura-core = { path = "../pictura-core" }
 pictura-codec = { path = "../pictura-codec" }
+pictura-ops = { path = "../pictura-ops" }
 pictura-render = { path = "../pictura-render" }
 pictura-select = { path = "../pictura-select" }
 pictura-filters = { path = "../pictura-filters" }

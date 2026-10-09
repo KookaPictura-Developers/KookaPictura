@@ -98,6 +98,21 @@ FilterParamSpec blurCenter(const QString& label)
     return p;
 }
 
+FilterParamSpec shearCurve(const QString& label)
+{
+    FilterParamSpec p;
+    p.control = FilterControl::ShearCurve;
+    p.label = label;
+    return p;
+}
+
+FilterParamSpec radio(const QString& label, const QStringList& names, int index)
+{
+    FilterParamSpec p = choice(label, names, index);
+    p.control = FilterControl::Radio;
+    return p;
+}
+
 FilterCommandSpec def(const QString& family, const QString& label, const QString& kind,
                       QList<FilterParamSpec> params, bool previewPane = true)
 {
@@ -113,6 +128,12 @@ FilterCommandSpec def(const QString& family, const QString& label, const QString
 FilterCommandSpec stacked(FilterCommandSpec d)
 {
     d.stacked = true;
+    return d;
+}
+
+FilterCommandSpec bottomPreview(FilterCommandSpec d)
+{
+    d.previewBelow = true;
     return d;
 }
 
@@ -312,15 +333,11 @@ const QList<FilterCommandSpec>& buildCommands()
             {slider(QStringLiteral("Amount:"), -999, 999, 100),
              choice(QStringLiteral("Size:"),
                     {QStringLiteral("Small"), QStringLiteral("Medium"), QStringLiteral("Large")}, 1)}),
-        def(QStringLiteral("Distort"), QStringLiteral("Shear"), QStringLiteral("shear"),
-            {slider(QStringLiteral("Top Left:"), -1, 1, -1, 2),
-             slider(QStringLiteral("Top Right:"), -1, 1, -0.5, 2),
-             slider(QStringLiteral("Middle Left:"), -1, 1, 0.0, 2),
-             slider(QStringLiteral("Middle Right:"), -1, 1, 0.0, 2),
-             slider(QStringLiteral("Bottom Left:"), -1, 1, 1, 2),
-             slider(QStringLiteral("Bottom Right:"), -1, 1, 0.5, 2),
-             choice(QStringLiteral("Undefined Areas:"),
-                    {QStringLiteral("Wrap Around"), QStringLiteral("Repeat Edge Pixels")}, 1)}),
+        bottomPreview(def(QStringLiteral("Distort"), QStringLiteral("Shear"),
+            QStringLiteral("shear"),
+            {shearCurve(QStringLiteral("Curve:")),
+             radio(QStringLiteral("Undefined Areas:"),
+                   {QStringLiteral("Wrap Around"), QStringLiteral("Repeat Edge Pixels")}, 0)})),
         def(QStringLiteral("Distort"), QStringLiteral("Spherize"), QStringLiteral("spherize"),
             {slider(QStringLiteral("Amount:"), -100, 100, 100),
              choice(QStringLiteral("Mode:"),

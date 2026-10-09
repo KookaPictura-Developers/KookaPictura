@@ -104,6 +104,11 @@ pub enum ShearFill {
     RepeatEdgePixels,
 }
 
+/// The most control points a Shear curve carries. The editor keeps a handful
+/// of points, and the filter is a value that can be copied, compared, and
+/// replayed from history, so the list is capped rather than open-ended.
+pub const SHEAR_MAX_POINTS: usize = 8;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ZigZagStyle {
     AroundCenter,

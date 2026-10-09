@@ -285,12 +285,12 @@ const MAPPING: &[Mapping] = &[
         filter: "Shear",
         im: None,
         tolerance: 0,
-        note: "IM `-shear 0x{angle}` is a whole-canvas y-shear that background-fills the expanded \
-               canvas (default black), while Pictura shifts columns by a piecewise-linear curve with \
-               clamp/wrap and expands nothing. Straight curve [(-1,-0.5),(1,0.5)] = atan(0.5) = \
-               26.565 deg; best measured `-shear 0x26.565 -crop 16x16+0+4 +repage` vs \
-               RepeatEdgePixels max 255 / mean 18.4 (WrapAround mean 23.4). Guarded by the zero-curve \
-               no-op and fill property tests",
+        note: "IM `-shear {angle}x0` is a whole-canvas horizontal shear that background-fills the \
+               expanded canvas (default black), while Pictura shifts each row by a smooth spline through the \
+               control points with clamp/wrap and expands nothing. The curve's slope `[(-1,-0.5),(1,0.5)]` = \
+               atan(0.5) = 26.565 deg, which IM's sign convention runs the other way; best measured \
+               `-shear -26.565x0 -crop 16x16+4+0 +repage` vs RepeatEdgePixels max 255 / mean 18.4 \
+               (WrapAround mean 23.4). Guarded by the zero-curve no-op and fill property tests",
     },
     Mapping {
         filter: "ZigZag",

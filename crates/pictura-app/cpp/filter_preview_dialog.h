@@ -7,6 +7,7 @@
 #include <QtCore/QList>
 #include <QtCore/QPointF>
 #include <QtCore/QRectF>
+#include <QtGui/QImage>
 #include <QtWidgets/QDialog>
 
 #include "filter_commands.h"
@@ -47,6 +48,10 @@ public:
     // The parameter slot values in mapping order.
     QList<double> values() const;
 
+    // Set the controls from slot values; slots past the end keep their value.
+    // Silent: emits no changed().
+    void applyInitial(const QList<double>& initial);
+
     // Run the dialog modally, committing `out` on OK. On cancel the canvas
     // preview is discarded.
     static bool get(PictureView* view, const FilterCommandSpec& spec,
@@ -54,7 +59,6 @@ public:
                     QList<double>* out, QWidget* parent);
 
 private:
-    void applyInitial(const QList<double>& initial);
     void valuesChanged();
     void discardPreview();
     void updateThumbnail();
@@ -75,6 +79,11 @@ private:
     bool shownOnce_ = false;
     QRectF previewVisible_;
     double canvasZoom_ = 1.0;
+    // A small pre-preview picture for a bottom pane (Shear): the document with
+    // the active layer hidden, so each pane update filters only the active
+    // layer at proxy scale and composites it over this base. The pane follows a
+    // drag while the whole-layer preview waits for release.
+    QImage baseProxy_;
 };
 
 } // namespace pictura

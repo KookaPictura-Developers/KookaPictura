@@ -507,6 +507,7 @@ mod tests {
 
     #[test]
     fn positional_kinds_preview_the_whole_layer() {
+        use super::super::filter_map::SHEAR_SLOTS;
         use super::super::filter_tools::filter_preview_needs_whole_layer;
 
         let viewport = pictura_core::PsdRect {
@@ -525,6 +526,15 @@ mod tests {
                 ],
             ),
             ("lens-flare", vec![100.0, 0.5, 0.5, 0.0]),
+            ("shear", {
+                let mut shear = vec![0.0f64; SHEAR_SLOTS];
+                shear[0] = 2.0;
+                shear[1] = -1.0;
+                shear[2] = -0.5;
+                shear[3] = 1.0;
+                shear[4] = 0.5;
+                shear
+            }),
         ] {
             assert!(filter_preview_needs_whole_layer(kind), "{kind}");
 

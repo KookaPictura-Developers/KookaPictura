@@ -109,8 +109,9 @@ fn polar_no_equivalent_filters_properties() {
     assert_ne!(p2r, original.data, "PolarToRectangular must remap");
     assert_ne!(r2p, p2r, "the two polar directions must differ");
 
-    // Shear: a flat (zero) curve is a bit-exact no-op; a sloped curve shifts
-    // columns, and the two fill modes differ.
+    // Shear: a flat (zero) curve is a bit-exact no-op; a curve pinned to zero
+    // at the top and bending right lower down leaves the top row alone and
+    // pushes the bottom rows right, and the two fill modes differ.
     let noop = run(&Filter::Shear {
         curve: vec![(-1.0, 0.0), (1.0, 0.0)],
         fill: ShearFill::RepeatEdgePixels,
@@ -126,6 +127,31 @@ fn polar_no_equivalent_filters_properties() {
     });
     assert_ne!(edge, original.data, "a sloped shear must move pixels");
     assert_ne!(edge, wrap, "the shear fill modes must differ");
+
+    let mut marker = pictura_core::PixelBuffer::new(16, 16, 3);
+    marker.data.fill(255);
+    for y in 0..16usize {
+        for c in 0..3 {
+            marker.data[c * 256 + y * 16 + 4] = 0;
+        }
+    }
+    let mut shifted = marker.clone();
+    apply(
+        &Filter::Shear {
+            curve: vec![(-1.0, 0.0), (1.0, 0.5)],
+            fill: ShearFill::RepeatEdgePixels,
+        },
+        &mut shifted,
+    )
+    .expect("apply");
+    let dark_at = |buf: &pictura_core::PixelBuffer, y: usize| -> Option<usize> {
+        (0..16).find(|&x| buf.data[y * 16 + x] < 128)
+    };
+    assert_eq!(dark_at(&shifted, 0), Some(4), "the top row must not move");
+    assert!(
+        dark_at(&shifted, 15).is_some_and(|x| x > 4),
+        "the bottom row must move right"
+    );
 
     // ZigZag: amount 0 is a bit-exact no-op; the three styles differ.
     let zz_noop = run(&Filter::ZigZag {
