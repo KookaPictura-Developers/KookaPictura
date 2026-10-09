@@ -146,8 +146,9 @@ void PicturaMainWindow::registerEditHandlers()
         }
     });
 
-    // A plain paste centres on what the canvas shows; Paste in Place and Paste
-    // Into are placed in the bridge.
+    // A plain paste and Paste in Place land at the clip's own position in the
+    // bridge; Paste Into centres on the selection and Paste Outside on what the
+    // canvas shows.
     const auto paste = [this, currentPath](PasteKind kind) {
         PictureView* view = activeView();
         if (!view || !view->has_document()) {

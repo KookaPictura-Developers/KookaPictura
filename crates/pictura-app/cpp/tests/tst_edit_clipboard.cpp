@@ -83,6 +83,8 @@ void EditClipboardTest::editClipboard()
     const bool inPlace = step(pictura::command_ids::EditPasteInPlace, "Paste")
         && view->layer_count() == layers + 1 && view->sample_argb(3, 3) == fill
         && view->sample_argb(1, 1) == fill;
+    // Every paste drops the marquee, so Paste Into needs a fresh selection.
+    view->select_rect(2, 2, 3, 3, QStringLiteral("new"), 0.0);
     const bool into = step(pictura::command_ids::EditPasteInto, "Paste Into")
         && view->layer_count() == layers + 2 && hasMask() && !view->has_selection();
 
@@ -90,8 +92,11 @@ void EditClipboardTest::editClipboard()
     view->select_rect(0, 0, 2, 2, QStringLiteral("new"), 0.0);
     const bool clear = step(pictura::command_ids::EditClear, "Clear") && view->sample_argb(0, 1) == white
         && view->sample_argb(6, 0) == fill;
-    // A plain paste lands wherever the (headless) canvas centre maps.
-    const bool paste = step(pictura::command_ids::EditPaste, "Paste") && view->layer_count() == layers + 3;
+    // A plain paste keeps the copied rect and drops the marquee.
+    const bool paste = step(pictura::command_ids::EditPaste, "Paste")
+        && view->layer_count() == layers + 3
+        && view->layer_rect(view->active_layer_path()) == QStringLiteral("2 2 5 5")
+        && !view->has_selection() && view->has_deselected_selection();
 
     // Another application's image replaces our copy and pastes in place at the
     // canvas origin.
