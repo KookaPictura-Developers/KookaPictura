@@ -52,6 +52,7 @@ use crate::decode_adjustment;
 
 mod assemble;
 mod backend;
+mod resident;
 mod shader;
 mod stroke;
 
@@ -412,6 +413,88 @@ mod tests {
         SmartObject, SmartObjectKind,
     };
     use std::time::Instant;
+
+    /// The largest per-byte difference between two composites.
+    fn max_delta(a: &PixelBuffer, b: &PixelBuffer) -> u8 {
+        assert_eq!(a.data.len(), b.data.len());
+        a.data
+            .iter()
+            .zip(b.data.iter())
+            .map(|(x, y)| x.abs_diff(*y))
+            .max()
+            .unwrap_or(0)
+    }
+
+    #[test]
+    fn resident_uploads_are_reused_and_never_stale() {
+        use std::sync::atomic::Ordering;
+        if !gpu_available() {
+            eprintln!("skipping: no GPU");
+            return;
+        }
+        let (w, h) = (64u32, 48u32);
+        let mut doc = Document::new(w, h, ColorMode::Rgb, BitDepth::Eight);
+        let rect = PsdRect {
+            top: 0,
+            left: 0,
+            bottom: h as i32,
+            right: w as i32,
+        };
+        doc.layers = (0..2u8)
+            .map(|k| Layer {
+                rect,
+                opacity: 200,
+                fill: 255,
+                visible: true,
+                channels: (-1..3)
+                    .map(|id| Channel {
+                        id,
+                        data: (0..(w * h) as usize)
+                            .map(|i| (i * (3 + k as usize) + (id + 1) as usize * 40) as u8)
+                            .collect(),
+                    })
+                    .collect(),
+                ..Default::default()
+            })
+            .collect();
+        // Stamp every plane, as the history does after each capture.
+        let stamp_all = |doc: &mut Document| {
+            for layer in &mut doc.layers {
+                for c in &mut layer.channels {
+                    c.data.set_stamp(pictura_core::fresh_stamp());
+                }
+            }
+        };
+        stamp_all(&mut doc);
+        let check = |doc: &Document, what: &str| {
+            let gpu = composite_gpu(doc).expect("gpu composite");
+            let cpu = crate::composite_rgba(doc);
+            assert!(
+                max_delta(&gpu, &cpu) <= 1,
+                "{what}: GPU differs from the CPU"
+            );
+        };
+
+        check(&doc, "first");
+        let hits = backend::RESIDENT_HITS.load(Ordering::Relaxed);
+        check(&doc, "again");
+        assert!(
+            backend::RESIDENT_HITS.load(Ordering::Relaxed) > hits,
+            "an unchanged document re-uploaded its layers"
+        );
+
+        doc.layers[1].blend = BlendMode::Multiply;
+        check(&doc, "blend change");
+
+        // A write clears the plane's stamp: the cache must not serve it.
+        doc.layers[1].channels[1].data.as_mut_slice()[100] ^= 0xFF;
+        check(&doc, "unstamped edit");
+
+        // The history then stamps the new bytes afresh.
+        doc.layers[1].channels[1].data.as_mut_slice()[200] ^= 0xFF;
+        stamp_all(&mut doc);
+        check(&doc, "restamped edit");
+    }
 
     #[test]
     fn a_software_adapter_is_no_gpu() {

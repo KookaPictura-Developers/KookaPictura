@@ -6,6 +6,7 @@ use pictura_core::{BlendMode, Document, Layer, PixelBuffer};
 use crate::decode_adjustment;
 
 use super::assemble::{mask_writer, padded, source_geom, source_writer, Region, RUN};
+use super::resident::{mask_key, source_key, Resident, UploadKey};
 use super::shader::{PLANAR_SHADER, SHADER, STROKE_SHADER};
 use super::{adjustment_params, mode_id, storage_entry, GpuError, NO_ADJ};
 
@@ -166,6 +167,8 @@ pub(super) struct Devices {
     /// is system RAM), so the largest recent readback stays resident; release
     /// it under memory pressure if that ever matters.
     readback: Mutex<Option<wgpu::Buffer>>,
+    /// Layer sources and coverages kept between composites (`resident.rs`).
+    resident: Mutex<Resident>,
 }
 
 impl Devices {
@@ -224,6 +227,7 @@ async fn request_device() -> Option<Devices> {
         planar: OnceLock::new(),
         stroke: OnceLock::new(),
         readback: Mutex::new(None),
+        resident: Mutex::new(Resident::default()),
     })
 }
 
@@ -234,6 +238,11 @@ async fn request_device() -> Option<Devices> {
 pub(super) fn accelerates(device_type: wgpu::DeviceType) -> bool {
     device_type != wgpu::DeviceType::Cpu
 }
+
+/// Uploads served from the resident cache, for the tests.
+#[cfg(test)]
+pub(super) static RESIDENT_HITS: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
 
 pub(super) fn devices() -> Result<&'static Devices, GpuError> {
     static DEVICES: OnceLock<Option<Devices>> = OnceLock::new();
@@ -377,8 +386,34 @@ impl Gpu {
         doc: &Document,
     ) -> Option<(wgpu::Buffer, SrcLayout)> {
         let g = source_geom(self.region(), layer, doc)?;
-        let buffer = self.upload_with("pictura-src", g.planes * g.n, source_writer(layer, &g));
+        let key = source_key(self.region(), layer, g.gray);
+        let buffer = self.kept_or_upload(key, || {
+            self.upload_with("pictura-src", g.planes * g.n, source_writer(layer, &g))
+        });
         Some((buffer, g.layout()))
+    }
+
+    /// The upload kept under `key`, or `upload()`'s, kept for next time. A
+    /// `None` key (an unstamped plane) always uploads and keeps nothing.
+    fn kept_or_upload(
+        &self,
+        key: Option<UploadKey>,
+        upload: impl FnOnce() -> wgpu::Buffer,
+    ) -> wgpu::Buffer {
+        let resident = || devices().ok().and_then(|d| d.resident.lock().ok());
+        if let Some(buffer) = key
+            .as_ref()
+            .and_then(|k| resident().and_then(|mut r| r.get(k)))
+        {
+            #[cfg(test)]
+            RESIDENT_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            return buffer;
+        }
+        let buffer = upload();
+        if let (Some(key), Some(mut r)) = (key, resident()) {
+            r.put(key, buffer.clone());
+        }
+        buffer
     }
 
     /// A storage buffer of `len` bytes (padded to a word) whose bytes `write`
@@ -428,7 +463,9 @@ impl Gpu {
     pub(super) fn build_mask(&self, layer: &Layer) -> wgpu::Buffer {
         let region = self.region();
         let len = region.w as usize * region.h as usize;
-        self.upload_with("pictura-mask", len, mask_writer(region, layer))
+        self.kept_or_upload(mask_key(region, layer), || {
+            self.upload_with("pictura-mask", len, mask_writer(region, layer))
+        })
     }
 
     pub(super) fn composite_layer(&self, canvas: &wgpu::Buffer, layer: &Layer, doc: &Document) {
