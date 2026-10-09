@@ -1030,6 +1030,45 @@ bool LayersPanel::shiftClickMaskThumbnailForTest(const QString& path)
     return true;
 }
 
+bool LayersPanel::rowMaskTargetForTest(const QString& path) const
+{
+    return model_ && model_->indexForPath(path).data(MaskTargetRole).toBool();
+}
+
+bool LayersPanel::clickMaskThumbnailForTest(const QString& path)
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || !delegate_ || !tree_) {
+        return false;
+    }
+    const QRect mask = delegate_->maskThumbRect(tree_->visualRect(index), index);
+    if (mask.isEmpty()) {
+        return false;
+    }
+    const QPoint at = mask.center();
+    QMouseEvent press(QEvent::MouseButtonPress, at, tree_->viewport()->mapToGlobal(at),
+                      Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(tree_->viewport(), &press);
+    return true;
+}
+
+bool LayersPanel::clickLayerThumbnailForTest(const QString& path)
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || !delegate_ || !tree_) {
+        return false;
+    }
+    const QRect thumb = delegate_->thumbRect(tree_->visualRect(index), index);
+    if (thumb.isEmpty()) {
+        return false;
+    }
+    const QPoint at = thumb.center();
+    QMouseEvent press(QEvent::MouseButtonPress, at, tree_->viewport()->mapToGlobal(at),
+                      Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(tree_->viewport(), &press);
+    return true;
+}
+
 bool LayersPanel::rowHasVectorMaskForTest(const QString& path) const
 {
     return model_ && model_->indexForPath(path).data(HasVectorMaskRole).toBool();

@@ -597,6 +597,17 @@ public:
             }
             const QRect maskRect(right - thumb, rect.top() + (height - thumb) / 2, thumb, thumb);
             painter->drawImage(maskRect, mask);
+            if (index.data(MaskTargetRole).toBool()) {
+                // The active mask thumbnail wears the CS6 focus border: a dark
+                // outline outside a white line, legible over any coverage.
+                painter->save();
+                painter->setBrush(Qt::NoBrush);
+                painter->setPen(QColor(0, 0, 0, 200));
+                painter->drawRect(maskRect.adjusted(-1, -1, 0, 0));
+                painter->setPen(Qt::white);
+                painter->drawRect(maskRect.adjusted(0, 0, -1, -1));
+                painter->restore();
+            }
             if (index.data(MaskDisabledRole).toBool()) {
                 // A red cross over the thumbnail, the CS6 disabled-mask mark.
                 painter->save();

@@ -86,6 +86,8 @@ struct LayerRow {
     bool hasMask = false;
     bool maskLinked = false;
     bool maskDisabled = false;
+    /// The raster mask is the view's mask edit target (the active thumbnail).
+    bool maskTarget = false;
     bool hasVectorMask = false;
     bool vectorMaskLinked = false;
     bool vectorMaskDisabled = false;
@@ -152,6 +154,7 @@ enum LayerRole {
     SyntheticRole,
     MaskDisabledRole,
     MaskLinkedRole,
+    MaskTargetRole,
     SmartObjectRole,
     HasVectorMaskRole,
     VectorMaskThumbnailRole,
@@ -319,6 +322,8 @@ public:
             return row.maskDisabled;
         case MaskLinkedRole:
             return row.maskLinked;
+        case MaskTargetRole:
+            return row.maskTarget;
         case SmartObjectRole:
             return row.smartObject;
         case HasVectorMaskRole:

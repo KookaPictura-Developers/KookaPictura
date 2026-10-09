@@ -7,9 +7,10 @@
 //! [`PictureView`]: super::super::qobject::PictureView
 
 use super::super::helpers::{
-    active_layer_visible, active_pixel_layer, paint_mode_from, rgba_from_argb,
+    active_layer_visible, active_mask_target, active_pixel_layer, luma_u8, paint_mode_from,
+    rgba_from_argb,
 };
-use super::super::helpers_composite::current_buffer;
+use super::super::helpers_composite::{crop_selection, current_buffer};
 use super::super::qobject::PictureView;
 use super::super::PictureViewRust;
 use core::pin::Pin;
@@ -19,8 +20,10 @@ use pictura_core::{Document, PsdRect};
 use pictura_paint::bucket::{self, BucketPaint};
 use pictura_paint::eraser::antialias_mask;
 use pictura_paint::gradient::{self, GradientOptions, GradientStyle, PRESET_NAMES};
+use pictura_paint::healing::RgbaImage;
 use pictura_paint::pattern;
 use pictura_paint::stamp::{layer_surface, surface_from_composite};
+use pictura_paint::{PaintMode, Rgba};
 
 #[cxx_qt::bridge]
 pub mod ffi {
@@ -260,12 +263,16 @@ fn edit_fill(
         },
         Err(_) => None,
     };
+    let mode = paint_mode_from(&mode.to_string());
+    let opacity = opacity.clamp(0, 100) as f32 / 100.0;
+    // A mask target fills the mask's coverage with the fill colour's luma.
+    if let Some(path) = active_mask_target(view.rust()) {
+        return fill_mask(view, &path, tile.as_ref(), foreground, mode, opacity);
+    }
     let paint = match &tile {
         Some(tile) => BucketPaint::Pattern(tile),
         None => BucketPaint::Foreground(rgba_from_argb(foreground)),
     };
-    let mode = paint_mode_from(&mode.to_string());
-    let opacity = opacity.clamp(0, 100) as f32 / 100.0;
     apply(view, "Fill", |doc, path, rust| {
         let (width, height) = (doc.width as i32, doc.height as i32);
         // A whole-layer fill is a document-sized mask of full coverage; Preserve
@@ -282,6 +289,102 @@ fn edit_fill(
         };
         bucket::fill(doc, path, &mask, paint, mode, opacity, selection(rust))
     })
+}
+
+/// `Edit ▸ Fill` on the mask of the layer at `path`: the fill colour's luma
+/// (a pattern's per-pixel luma) fills the coverage through the selection, which
+/// is cropped to the mask rectangle. One "Fill" state.
+fn fill_mask(
+    mut view: Pin<&mut PictureView>,
+    path: &str,
+    tile: Option<&RgbaImage>,
+    foreground: u32,
+    mode: PaintMode,
+    opacity: f32,
+) -> bool {
+    let (mut mask, selection) = {
+        let rust = view.rust();
+        let Some(doc) = rust.doc.as_ref() else {
+            return false;
+        };
+        let Some(mask) = pictura_render::mask_document(doc, path) else {
+            return false;
+        };
+        let selection = rust
+            .selection
+            .as_ref()
+            .map(|s| crop_selection(&s.data, s.width, s.height, mask.rect));
+        (mask, selection)
+    };
+    let gray_tile;
+    let paint = match tile {
+        Some(tile) => {
+            gray_tile = gray_image(tile);
+            BucketPaint::Pattern(&gray_tile)
+        }
+        None => {
+            let color = rgba_from_argb(foreground);
+            let v = luma_u8(color);
+            BucketPaint::Foreground(Rgba {
+                r: v,
+                g: v,
+                b: v,
+                a: color.a,
+            })
+        }
+    };
+    let full = vec![255u8; (mask.document.width * mask.document.height) as usize];
+    let Some(dirty) = bucket::fill(
+        &mut mask.document,
+        "0",
+        &full,
+        paint,
+        mode,
+        opacity,
+        selection.as_deref(),
+    ) else {
+        return false;
+    };
+    let changed = {
+        let mut rust = view.as_mut().rust_mut();
+        let Some(doc) = rust.doc.as_mut() else {
+            return false;
+        };
+        pictura_render::write_mask_back(doc, path, &mask.document, Some(dirty))
+    };
+    if changed {
+        let rect = PsdRect {
+            top: dirty.top + mask.rect.top,
+            left: dirty.left + mask.rect.left,
+            bottom: dirty.bottom + mask.rect.top,
+            right: dirty.right + mask.rect.left,
+        };
+        view.as_mut().refresh_region(rect);
+        view.as_mut().record("Fill");
+    }
+    changed
+}
+
+/// A pattern tile as its per-pixel luma, so a pattern fill of a mask paints
+/// coverage rather than colour.
+fn gray_image(tile: &RgbaImage) -> RgbaImage {
+    RgbaImage {
+        width: tile.width,
+        height: tile.height,
+        data: tile
+            .data
+            .iter()
+            .map(|px| {
+                let v = luma_u8(Rgba {
+                    r: px[0],
+                    g: px[1],
+                    b: px[2],
+                    a: px[3],
+                });
+                [v, v, v, 255]
+            })
+            .collect(),
+    }
 }
 
 fn edit_stroke(

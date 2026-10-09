@@ -104,6 +104,12 @@ pub struct PictureViewRust {
     pub(super) pending_lasso_mode: String,
     pub(super) stroke: Option<Stroke>,
     pub(super) stroke_label: String,
+    /// A live brush stroke painting a layer mask's coverage instead of the
+    /// layer's pixels; `Some` only while the mask edit target is active.
+    pub(super) mask_stroke: Option<MaskStroke>,
+    /// The layer whose raster mask is the edit target, so the brush, fill, and
+    /// filters write its coverage; `None` edits the layer's pixels.
+    pub(super) mask_edit_target: Option<String>,
     /// Dabs received since the last in-stroke present, waiting for `flush_present`.
     pub(super) pending_present: Option<PsdRect>,
     /// The stroke's dirty area as document-space tiles, rebuilt per dab and
@@ -174,6 +180,10 @@ pub struct PictureViewRust {
     /// change re-filters the original rather than compounding on the last
     /// preview. `None` when no dialog is open.
     pub(super) filter_preview: Option<FilterPreview>,
+    /// Pre-filter mask coverage for an open filter-dialog preview on a mask,
+    /// with the target path, so each parameter change re-filters the original.
+    /// `None` when no mask preview is open.
+    pub(super) mask_filter_preview: Option<(String, Vec<u8>)>,
     /// The document before an open Indexed Color dialog's live preview, so each
     /// option change converts the original. `None` when no preview is shown.
     pub(super) mode_preview: Option<pictura_core::Document>,
@@ -226,6 +236,16 @@ pub(super) struct PreviewStroke {
     pub(super) cfg: pictura_paint::StrokeConfig,
 }
 
+/// A live brush stroke painting a layer mask's coverage: the mask exposed as a
+/// grayscale document (`document`), its document-space rectangle (`rect`), and
+/// the exact [`Stroke`] running on it.
+pub(super) struct MaskStroke {
+    pub(super) path: String,
+    pub(super) rect: pictura_core::PsdRect,
+    pub(super) document: Document,
+    pub(super) stroke: Stroke,
+}
+
 impl Default for PictureViewRust {
     fn default() -> Self {
         Self {
@@ -245,6 +265,8 @@ impl Default for PictureViewRust {
             pending_lasso_mode: String::new(),
             stroke: None,
             stroke_label: String::new(),
+            mask_stroke: None,
+            mask_edit_target: None,
             pending_present: None,
             stroke_tiles: TileSet::default(),
             present_flush_due: false,
@@ -276,6 +298,7 @@ impl Default for PictureViewRust {
             gpu_stroke: None,
             gpu_placer: None,
             filter_preview: None,
+            mask_filter_preview: None,
             mode_preview: None,
             last_filter: None,
             filter_error: None,

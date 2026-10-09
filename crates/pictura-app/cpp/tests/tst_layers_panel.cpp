@@ -130,6 +130,7 @@ private slots:
     void backgroundOnlyStaysActive();
     void activeLayerNotFirstRow();
     void maskRowIndicators();
+    void maskEditTargetActivation();
     void maskRowActionsTargetTheClickedRow();
     void vectorMaskRowIndicators();
     void fillAdjustmentMenu();
@@ -796,6 +797,42 @@ void LayersPanelTest::maskRowIndicators()
     QCoreApplication::processEvents();
     panel_->refresh();
     QVERIFY2(!panel_->rowMaskDisabledForTest(layer), "shift-click re-enabled the mask");
+
+    window_->closeDocument(doc, false);
+}
+
+// The mask edit target: a plain mask-thumbnail click activates the mask, a
+// plain layer-thumbnail click returns to the layer's pixels, and the row
+// reports the target for the delegate's border.
+void LayersPanelTest::maskEditTargetActivation()
+{
+    const bool created = window_->newDocument(QStringLiteral("MaskActivate"), 16, 16,
+                                              QStringLiteral("rgb"), 8, QStringLiteral("white"));
+    view_ = window_->activeView();
+    panel_ = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    QVERIFY2(created && view_ && panel_, "mask activation fixture");
+    const int doc = window_->activeDocumentIndex();
+    const QString layer = view_->layer_row_path(0);
+    view_->set_active_layer(layer);
+    QVERIFY2(pictura::layer_mask_add(*view_, QStringLiteral("reveal-all")), "add mask");
+
+    panel_->setView(view_);
+    panel_->selectPaths({layer}, layer);
+    panel_->refresh();
+    window_->show();
+    QTest::qWait(50);
+
+    QVERIFY2(!panel_->rowMaskTargetForTest(layer), "no target yet");
+    QVERIFY2(panel_->clickMaskThumbnailForTest(layer), "mask thumbnail target exists");
+    QCoreApplication::processEvents();
+    panel_->refresh();
+    QCOMPARE(view_->active_layer_path(), layer);
+    QVERIFY2(panel_->rowMaskTargetForTest(layer), "mask click activated the mask");
+
+    QVERIFY2(panel_->clickLayerThumbnailForTest(layer), "layer thumbnail target exists");
+    QCoreApplication::processEvents();
+    panel_->refresh();
+    QVERIFY2(!panel_->rowMaskTargetForTest(layer), "layer click deactivated the mask");
 
     window_->closeDocument(doc, false);
 }

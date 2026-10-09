@@ -472,6 +472,10 @@ void LayersPanel::refresh()
         const int documentHeight = view_->document_height();
         rows.reserve(count);
         const QStringList styleEffectNames = layer_style_effect_names();
+        // The mask edit target is one per view; the row whose path matches it
+        // draws the active-thumbnail border. Reading it also clears a target
+        // whose layer or mask is gone.
+        const QString maskTargetPath = mask_edit_target_get(*view_);
         for (int i = 0; i < count; ++i) {
             LayerRow row;
             row.path = view_->layer_row_path(i);
@@ -512,6 +516,7 @@ void LayersPanel::refresh()
             row.maskThumbnail = view_->layer_row_mask_thumbnail(i, thumbSize);
             row.maskLinked = layer_row_mask_linked(*view_, i);
             row.maskDisabled = layer_row_mask_disabled(*view_, i);
+            row.maskTarget = row.hasMask && row.path == maskTargetPath;
             row.hasVectorMask = layer_row_has_vector_mask(*view_, i);
             row.vectorMaskThumbnail = layer_row_vector_mask_thumbnail(*view_, i, thumbSize);
             row.vectorMaskLinked = layer_row_vector_mask_linked(*view_, i);
@@ -758,16 +763,31 @@ bool LayersPanel::eventFilter(QObject* watched, QEvent* event)
                 }
             }
             // The mask's own controls: Shift-click the mask thumbnail toggles
-            // its enabled bit; a click on the link glyph toggles its linkage.
-            // Both are consumed so they never rename, select, or start a drag.
+            // its enabled bit; a plain click makes it the mask edit target (the
+            // brush, fill, and filters then write its coverage); a click on the
+            // link glyph toggles its linkage. All are consumed so they never
+            // rename, select, or start a drag.
             if (index.isValid() && view_) {
                 const QString rowPath = pathForProxyIndex(index);
                 const QRect vr = tree_->visualRect(index);
+                // A plain layer-thumbnail click returns to editing the layer's
+                // pixels; the click still selects the row or starts a drag.
+                const QRect layerThumb = delegate_->thumbRect(vr, index);
+                if (!layerThumb.isEmpty() && layerThumb.contains(pos)
+                    && !(mouse->modifiers() & Qt::ControlModifier)) {
+                    mask_edit_target_set(*view_, QString());
+                }
                 const QRect maskThumb = delegate_->maskThumbRect(vr, index);
                 if (!maskThumb.isEmpty() && maskThumb.contains(pos)) {
                     if (mouse->modifiers() & Qt::ShiftModifier) {
                         layer_mask_set_enabled_path(*view_, rowPath,
                                                     index.data(MaskDisabledRole).toBool());
+                    } else {
+                        // The target belongs to the active layer, so select the
+                        // row first (its selection sets the active layer).
+                        tree_->setCurrentIndex(index);
+                        mask_edit_target_set(*view_, rowPath);
+                        refresh();
                     }
                     return true;
                 }
@@ -944,7 +964,14 @@ void LayersPanel::syncControls()
     const QModelIndex current = tree_->currentIndex();
     const QStringList paths = selectedPaths();
     if (view_) {
-        view_->set_active_layer(paths.size() == 1 ? currentPath() : QString());
+        const QString current = currentPath();
+        view_->set_active_layer(paths.size() == 1 ? current : QString());
+        // A mask edit target belongs to the active layer; selecting a different
+        // layer drops it so the next paint edits the layer's pixels again. A
+        // transient empty selection (a model reset) keeps it.
+        if (!current.isEmpty() && mask_edit_target_get(*view_) != current) {
+            mask_edit_target_set(*view_, QString());
+        }
     }
     const bool active = view_ && !paths.isEmpty();
     syncing_ = true;
