@@ -49,7 +49,7 @@ pub mod ffi {
         /// `Clear`: erase the selection (the whole layer without one) from the layer at `path`; one "Clear" state; false on a lock or when nothing changes.
         fn clipboard_clear(view: Pin<&mut PictureView>, path: &QString) -> bool;
 
-        /// Paste the clipboard as a new layer above `path`, centred on document point `(centre_x, centre_y)` (Paste in Place: at the copy's own position; Paste Into: on the selection); Into/Outside mask it by the selection and deselect. One state; returns the new path or empty.
+        /// Paste the clipboard as a new layer above `path`: Plain and InPlace at the clip's own document rect, Into centred on the selection bounds, Outside centred on document point `(centre_x, centre_y)`. Every paste deselects into the reselect store; Into/Outside also mask by the selection. One state; returns the new path or empty.
         fn clipboard_paste(
             view: Pin<&mut PictureView>,
             path: &QString,
@@ -247,20 +247,22 @@ fn clipboard_paste(
         .as_deref()
         .filter(|_| mode == PasteMode::Into)
         .and_then(|s| pictura_render::coverage_bounds(s, width, height));
-    let (cx, cy) = match into_bounds {
-        Some(b) => (
-            (b.left + b.right) as f64 / 2.0,
-            (b.top + b.bottom) as f64 / 2.0,
-        ),
-        None => (centre_x, centre_y),
-    };
-    let origin = if kind == PasteKind::InPlace {
-        (clip.rect.left, clip.rect.top)
-    } else {
-        (
-            (cx - clip.width() as f64 / 2.0).round() as i32,
-            (cy - clip.height() as f64 / 2.0).round() as i32,
-        )
+    let origin = match kind {
+        // Plain paste and Paste in Place keep the copied pixels' position.
+        PasteKind::Plain | PasteKind::InPlace => (clip.rect.left, clip.rect.top),
+        _ => {
+            let (cx, cy) = match into_bounds {
+                Some(b) => (
+                    (b.left + b.right) as f64 / 2.0,
+                    (b.top + b.bottom) as f64 / 2.0,
+                ),
+                None => (centre_x, centre_y),
+            };
+            (
+                (cx - clip.width() as f64 / 2.0).round() as i32,
+                (cy - clip.height() as f64 / 2.0).round() as i32,
+            )
+        }
     };
     let created = match view.as_mut().rust_mut().doc.as_mut() {
         Some(doc) => pictura_render::paste_clip(
@@ -276,10 +278,11 @@ fn clipboard_paste(
     if created.is_empty() {
         return QString::default();
     }
-    if mode != PasteMode::Plain {
-        // The selection now lives on as the layer mask, as CS6 does.
-        let mut rust = view.as_mut().rust_mut();
-        rust.deselected_selection = rust.selection.take();
+    // CS6 drops the marquee after any paste; Reselect restores it. Into and
+    // Outside have already folded it into the layer mask.
+    let mut rust = view.as_mut().rust_mut();
+    if let Some(selection) = rust.selection.take() {
+        rust.deselected_selection = Some(selection);
     }
     view.as_mut().clear_link_sets();
     // The paste only adds a layer, so its bounded rect bounds the composite change.
