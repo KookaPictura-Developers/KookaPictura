@@ -70,6 +70,7 @@ private:
     QColor background_;
     QColor custom_ = Qt::white;
     bool updating_ = false;
+    bool clipboardHasImage_ = false;
     int unit_ = 0;
     // The size in pixels; the fields show it in `unit_`, rounded.
     double pixelWidth_ = 1280.0;
