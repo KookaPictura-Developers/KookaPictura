@@ -17,6 +17,18 @@ pub(super) fn run(
     w: u32,
     h: u32,
 ) -> Option<Vec<u8>> {
+    run_chunked(device, queue, plan, input, w, h, SUBMIT_BUDGET)
+}
+
+pub(super) fn run_chunked(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    plan: &Plan,
+    input: &[u8],
+    w: u32,
+    h: u32,
+    budget: u64,
+) -> Option<Vec<u8>> {
     let total = input.len();
     let padded = total.div_ceil(4) * 4;
     let u8_size = padded as u64;
@@ -84,7 +96,9 @@ pub(super) fn run(
             p.support = (*k / 2) as i32;
             p.norm = *norm;
             p.offset = *offset;
-            dispatch(device, queue, &p, &a, &b, &mid, &weights, &params, count);
+            dispatch(
+                device, queue, &p, &a, &b, &mid, &weights, &params, count, budget,
+            );
             &b
         }
         Plan::Separable(sp) => {
@@ -92,19 +106,27 @@ pub(super) fn run(
             p.ksize = sp.weights.len() as u32;
             p.support = sp.support;
             p.norm = sp.norm;
-            dispatch(device, queue, &p, &a, &b, &mid, &weights, &params, count);
+            dispatch(
+                device, queue, &p, &a, &b, &mid, &weights, &params, count, budget,
+            );
             p.mode = MODE_SEP_V;
-            dispatch(device, queue, &p, &a, &b, &mid, &weights, &params, count);
+            dispatch(
+                device, queue, &p, &a, &b, &mid, &weights, &params, count, budget,
+            );
             if let Combine::Unsharp { gain, thr } = sp.combine {
                 p.mode = MODE_COMBINE;
                 p.taps = COMBINE_UNSHARP;
                 p.gain = gain;
                 p.thr = thr;
-                dispatch(device, queue, &p, &a, &b, &mid, &weights, &params, count);
+                dispatch(
+                    device, queue, &p, &a, &b, &mid, &weights, &params, count, budget,
+                );
             } else if matches!(sp.combine, Combine::HighPass) {
                 p.mode = MODE_COMBINE;
                 p.taps = COMBINE_HIGH_PASS;
-                dispatch(device, queue, &p, &a, &b, &mid, &weights, &params, count);
+                dispatch(
+                    device, queue, &p, &a, &b, &mid, &weights, &params, count, budget,
+                );
             }
             &b
         }
@@ -112,23 +134,31 @@ pub(super) fn run(
             let mut p = Params::new(MODE_MOTION, w, h);
             p.angle = *angle;
             p.taps = *taps;
-            dispatch(device, queue, &p, &a, &b, &mid, &weights, &params, count);
+            dispatch(
+                device, queue, &p, &a, &b, &mid, &weights, &params, count, budget,
+            );
             &b
         }
         Plan::Surface { radius, threshold } => {
             let mut p = Params::new(MODE_SURFACE, w, h);
             p.support = *radius as i32;
             p.taps = *threshold;
-            dispatch(device, queue, &p, &a, &b, &mid, &weights, &params, count);
+            dispatch(
+                device, queue, &p, &a, &b, &mid, &weights, &params, count, budget,
+            );
             &b
         }
         Plan::Morph { radius, dilate } => {
             let mut p = Params::new(MODE_MORPH_H, w, h);
             p.support = *radius as i32;
             p.taps = u32::from(*dilate);
-            dispatch(device, queue, &p, &a, &b, &mid, &weights, &params, count);
+            dispatch(
+                device, queue, &p, &a, &b, &mid, &weights, &params, count, budget,
+            );
             p.mode = MODE_MORPH_V;
-            dispatch(device, queue, &p, &a, &b, &mid, &weights, &params, count);
+            dispatch(
+                device, queue, &p, &a, &b, &mid, &weights, &params, count, budget,
+            );
             &b
         }
         Plan::Median { radius } => {
@@ -137,7 +167,9 @@ pub(super) fn run(
             let r = (*radius).min(w.max(h));
             let mut p = Params::new(MODE_MEDIAN, w, h);
             p.support = r as i32;
-            dispatch(device, queue, &p, &a, &b, &mid, &weights, &params, count);
+            dispatch(
+                device, queue, &p, &a, &b, &mid, &weights, &params, count, budget,
+            );
             &b
         }
         Plan::OilPaint {
@@ -166,13 +198,21 @@ pub(super) fn run(
             p.half_z = half[2];
             p.shine_t = *shine_t;
             let npix = npix as u32;
-            dispatch(device, queue, &p, &a, &b, &mid, &weights, &params, npix);
+            dispatch(
+                device, queue, &p, &a, &b, &mid, &weights, &params, npix, budget,
+            );
             p.mode = MODE_OIL_AGG;
-            dispatch(device, queue, &p, &a, &b, &mid, &weights, &params, npix);
+            dispatch(
+                device, queue, &p, &a, &b, &mid, &weights, &params, npix, budget,
+            );
             p.mode = MODE_OIL_HEIGHT;
-            dispatch(device, queue, &p, &a, &b, &mid, &weights, &params, npix);
+            dispatch(
+                device, queue, &p, &a, &b, &mid, &weights, &params, npix, budget,
+            );
             p.mode = MODE_OIL_SHADE;
-            dispatch(device, queue, &p, &a, &b, &mid, &weights, &params, count);
+            dispatch(
+                device, queue, &p, &a, &b, &mid, &weights, &params, count, budget,
+            );
             &b
         }
     };
@@ -236,6 +276,9 @@ struct Params {
     shine_t: f32,
     stop: f32,
     stride: u32,
+    /// First invocation of the current chunk and one past its last.
+    base: u32,
+    end: u32,
 }
 
 impl Params {
@@ -267,6 +310,8 @@ impl Params {
             shine_t: 0.0,
             stop: 1.0,
             stride: 0,
+            base: 0,
+            end: 0,
         }
     }
 
@@ -299,12 +344,46 @@ impl Params {
             self.shine_t.to_bits(),
             self.stop.to_bits(),
             self.stride,
+            self.base,
+            self.end,
         ];
         for (i, v) in fields.iter().enumerate() {
             out[i * 4..i * 4 + 4].copy_from_slice(&v.to_le_bytes());
         }
         out
     }
+}
+
+/// Shader sample reads one submission may cost. The driver resets a GPU whose
+/// single job runs past its timeout (amdgpu: 10 s on the graphics queue), so a
+/// whole-image pass on a very large buffer is split into submissions of about
+/// this much work each.
+const SUBMIT_BUDGET: u64 = 1 << 27;
+
+/// Estimated sample reads per invocation of `p`'s mode (four bytes per word).
+fn invocation_cost(p: &Params) -> u64 {
+    let win = 2 * u64::from(p.support.max(0).unsigned_abs()) + 1;
+    let per_byte = match p.mode {
+        MODE_KERNEL => u64::from(p.ksize).pow(2),
+        MODE_SEP_H | MODE_SEP_V => u64::from(p.ksize),
+        MODE_MOTION => u64::from(p.taps),
+        MODE_SURFACE => win * win,
+        MODE_MORPH_H | MODE_MORPH_V => win,
+        // Eight binary-search steps, each a full window count.
+        MODE_MEDIAN => 8 * win * win,
+        MODE_OIL_AGG => (2 * u64::from(p.along) + 1) * (2 * u64::from(p.perp) + 1),
+        _ => 1,
+    };
+    4 * per_byte.max(1)
+}
+
+/// `[base, end)` invocation ranges covering `0..count`, each at most `budget`
+/// worth of `cost`-per-invocation work (never fewer than one workgroup).
+pub(super) fn chunks(count: u32, cost: u64, budget: u64) -> impl Iterator<Item = (u32, u32)> {
+    let step = (budget / cost.max(1)).clamp(64, u64::from(u32::MAX)) as u32;
+    (0..count)
+        .step_by(step as usize)
+        .map(move |base| (base, base.saturating_add(step).min(count)))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -318,12 +397,8 @@ fn dispatch(
     weights: &wgpu::Buffer,
     params_buf: &wgpu::Buffer,
     count: u32,
+    budget: u64,
 ) {
-    let (gx, gy) = crate::gpu::grid_2d(count, device.limits().max_compute_workgroups_per_dimension)
-        .expect("run() rejected a count past the 2-D workgroup limit");
-    let mut bytes = *params;
-    bytes.stride = gx * 64;
-    queue.write_buffer(params_buf, 0, &bytes.bytes());
     let res = filter_resources(device);
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("pictura-filter"),
@@ -339,19 +414,33 @@ fn dispatch(
             },
         ],
     });
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-        label: Some("pictura-filter"),
-    });
-    {
-        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+    // Each chunk is its own submission; the params write before it lands ahead
+    // of that submission's commands, so one uniform buffer serves every chunk.
+    for (base, end) in chunks(count, invocation_cost(params), budget) {
+        let (gx, gy) = crate::gpu::grid_2d(
+            end - base,
+            device.limits().max_compute_workgroups_per_dimension,
+        )
+        .expect("run() rejected a count past the 2-D workgroup limit");
+        let mut bytes = *params;
+        bytes.stride = gx * 64;
+        bytes.base = base;
+        bytes.end = end;
+        queue.write_buffer(params_buf, 0, &bytes.bytes());
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("pictura-filter"),
-            timestamp_writes: None,
         });
-        pass.set_pipeline(&res.pipeline);
-        pass.set_bind_group(0, &bind_group, &[]);
-        pass.dispatch_workgroups(gx, gy, 1);
+        {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("pictura-filter"),
+                timestamp_writes: None,
+            });
+            pass.set_pipeline(&res.pipeline);
+            pass.set_bind_group(0, &bind_group, &[]);
+            pass.dispatch_workgroups(gx, gy, 1);
+        }
+        queue.submit(Some(encoder.finish()));
     }
-    queue.submit(Some(encoder.finish()));
 }
 
 fn entry(binding: u32, buffer: &wgpu::Buffer) -> wgpu::BindGroupEntry<'_> {
@@ -386,6 +475,9 @@ fn readback(
     });
     let _ = device.poll(wgpu::PollType::wait_indefinitely());
     rx.recv().ok()?.ok()?;
+    if crate::gpu::device_lost() {
+        return None;
+    }
     let mapped = slice.get_mapped_range().ok()?;
     let out = mapped.to_vec();
     drop(mapped);
@@ -474,8 +566,8 @@ struct FParams {
     shine_t: f32,
     stop: f32,
     stride: u32,
-    _p1: u32,
-    _p2: u32,
+    base: u32,
+    end: u32,
     _p3: u32,
     _p4: u32,
     _p5: u32,
@@ -830,7 +922,8 @@ fn oil_shade(idx: u32) -> f32 {
 
 @compute @workgroup_size(64)
 fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let wi = gid.x + gid.y * p.stride;
+    let wi = p.base + gid.x + gid.y * p.stride;
+    if (wi >= p.end) { return; }
     let n = p.w * p.h;
     let total = 3u * n;
 

@@ -58,8 +58,8 @@ mod stroke;
 
 pub use stroke::{GpuPaintMode, GpuStroke, GpuStrokeParams};
 
+pub(crate) use backend::{device_lost, grid_2d, shared_device};
 use backend::{devices, Gpu};
-pub(crate) use backend::{grid_2d, shared_device};
 
 #[cfg(test)]
 use assemble::{
