@@ -29,13 +29,13 @@ int ImageView::singleChannel() const
     }
 }
 
-const QImage& ImageView::channelImage()
+const QImage& ImageView::channelImage(const QImage& image, qint64 key)
 {
     const int channel = singleChannel();
-    if (channelImageKey_ == image_.cacheKey() && channelImageMask_ == channelMask_) {
+    if (channelImageKey_ == key && channelImageMask_ == channelMask_) {
         return channelImage_;
     }
-    QImage source = image_.convertToFormat(QImage::Format_ARGB32);
+    QImage source = image.convertToFormat(QImage::Format_ARGB32);
     for (int y = 0; y < source.height(); ++y) {
         auto* row = reinterpret_cast<QRgb*>(source.scanLine(y));
         for (int x = 0; x < source.width(); ++x) {
@@ -45,7 +45,7 @@ const QImage& ImageView::channelImage()
         }
     }
     channelImage_ = source;
-    channelImageKey_ = image_.cacheKey();
+    channelImageKey_ = key;
     channelImageMask_ = channelMask_;
     return channelImage_;
 }

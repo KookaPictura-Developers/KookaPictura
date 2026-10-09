@@ -53,6 +53,7 @@ private slots:
     void undoDuringAStrokeCancelsIt();
     void moveDoesNotWarmTheBackground();
     void layerPropertiesRepaintOnlyTheLayer();
+    void aDocumentCanvasHoldsNoImage();
 
 private:
     pictura::test::ScopedStateHome stateHome_;
@@ -152,6 +153,21 @@ void LargeDocumentTest::layerPropertiesRepaintOnlyTheLayer()
     QCOMPARE(quint64(pictura::frame_revision(*f.view)), frame);
     QCOMPARE(f.view->sample_argb(40, 20), kRed);
     QCOMPARE(canvasPixel(*f.canvas, 40, 20), QRgb(kRed));
+}
+
+void LargeDocumentTest::aDocumentCanvasHoldsNoImage()
+{
+    QImage seed(90, 50, QImage::Format_RGB32);
+    seed.fill(Qt::white);
+    Fixture f(*window_, seed, QStringLiteral("pictura_canvas_no_image"));
+    QVERIFY2(f.ok(), "canvas fixture");
+    QVERIFY(paintLine(*f.view, 20.0));
+    QCOMPARE(f.canvas->documentSize(), QSize(90, 50));
+    QVERIFY2(!f.canvas->holdsImageForTest(), "the canvas kept a full-resolution image");
+    const QImage shown = f.canvas->image();
+    QCOMPARE(shown.size(), QSize(90, 50));
+    QCOMPARE(shown.pixel(40, 20), QRgb(kRed));
+    QCOMPARE(shown.pixel(40, 45), QRgb(kWhite));
 }
 
 QTEST_MAIN(LargeDocumentTest)

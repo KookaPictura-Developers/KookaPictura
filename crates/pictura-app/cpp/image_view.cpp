@@ -75,9 +75,11 @@ ImageView::ImageView(QWidget* parent)
 void ImageView::setImage(const QImage& image)
 {
     image_ = image;
+    docSize_ = image.size();
+    ++frameKey_;
     presentCache_.valid = false;
     userAdjusted_ = false;
-    if (image_.isNull()) {
+    if (docSize_.isEmpty()) {
         zoom_ = 1.0;
         offset_ = QPointF();
         update();
@@ -89,12 +91,12 @@ void ImageView::setImage(const QImage& image)
 
 void ImageView::applyInitialView()
 {
-    if (image_.isNull()) {
+    if (docSize_.isEmpty()) {
         return;
     }
-    if (image_.width() > width() || image_.height() > height()) {
-        const double fit = std::min(double(width()) / image_.width(),
-                                    double(height()) / image_.height())
+    if (docSize_.width() > width() || docSize_.height() > height()) {
+        const double fit = std::min(double(width()) / docSize_.width(),
+                                    double(height()) / docSize_.height())
                            * 0.95;
         zoom_ = std::clamp(fit, kMinZoom, kMaxZoom);
     } else {
@@ -109,67 +111,21 @@ void ImageView::applyInitialView()
 
 void ImageView::centreImage()
 {
-    offset_ = QPointF((width() - image_.width() * zoom_) / 2.0,
-                      (height() - image_.height() * zoom_) / 2.0);
+    offset_ = QPointF((width() - docSize_.width() * zoom_) / 2.0,
+                      (height() - docSize_.height() * zoom_) / 2.0);
     clampOffset();
 }
 
 void ImageView::clampOffset()
 {
-    if (image_.isNull()) {
+    if (docSize_.isEmpty()) {
         offset_ = QPointF();
         return;
     }
     const OffsetRange range = offsetRangeFor(
-        QSizeF(image_.width(), image_.height()), zoom_, QSizeF(width(), height()));
+        QSizeF(docSize_.width(), docSize_.height()), zoom_, QSizeF(width(), height()));
     offset_.setX(std::clamp(offset_.x(), range.minX, range.maxX));
     offset_.setY(std::clamp(offset_.y(), range.minY, range.maxY));
-}
-
-void ImageView::replaceImage(const QImage& image)
-{
-    image_ = image;
-    presentCache_.valid = false;
-    update();
-}
-
-void ImageView::blitRegion(const QImage& region, int x, int y)
-{
-    pictura::ScopedTimer blitTimer("cxx_blitRegion");
-    if (region.isNull() || region.width() <= 0 || region.height() <= 0 || image_.isNull()) {
-        return;
-    }
-    // Copy the region rows straight into the canvas instead of constructing a
-    // QPainter on the full-resolution image: a painter on a shared buffer
-    // detaches the whole image. Own the buffer once, then every later dab is an
-    // in-place row copy. CompositionMode_Source semantics (replace, clipped to
-    // the image rect) are reproduced by the clamped memcpy below.
-    if (!image_.isDetached()) {
-        pictura::ScopedTimer detachTimer("cxx_blit_detach_image");
-        image_ = image_.copy();
-    }
-    QImage src = region;
-    if (src.format() != image_.format()) {
-        src = src.convertToFormat(image_.format());
-    }
-    const int x0 = std::max(0, x);
-    const int y0 = std::max(0, y);
-    const int x1 = std::min(image_.width(), x + src.width());
-    const int y1 = std::min(image_.height(), y + src.height());
-    if (x1 > x0 && y1 > y0) {
-        const int bpp = std::max(1, image_.depth() / 8);
-        const int rowBytes = (x1 - x0) * bpp;
-        const int sx = x0 - x;
-        const int sy = y0 - y;
-        for (int row = 0; row < y1 - y0; ++row) {
-            std::memcpy(image_.scanLine(y0 + row) + x0 * bpp,
-                        src.constScanLine(sy + row) + sx * bpp, rowBytes);
-        }
-    }
-    // The cached level crop no longer matches the patched image; the next paint
-    // re-crops the updated pyramid level.
-    presentCache_.valid = false;
-    update();
 }
 
 void ImageView::zoomAt(const QPointF& cursor, int angleDelta)
@@ -212,15 +168,15 @@ void ImageView::zoomOut()
 void ImageView::fitOnScreen()
 {
     userAdjusted_ = false;
-    if (image_.isNull()) {
+    if (docSize_.isEmpty()) {
         return;
     }
-    const double fit = std::min(double(width()) / image_.width(),
-                                double(height()) / image_.height())
+    const double fit = std::min(double(width()) / docSize_.width(),
+                                double(height()) / docSize_.height())
                        * 0.95;
     zoom_ = std::clamp(fit, kMinZoom, kMaxZoom);
-    offset_ = QPointF((width() - image_.width() * zoom_) / 2.0,
-                      (height() - image_.height() * zoom_) / 2.0);
+    offset_ = QPointF((width() - docSize_.width() * zoom_) / 2.0,
+                      (height() - docSize_.height() * zoom_) / 2.0);
     clampOffset();
     emit zoomChanged(zoom_);
     emit viewChanged();
@@ -233,10 +189,10 @@ void ImageView::actualPixels()
     // appear and resize the canvas instead of refitting on the next resize.
     userAdjusted_ = true;
     zoom_ = 1.0;
-    offset_ = image_.isNull()
+    offset_ = docSize_.isEmpty()
                   ? QPointF()
-                  : QPointF((width() - image_.width()) / 2.0,
-                            (height() - image_.height()) / 2.0);
+                  : QPointF((width() - docSize_.width()) / 2.0,
+                            (height() - docSize_.height()) / 2.0);
     clampOffset();
     emit zoomChanged(zoom_);
     emit viewChanged();
@@ -621,7 +577,7 @@ int ImageView::presentLevelForZoom(double zoom, int levelCount)
 
 QRectF ImageView::visibleDocumentRect() const
 {
-    if (image_.isNull() || zoom_ <= 0.0) {
+    if (docSize_.isEmpty() || zoom_ <= 0.0) {
         return QRectF();
     }
     const QRectF view = viewRect();
@@ -629,7 +585,7 @@ QRectF ImageView::visibleDocumentRect() const
     const QPointF br = (view.bottomRight() - offset_) / zoom_;
     const QRectF visible(QPointF(std::min(tl.x(), br.x()), std::min(tl.y(), br.y())),
                          QPointF(std::max(tl.x(), br.x()), std::max(tl.y(), br.y())));
-    return visible.intersected(QRectF(0.0, 0.0, image_.width(), image_.height()));
+    return visible.intersected(QRectF(0.0, 0.0, docSize_.width(), docSize_.height()));
 }
 
 const QImage* ImageView::presentCrop(QRect& docRect)
@@ -640,7 +596,7 @@ const QImage* ImageView::presentCrop(QRect& docRect)
     // stroke in progress presents through the level crop too, not the
     // full-resolution image.
     // No provider or no crop source: nothing to present, and no cache to touch.
-    if (!presentLevelCropForTest_ || !levelProvider_.crop || image_.isNull()) {
+    if (!presentLevelCropForTest_ || !levelProvider_.crop || docSize_.isEmpty()) {
         return nullptr;
     }
     const int levels = levelProvider_.levelCount ? levelProvider_.levelCount() : 0;
@@ -682,7 +638,7 @@ const QImage* ImageView::presentCrop(QRect& docRect)
         return nullptr;
     }
     const QRect rect(lx0 * scale, ly0 * scale, (lx1 - lx0) * scale, (ly1 - ly0) * scale);
-    const qint64 key = image_.cacheKey();
+    const qint64 key = frameKey_;
     const quint64 revision =
         levelProvider_.canvasRevision ? levelProvider_.canvasRevision() : quint64(0);
     if (presentCacheEnabledForTest_ && presentCache_.valid && presentCache_.key == key
@@ -712,7 +668,7 @@ void ImageView::paintEvent(QPaintEvent*)
     pictura::ScopedTimer paintTimer("cxx_paintEvent");
     QPainter painter(this);
     painter.fillRect(rect(), canvasColor_);
-    if (image_.isNull()) {
+    if (docSize_.isEmpty()) {
         return;
     }
     // Everything below draws in the view frame; Rotate View turns it here.
@@ -721,7 +677,7 @@ void ImageView::paintEvent(QPaintEvent*)
 
     // Checkerboard in screen space, anchored to the document origin and
     // clipped to the document rect so it never spills onto the canvas.
-    const QRectF docRect(offset_, QSizeF(image_.width() * zoom_, image_.height() * zoom_));
+    const QRectF docRect(offset_, QSizeF(docSize_.width() * zoom_, docSize_.height() * zoom_));
     // One integer device rect for the document, rounded the way fillRect rounds,
     // so the checkerboard and the cached base share an exact boundary. Without
     // this the floor-sized present cache fell a pixel short at the right/bottom
@@ -740,7 +696,7 @@ void ImageView::paintEvent(QPaintEvent*)
     // Crop the document content (base, preview, overlays) to the image rect.
     // The brush ring below is drawn outside this scope so it can render past
     // the document edge while staying inside the canvas widget.
-    const QRectF docClip(0.0, 0.0, image_.width(), image_.height());
+    const QRectF docClip(0.0, 0.0, docSize_.width(), docSize_.height());
     painter.save();
     painter.setClipRect(docClip);
 
@@ -777,12 +733,17 @@ void ImageView::paintEvent(QPaintEvent*)
         painter.setRenderHint(QPainter::SmoothPixmapTransform,
                               rotation_ != 0.0 || smoothSamplingForZoom(zoom_));
         painter.setClipRect(docDevice);
-        if (singleChannel() >= 0) {
+        if (singleChannel() >= 0 && crop) {
+            const QRectF target(offset_.x() + cropDoc.x() * zoom_,
+                                offset_.y() + cropDoc.y() * zoom_, cropDoc.width() * zoom_,
+                                cropDoc.height() * zoom_);
+            painter.drawImage(target, channelImage(*crop, crop->cacheKey()));
+        } else if (singleChannel() >= 0 && !image_.isNull()) {
             const QRectF visible = visibleDocumentRect();
             painter.drawImage(QRectF(offset_.x() + visible.x() * zoom_,
                                      offset_.y() + visible.y() * zoom_, visible.width() * zoom_,
                                      visible.height() * zoom_),
-                              channelImage(), visible);
+                              channelImage(image_, image_.cacheKey()), visible);
         } else if (crop) {
             const QRectF target(offset_.x() + cropDoc.x() * zoom_,
                                 offset_.y() + cropDoc.y() * zoom_, cropDoc.width() * zoom_,
@@ -793,11 +754,20 @@ void ImageView::paintEvent(QPaintEvent*)
             // visible document, not the whole image resampled every paint. The
             // source rect bounds per-paint sampling to the viewport.
             const QRectF visible = visibleDocumentRect();
-            if (!visible.isEmpty()) {
+            if (!visible.isEmpty() && !image_.isNull()) {
                 const QRectF target(offset_.x() + visible.x() * zoom_,
                                     offset_.y() + visible.y() * zoom_, visible.width() * zoom_,
                                     visible.height() * zoom_);
                 painter.drawImage(target, image_, visible);
+            } else if (!visible.isEmpty() && levelProvider_.crop) {
+                // A document canvas: level 0, cropped to what is on screen.
+                const QRect area = visible.toAlignedRect();
+                const QImage part =
+                    levelProvider_.crop(0, area.x(), area.y(), area.width(), area.height());
+                painter.drawImage(QRectF(offset_.x() + area.x() * zoom_,
+                                         offset_.y() + area.y() * zoom_,
+                                         area.width() * zoom_, area.height() * zoom_),
+                                  part);
             }
         }
         painter.restore();
@@ -1079,7 +1049,7 @@ void ImageView::mouseReleaseEvent(QMouseEvent* event)
 
 void ImageView::resizeEvent(QResizeEvent* event)
 {
-    if (!userAdjusted_ && !image_.isNull()) {
+    if (!userAdjusted_ && !docSize_.isEmpty()) {
         applyInitialView();
     } else {
         clampOffset();

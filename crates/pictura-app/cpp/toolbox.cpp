@@ -771,7 +771,7 @@ QMenu* Toolbox::buildZoomMenu()
     // Every entry needs a document; grey them out with none open.
     connect(menu, &QMenu::aboutToShow, this, [this, menu]() {
         ImageView* canvas = controller_ ? controller_->canvas() : nullptr;
-        const bool enabled = canvas && !canvas->image().isNull();
+        const bool enabled = canvas && canvas->hasDocument();
         for (QAction* action : menu->actions()) {
             action->setEnabled(enabled && !action->isSeparator());
         }

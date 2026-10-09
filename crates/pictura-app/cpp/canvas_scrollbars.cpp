@@ -37,18 +37,16 @@ CanvasScrollBars::CanvasScrollBars(QWidget* parent)
         if (syncing_ || !view_) {
             return;
         }
-        const QImage& image = view_->image();
-        const OffsetRange range = offsetRangeFor(QSizeF(image.width(), image.height()),
-                                                 view_->zoom(), QSizeF(view_->size()));
+        const OffsetRange range = offsetRangeFor(QSizeF(view_->documentSize()), view_->zoom(),
+                                                 QSizeF(view_->size()));
         view_->setOffset(QPointF(range.minX + value, view_->offset().y()));
     });
     connect(vbar_, &QScrollBar::valueChanged, this, [this](int value) {
         if (syncing_ || !view_) {
             return;
         }
-        const QImage& image = view_->image();
-        const OffsetRange range = offsetRangeFor(QSizeF(image.width(), image.height()),
-                                                 view_->zoom(), QSizeF(view_->size()));
+        const OffsetRange range = offsetRangeFor(QSizeF(view_->documentSize()), view_->zoom(),
+                                                 QSizeF(view_->size()));
         view_->setOffset(QPointF(view_->offset().x(), range.minY + value));
     });
 }
@@ -87,9 +85,8 @@ void CanvasScrollBars::syncFromView()
     }
     syncing_ = true;
 
-    const QImage& image = view_->image();
     const double zoom = view_->zoom();
-    const QSizeF imageSize(image.width(), image.height());
+    const QSizeF imageSize(view_->documentSize());
     // ponytail: visibility is fixed on. The canvas is pannable within the
     // reveal margin, so an as-needed policy would remove the only pan
     // affordance; the bars stay a projection of the shared offset range.
