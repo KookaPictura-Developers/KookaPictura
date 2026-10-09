@@ -13,14 +13,28 @@ Snapshot for resuming after a context break. Update after each milestone.
 - Toolchain: Rust 1.98 (`rust-toolchain.toml`), system Qt **6.11.1**, cxx-qt
   **0.10.0**, wgpu **30.0.1**, lcms2 **6.2.0** (system Little CMS 2.19).
 - Oracles installed for tests: `psd-tools` 1.19, ImageMagick 7.1.2, `magick`.
-- Test suite: **2209 tests, 0 failed, 17 skipped** from
+- Test suite: **2717 tests, 0 failed, 18 skipped** from
   `cargo nextest run --workspace` (the skips are the `#[ignore]`d profiling/GPU
   probes; nextest also excludes the pre-existing ignored `pictura-render` doctest
   that `cargo test --workspace` reports separately). The C++ self-test reports
   **475 passed, 0 failed, 0 skipped** standalone; the unified report
   (`scripts/verify-fast.sh`, which reruns both plus the workspace probes and the
-  Qt Test suites) reports **2921 passed, 18 skipped, 0 failed**.
-- **In flight:** no feature branch. Open PRs are docs-only — #191 (README AI
+  Qt Test suites) reports **3534 passed, 19 skipped, 0 failed**.
+- **Large images** (#185, branch `perf/185-large-image-boundaries`, PR #257,
+  OpenSpec change `large-image-stroke-boundaries`, numbers in its `design.md`):
+  measured on a 16507×16196 PNG. History keeps a private copy of the current
+  state (plane stamps say which planes are known equal) and undo/redo/jump apply
+  tiles in place and repaint only the restored region; strokes paint the live
+  document in place, saving the tiles they touch; lock/colour label do not
+  composite and blend/opacity/fill repaint only the layer's bounds; the CPU
+  compositor bands per-pixel stacks; GPU composites write staging directly,
+  reuse their readback buffer and keep unchanged layer uploads resident; a
+  document canvas holds no full-resolution image. First dab 0.5–1.1 s → ~5 ms,
+  undo 6 s → ~30 ms, lock 2–3 s → ~5 ms, full-size blend change ~3 s → ~1.25 s
+  (GPU on). A software Vulkan adapter (lavapipe) counts as no GPU. Follow-up
+  ceilings: history capture still compares written planes whole (~82 ms on the
+  map) — photocraft-style tiled storage is the next step.
+- **In flight:** the large-image PR above. Open PRs are docs-only — #191 (README AI
   disclosure, real screenshot, `CLAUDE.md`, developer guide) and #135 (Fedora 43
   build instructions). The Paragraph Styles panel + Edit/Image menu commands
   (#76/#84 → #177), the CS6 adjustments/filters/Smart Filters port (#167 → #170),
