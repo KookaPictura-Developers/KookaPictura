@@ -8,6 +8,7 @@
 #include <QtCore/QStringList>
 #include <QtCore/QTimer>
 #include <QtCore/QtNumeric>
+#include <QtGui/QContextMenuEvent>
 #include <QtGui/QFontMetrics>
 #include <QtGui/QKeyEvent>
 #include <QtGui/QMouseEvent>
@@ -1051,6 +1052,13 @@ void ImageView::mouseMoveEvent(QMouseEvent* event)
         emit mouseMoved(widgetToImage(event->position()));
     }
     QWidget::mouseMoveEvent(event);
+}
+
+void ImageView::contextMenuEvent(QContextMenuEvent* event)
+{
+    // The frame decides which tool menu (if any) applies at this point.
+    emit contextMenuRequested(event->globalPos());
+    event->accept();
 }
 
 void ImageView::mouseReleaseEvent(QMouseEvent* event)

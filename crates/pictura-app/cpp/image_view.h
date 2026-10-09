@@ -24,6 +24,7 @@ class QPainter;
 
 class QMouseEvent;
 class QKeyEvent;
+class QContextMenuEvent;
 class QPaintEvent;
 class QResizeEvent;
 class QWheelEvent;
@@ -344,6 +345,9 @@ signals:
     void mousePressed(const QPointF& imagePos, int button, int modifiers);
     void mouseMoved(const QPointF& imagePos);
     void mouseReleased(const QPointF& imagePos);
+    // A right-click on the canvas; the frame shows the active tool's context
+    // menu at the global position (the Zoom tool's preset menu).
+    void contextMenuRequested(const QPoint& globalPos);
     // Free Transform Enter/Return (commit) and Escape (cancel).
     void transformCommitRequested();
     void transformCancelRequested();
@@ -354,6 +358,7 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void contextMenuEvent(QContextMenuEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void showEvent(QShowEvent* event) override;

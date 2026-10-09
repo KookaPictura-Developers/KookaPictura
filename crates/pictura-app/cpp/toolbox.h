@@ -111,6 +111,9 @@ public:
     void openFlyoutForTest(int group) { openSlotFlyoutForTest(group); }
     QMenu* slotMenuForTest(int group) const;
     QList<QAction*> slotMenuActionsForTest(int group) const;
+    // The Zoom tool's preset menu, also shown on a canvas right-click with the
+    // Zoom tool active.
+    QMenu* zoomMenu() const { return zoomMenu_; }
     bool hasFlyoutTriangleForTest(int group) const;
     int contentWidthForTest() const;
     int foregroundBackgroundWidthForTest() const;
@@ -132,6 +135,9 @@ private:
     // Freeform Pen, not its anchor tools); null cycles every member.
     void cycleGroup(int group, QChar key = QChar());
     void showSlotMenu(int group);
+    // The Zoom tool's right-click menu (Fit on Screen, 100%, 200%, Print Size,
+    // Zoom In, Zoom Out), built instead of a flyout since the group is single.
+    QMenu* buildZoomMenu();
     void closeOpenSlotMenu();
     QToolButton* slotButtonAt(const QPoint& globalPos) const;
     // Re-derive slot/icon geometry from the current screen's logical DPI.
@@ -152,6 +158,7 @@ private:
     QList<int> slotGroups_;
     QMap<int, QToolButton*> slotButtonByGroup_;
     QMap<int, QMenu*> slotMenuByGroup_;
+    QMenu* zoomMenu_ = nullptr;
     QGridLayout* grid_ = nullptr;
     QWidget* gridWidget_ = nullptr;
     QVBoxLayout* bodyLayout_ = nullptr;
