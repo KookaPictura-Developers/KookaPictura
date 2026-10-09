@@ -148,7 +148,9 @@ NewDocumentDialog::NewDocumentDialog(const QString& name, const QColor& backgrou
     buildUi();
     name_->setText(name);
     name_->selectAll();
-    documentType_->setCurrentIndex(kDefaultType);
+    // CS6 preloads the clipboard image's dimensions: open on Clipboard when
+    // one is available, otherwise on the default size.
+    documentType_->setCurrentIndex(clipboardHasImage_ ? kClipboardType : kDefaultType);
     updateImageSize();
 }
 
@@ -180,6 +182,7 @@ void NewDocumentDialog::buildUi()
         documentType_->addItem(QLatin1String(type.name));
     }
     const QImage clip = QGuiApplication::clipboard()->image();
+    clipboardHasImage_ = !clip.isNull();
     if (clip.isNull()) {
         enableItems(documentType_, [](int i) { return i != kClipboardType; });
     }

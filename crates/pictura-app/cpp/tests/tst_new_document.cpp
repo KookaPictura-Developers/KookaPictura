@@ -11,6 +11,8 @@
 #include "pictura_app/src/cxxqt_object/image_adjust/image_size.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/image_adjust/new_document.cxxqt.h"
 
+#include <QtGui/QClipboard>
+#include <QtGui/QImage>
 #include <QtGui/QStandardItemModel>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QDoubleSpinBox>
@@ -37,6 +39,7 @@ private slots:
     void presetsUnitsAndDepths();
     void createsEachModeWithOneState();
     void filledContentsMakeTheLockedBackground();
+    void clipboardImagePreselectsClipboardType();
 
 private:
     pictura::test::ScopedStateHome stateHome_;
@@ -169,6 +172,30 @@ void NewDocumentTest::filledContentsMakeTheLockedBackground()
                                          false));
         QCOMPARE(view.layer_kind(0), QStringLiteral("pixel"));
         QCOMPARE(view.layer_lock(0), 0);
+    }
+}
+
+void NewDocumentTest::clipboardImagePreselectsClipboardType()
+{
+    QGuiApplication::clipboard()->setImage(QImage(37, 21, QImage::Format_ARGB32));
+    {
+        pictura::NewDocumentDialog dialog(QStringLiteral("Untitled-1"), QColor(Qt::white));
+        auto* type = qobject_cast<QComboBox*>(dialog.controlForTest(QStringLiteral("newDocType")));
+        QVERIFY(type);
+        QCOMPARE(type->currentText(), QStringLiteral("Clipboard"));
+        QCOMPARE(dialog.widthPixels(), 37);
+        QCOMPARE(dialog.heightPixels(), 21);
+    }
+
+    QGuiApplication::clipboard()->clear();
+    {
+        pictura::NewDocumentDialog dialog(QStringLiteral("Untitled-1"), QColor(Qt::white));
+        auto* type = qobject_cast<QComboBox*>(dialog.controlForTest(QStringLiteral("newDocType")));
+        QVERIFY(type);
+        QCOMPARE(type->currentText(), QStringLiteral("Default Photoshop Size"));
+        QVERIFY(!itemEnabled(type, type->findText(QStringLiteral("Clipboard"))));
+        QCOMPARE(dialog.widthPixels(), 1280);
+        QCOMPARE(dialog.heightPixels(), 800);
     }
 }
 
