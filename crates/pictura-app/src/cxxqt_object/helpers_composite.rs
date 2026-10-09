@@ -1,6 +1,8 @@
 use cxx_qt_lib::{QImage, QImageFormat};
 use pictura_codec::buffer_to_srgb;
-use pictura_core::{BlendMode, ColorMode, Document, Layer, LayerMask, PixelBuffer, PsdRect};
+use pictura_core::{
+    BlendMode, ColorMode, Document, Layer, LayerMask, PixelBuffer, PsdRect, VectorMask,
+};
 #[cfg(test)]
 use pictura_paint::Stroke;
 use pictura_render::{Planes, PyramidLevel};
@@ -404,6 +406,53 @@ pub(super) fn mask_thumbnail_image(mask: &LayerMask, size: u32) -> Option<QImage
             let v = data[sy * width as usize + sx];
             let o = ((ty * tw + tx) * 4) as usize;
             rgba[o..o + 4].copy_from_slice(&[v, v, v, 255]);
+        }
+    }
+    Some(rgba_image(rgba, tw as i32, th as i32))
+}
+/// Downsample a vector mask's coverage into a `size`-bounded square (long edge
+/// `size`, aspect kept), replicating the value across RGB with the same
+/// white-shows / black-hides convention as [`mask_thumbnail_image`]. An absent,
+/// disabled, or all-open mask is fully white (permissive), matching the
+/// compositor. `ponytail:` CS6 strokes the path outline; this fills coverage.
+pub(super) fn vector_mask_thumbnail_image(
+    mask: &VectorMask,
+    doc_width: u32,
+    doc_height: u32,
+    size: u32,
+) -> Option<QImage> {
+    if doc_width == 0 || doc_height == 0 || size == 0 {
+        return None;
+    }
+    let (tw, th) = if doc_width >= doc_height {
+        (
+            size,
+            ((doc_height as u64 * size as u64) / doc_width as u64).max(1) as u32,
+        )
+    } else {
+        (
+            ((doc_width as u64 * size as u64) / doc_height as u64).max(1) as u32,
+            size,
+        )
+    };
+    let mut rgba = vec![0u8; (tw * th * 4) as usize];
+    for ty in 0..th {
+        let dy = (ty as u64 * doc_height as u64 / th as u64) as i32;
+        for tx in 0..tw {
+            let dx = (tx as u64 * doc_width as u64 / tw as u64) as i32;
+            let value = if !mask.has_fill() {
+                255
+            } else {
+                let inside = mask.inside(dx, dy);
+                let show = if mask.invert { !inside } else { inside };
+                if show {
+                    255
+                } else {
+                    0
+                }
+            };
+            let o = ((ty * tw + tx) * 4) as usize;
+            rgba[o..o + 4].copy_from_slice(&[value, value, value, 255]);
         }
     }
     Some(rgba_image(rgba, tw as i32, th as i32))

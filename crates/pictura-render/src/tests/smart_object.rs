@@ -17,11 +17,11 @@ fn solid_doc(w: u32, h: u32, rgb: [u8; 3]) -> Document {
     d
 }
 
-fn payload_of(rgb: [u8; 3]) -> Vec<u8> {
+pub(super) fn payload_of(rgb: [u8; 3]) -> Vec<u8> {
     write_psd(&solid_doc(2, 2, rgb)).expect("payload writes")
 }
 
-fn payload_2x2(colors: [[u8; 3]; 4]) -> Vec<u8> {
+pub(super) fn payload_2x2(colors: [[u8; 3]; 4]) -> Vec<u8> {
     let mut d = Document::new(2, 2, ColorMode::Rgb, BitDepth::Eight);
     for (i, c) in colors.iter().enumerate() {
         d.composite.data[i] = c[0];
@@ -39,7 +39,7 @@ fn absent_composite_layers_payload(rgb: (u8, u8, u8)) -> Vec<u8> {
     bytes[..38 + section_len].to_vec()
 }
 
-fn embedded(payload: Vec<u8>) -> SmartObject {
+pub(super) fn embedded(payload: Vec<u8>) -> SmartObject {
     SmartObject {
         filename: "source.psd".into(),
         kind: SmartObjectKind::Embedded,
@@ -48,7 +48,12 @@ fn embedded(payload: Vec<u8>) -> SmartObject {
     }
 }
 
-fn smart_layer(name: &str, r: PsdRect, so: SmartObject, channels: Vec<Channel>) -> Layer {
+pub(super) fn smart_layer(
+    name: &str,
+    r: PsdRect,
+    so: SmartObject,
+    channels: Vec<Channel>,
+) -> Layer {
     Layer {
         name: name.into(),
         rect: r,
@@ -58,7 +63,7 @@ fn smart_layer(name: &str, r: PsdRect, so: SmartObject, channels: Vec<Channel>) 
     }
 }
 
-fn green_proxy() -> Vec<Channel> {
+pub(super) fn green_proxy() -> Vec<Channel> {
     vec![
         Channel {
             id: 0,

@@ -353,6 +353,26 @@ private:
     // frame_menus_adjust.cpp: Layer > New Adjustment Layer, the sixteen
     // adjustment-layer kinds over the active document.
     void wireLayerAdjustments();
+    // frame_menus_adjust.cpp: Layer > Layer Content Options, which opens the
+    // active fill/adjustment layer's Properties page.
+    void wireLayerContentOptions();
+    // frame_menus_layer_ops.cpp: Layer > Arrange / Reverse, Merge Down, Delete
+    // Layer, and the non-destructive Stamp Visible / Stamp Selected.
+    void wireLayerArrangeStamp();
+    // frame_menus_layer_ops.cpp: Layer > Rasterize Shape and Copy/Paste Shape
+    // Attributes over the current shape layer.
+    void wireShapeLayerActions();
+    // frame_menus_layer_ops.cpp: the Layer > Vector Mask submenu and
+    // Layer > Rasterize > Vector Mask over the active layer.
+    void wireVectorMaskActions();
+    // frame_menus_matting.cpp: Layer > Matting (Defringe / Remove Black Matte /
+    // Remove White Matte) over the active layer.
+    void wireMattingActions();
+    // frame_menus_smart_object.cpp: Layer > Smart Objects > Reset Transform /
+    // Convert to Layers / New Smart Object via Copy over the active layer.
+    void wireAdvancedSmartObjectActions();
+    // frame_menus_smart_object.cpp: Layer > Smart Filter > Clear Smart Filters.
+    void wireSmartFilterActions();
     void alignSelectedLayers(int edge, bool toSelection);
     void distributeSelectedLayers(int edge);
     void updateAlignControls();

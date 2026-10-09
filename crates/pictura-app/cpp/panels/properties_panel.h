@@ -61,6 +61,10 @@ public:
     QComboBox* modeForTest() const { return mode_; }
     QComboBox* depthForTest() const { return depth_; }
     QString resolutionForTest() const;
+    // Whether the layer page's Mask section is currently shown.
+    bool maskSectionVisibleForTest() const;
+    // Whether the layer page's Vector Mask section is currently shown.
+    bool vectorMaskSectionVisibleForTest() const;
 
 signals:
     // The Canvas section's Mode / Bits per Channel menus; the window runs the
@@ -102,6 +106,22 @@ private:
     // Layer page.
     QFormLayout* info_ = nullptr;
     QWidget* layerPage_ = nullptr;
+    // Mask section, shown only when the active layer carries a layer mask.
+    QWidget* maskSection_ = nullptr;
+    QToolButton* maskEnable_ = nullptr;
+    QToolButton* maskDisable_ = nullptr;
+    QToolButton* maskLink_ = nullptr;
+    QToolButton* maskUnlink_ = nullptr;
+    QToolButton* maskDelete_ = nullptr;
+    QToolButton* maskApply_ = nullptr;
+    // Vector Mask section, shown only when the active layer carries a vector mask.
+    QWidget* vectorMaskSection_ = nullptr;
+    QToolButton* vectorMaskEnable_ = nullptr;
+    QToolButton* vectorMaskDisable_ = nullptr;
+    QToolButton* vectorMaskLink_ = nullptr;
+    QToolButton* vectorMaskUnlink_ = nullptr;
+    QToolButton* vectorMaskDelete_ = nullptr;
+    QToolButton* vectorMaskRasterize_ = nullptr;
 
     // Canvas section.
     QWidget* canvas_ = nullptr;

@@ -27,6 +27,34 @@ pub struct ShapeStroke {
     pub position: StrokePosition,
 }
 
+/// A shape layer's copyable appearance: the fill (or `None` when unfilled) and
+/// the stroke (or `None` when unstroked).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ShapeAttributes {
+    pub fill: Option<[u8; 3]>,
+    pub stroke: Option<ShapeStroke>,
+}
+
+/// The shape layer's copyable fill and stroke; `None` when the layer is not a
+/// shape layer.
+pub fn copy_shape_attributes(layer: &Layer) -> Option<ShapeAttributes> {
+    is_shape_layer(layer).then(|| ShapeAttributes {
+        fill: shape_fill(layer),
+        stroke: shape_stroke(layer),
+    })
+}
+
+/// Give the shape layer `attributes`, replacing its fill and stroke. False when
+/// the layer is not a shape layer; otherwise whether anything changed.
+pub fn paste_shape_attributes(layer: &mut Layer, attributes: &ShapeAttributes) -> bool {
+    if !is_shape_layer(layer) {
+        return false;
+    }
+    let fill = set_shape_fill(layer, attributes.fill);
+    let stroke = set_shape_stroke(layer, attributes.stroke.as_ref());
+    fill | stroke
+}
+
 /// The shape layer's fill colour, or `None` when it has no fill (Fill
 /// opacity 0) or is not a shape layer.
 pub fn shape_fill(layer: &Layer) -> Option<[u8; 3]> {
@@ -278,6 +306,56 @@ mod tests {
             "the empty effects block is dropped"
         );
         assert_eq!(rgb(&doc, 5, 10), [255, 255, 255]);
+    }
+
+    #[test]
+    fn copy_and_paste_attributes_transfer_fill_and_stroke() {
+        let (mut doc, path) = doc_with_square();
+        let stroke = ShapeStroke {
+            color: [0, 255, 0],
+            width: 2,
+            position: StrokePosition::Inside,
+        };
+        {
+            let layer = resolve_path_mut(&mut doc, &path).unwrap();
+            assert!(set_shape_fill(layer, Some([10, 20, 30])));
+            assert!(set_shape_stroke(layer, Some(&stroke)));
+        }
+        let attrs = copy_shape_attributes(resolve_path(&doc, &path).unwrap()).unwrap();
+        assert_eq!(
+            attrs,
+            ShapeAttributes {
+                fill: Some([10, 20, 30]),
+                stroke: Some(stroke),
+            }
+        );
+
+        // Change the target, then paste the captured appearance back.
+        {
+            let layer = resolve_path_mut(&mut doc, &path).unwrap();
+            assert!(set_shape_fill(layer, Some([1, 1, 1])));
+            assert!(set_shape_stroke(layer, None));
+            assert!(paste_shape_attributes(layer, &attrs));
+            assert_eq!(shape_fill(layer), Some([10, 20, 30]));
+            assert_eq!(shape_stroke(layer), Some(stroke));
+            assert!(
+                !paste_shape_attributes(layer, &attrs),
+                "an identical paste changes nothing"
+            );
+        }
+    }
+
+    #[test]
+    fn attributes_refuse_a_non_shape_layer() {
+        let (mut doc, _path) = doc_with_square();
+        let background = resolve_path_mut(&mut doc, "0").unwrap();
+        assert!(!is_shape_layer(background));
+        assert_eq!(copy_shape_attributes(background), None);
+        let attrs = ShapeAttributes {
+            fill: Some([1, 2, 3]),
+            stroke: None,
+        };
+        assert!(!paste_shape_attributes(background, &attrs));
     }
 
     #[test]

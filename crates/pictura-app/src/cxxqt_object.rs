@@ -30,6 +30,7 @@ mod impl_paint;
 mod impl_pictura_raw;
 mod impl_selection;
 mod impl_transform;
+mod layer_arrange;
 mod layer_style;
 mod layers_smart_filters;
 mod magnetic;
@@ -82,7 +83,6 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "regionBlitted"]
         fn region_blitted(self: Pin<&mut Self>, region: QImage, x: i32, y: i32);
-
         /// Try to load a PSD through `pictura-codec`. Returns `false` and falls back to a generated test image when the file is missing or unsupported.
         #[qinvokable]
         fn open(self: Pin<&mut Self>, path: &QString) -> bool;

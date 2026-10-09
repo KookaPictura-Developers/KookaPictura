@@ -10,9 +10,10 @@
 
 use pictura_adjust::{Adjustment, GradientFillParams, PatternFillParams};
 use pictura_codec::PatternPixels;
-use pictura_core::{Channel, Document, Layer};
+use pictura_core::{Channel, Document, Layer, PixelBuffer};
 
 use super::paths::{flatten_rows, resolve_path_mut};
+use super::shape_layer::is_shape_layer;
 
 /// A decodable fill-content layer: a `SoCo`/`GdFl`/`PtFl` block whose payload
 /// decodes to a fill [`Adjustment`]. Routing both this predicate and the bakers
@@ -61,8 +62,102 @@ pub fn rasterize_all_layers(doc: &mut Document) -> usize {
         .collect();
     paths
         .iter()
-        .filter(|path| rasterize_fill_content(doc, path) || crate::render_text_layer(doc, path))
+        .filter(|path| {
+            rasterize_shape(doc, path)
+                || rasterize_fill_content(doc, path)
+                || crate::render_text_layer(doc, path)
+        })
         .count()
+}
+
+/// Rasterize the shape layer at `path`: bake its fill cut to the outline, plus
+/// its stroke, into the layer's `0/1/2/-1` channels, then drop the shape/vector
+/// definition — the solid-fill adjustment, the `vmsk` vector mask, the
+/// live-shape `vogk` block, and the stroke/effects `lfx2` block. The name, rect,
+/// opacity, fill, blend mode, and layer mask are kept. Returns false (no
+/// mutation) when `path` does not resolve to a shape layer.
+pub fn rasterize_shape(doc: &mut Document, path: &str) -> bool {
+    let Some(layer) = super::paths::resolve_path(doc, path) else {
+        return false;
+    };
+    if !is_shape_layer(layer) {
+        return false;
+    }
+    // Render the layer's intrinsic appearance through the real compositor.
+    // Opacity, blend, and the layer mask stay live on the raster result, so the
+    // scratch copy neutralizes them; a shape's fill is binary (`0` or `255`), so
+    // leaving it as-is bakes the fill on/off correctly.
+    let mut scratch = Document::new(doc.width, doc.height, doc.mode, doc.depth);
+    let mut source = layer.clone();
+    source.opacity = 255;
+    source.mask = None;
+    source.blend = pictura_core::BlendMode::Normal;
+    scratch.layers = vec![source];
+    let rendered = crate::composite_rgba(&scratch);
+
+    let Some(layer) = resolve_path_mut(doc, path) else {
+        return false;
+    };
+    bake_from_composite(layer, &rendered);
+    layer.adjustment = None;
+    layer.vector_mask = None;
+    layer.extra_blocks.retain(|block| {
+        let key = block.key.as_slice();
+        key != b"vmsk" && key != b"vogk" && key != b"lfx2" && key != b"lrFX"
+    });
+    true
+}
+
+/// Copy the four planes of a document-sized `out` within `layer.rect` into the
+/// layer's color and alpha channels; out-of-canvas samples read as 0.
+fn bake_from_composite(layer: &mut Layer, out: &PixelBuffer) {
+    let rect = layer.rect;
+    let w = rect.width().max(0) as usize;
+    let h = rect.height().max(0) as usize;
+    if w == 0 || h == 0 {
+        layer.channels = Vec::new();
+        return;
+    }
+    let plane = out.width as usize * out.height as usize;
+    let mut planes = [
+        vec![0u8; w * h],
+        vec![0u8; w * h],
+        vec![0u8; w * h],
+        vec![0u8; w * h],
+    ];
+    for y in 0..h {
+        for x in 0..w {
+            let dx = rect.left + x as i32;
+            let dy = rect.top + y as i32;
+            if dx < 0 || dy < 0 || dx >= out.width as i32 || dy >= out.height as i32 {
+                continue;
+            }
+            let dst = y * w + x;
+            let src = dy as usize * out.width as usize + dx as usize;
+            for (index, data) in planes.iter_mut().enumerate() {
+                data[dst] = out.data[index * plane + src];
+            }
+        }
+    }
+    let [red, green, blue, alpha] = planes;
+    layer.channels = vec![
+        Channel {
+            id: 0,
+            data: red.into(),
+        },
+        Channel {
+            id: 1,
+            data: green.into(),
+        },
+        Channel {
+            id: 2,
+            data: blue.into(),
+        },
+        Channel {
+            id: -1,
+            data: alpha.into(),
+        },
+    ];
 }
 
 /// Overwrite the layer's color channels with `rgba` over its rect.

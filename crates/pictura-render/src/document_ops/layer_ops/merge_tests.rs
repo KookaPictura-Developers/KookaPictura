@@ -1,8 +1,8 @@
 //! Unit tests for the merge engine, split from `merge.rs` for the file-size budget.
 
 use super::merge::{
-    can_merge_scope, can_merge_target, flatten, is_visible_in_panel, merge_scope, MergeError,
-    MergeScope,
+    can_merge_scope, can_merge_target, flatten, is_visible_in_panel, merge_scope, stamp_scope,
+    MergeError, MergeScope, StampScope,
 };
 use super::properties::{delete_hidden_layers, select_similar};
 use pictura_core::{
@@ -579,4 +579,98 @@ fn delete_hidden_layers_is_noop_without_hidden_layers() {
     let before = doc.clone();
     assert_eq!(delete_hidden_layers(&mut doc), 0);
     assert_eq!(doc, before);
+}
+
+fn stamp_index(doc: &Document) -> usize {
+    doc.layers
+        .iter()
+        .position(|layer| layer.name.starts_with("Stamp"))
+        .expect("a stamp layer")
+}
+
+#[test]
+fn stamp_visible_adds_one_layer_and_keeps_originals() {
+    let lower = solid("lower", rect(4, 4), 10, 20, 30, 255);
+    let upper = solid("upper", rect(4, 4), 40, 50, 60, 255);
+    let mut doc = doc_with(4, 4, vec![lower.clone(), upper.clone()]);
+    let before = doc.layers.len();
+
+    let added = stamp_scope(&mut doc, StampScope::Visible("1"), "1").expect("stamp");
+    assert!(!added.is_empty());
+    assert_eq!(
+        doc.layers.len(),
+        before + 1,
+        "one new layer, originals kept"
+    );
+    assert!(doc.layers.iter().any(|layer| layer.name == "lower"));
+    assert!(doc.layers.iter().any(|layer| layer.name == "upper"));
+
+    // Higher index is the front, so the stamp sits directly above the anchor.
+    let anchor = doc
+        .layers
+        .iter()
+        .position(|layer| layer.name == "upper")
+        .unwrap();
+    assert_eq!(stamp_index(&doc), anchor + 1);
+    assert_eq!(doc.layers[stamp_index(&doc)].rect, rect(4, 4));
+
+    let expected = inputs_composite(vec![lower, upper], &doc, rect(4, 4));
+    assert_eq!(node_interleaved(&doc.layers[stamp_index(&doc)]), expected);
+}
+
+#[test]
+fn stamp_visible_skips_and_preserves_hidden_layers() {
+    let mut hidden = solid("hidden", rect(4, 4), 200, 0, 0, 255);
+    hidden.visible = false;
+    let visible = solid("visible", rect(4, 4), 0, 200, 0, 255);
+    let mut doc = doc_with(4, 4, vec![hidden, visible.clone()]);
+
+    stamp_scope(&mut doc, StampScope::Visible("1"), "1").expect("stamp");
+    assert_eq!(doc.layers.len(), 3);
+    assert!(
+        doc.layers[0].name == "hidden",
+        "hidden layer survives in place"
+    );
+
+    let expected = inputs_composite(vec![visible], &doc, rect(4, 4));
+    assert_eq!(node_interleaved(&doc.layers[stamp_index(&doc)]), expected);
+}
+
+#[test]
+fn stamp_visible_refuses_hidden_active() {
+    let mut hidden = solid("hidden", rect(4, 4), 200, 0, 0, 255);
+    hidden.visible = false;
+    let mut doc = doc_with(
+        4,
+        4,
+        vec![hidden, solid("visible", rect(4, 4), 0, 0, 0, 255)],
+    );
+    let before = doc.clone();
+    assert!(stamp_scope(&mut doc, StampScope::Visible("0"), "0").is_none());
+    assert_eq!(doc, before, "refusal leaves the document unchanged");
+}
+
+#[test]
+fn stamp_selected_composites_only_the_selection() {
+    let lower = solid("a", rect(4, 4), 10, 0, 0, 255);
+    let middle = solid("b", rect(4, 4), 0, 10, 0, 255);
+    let top = solid("c", rect(4, 4), 0, 0, 10, 255);
+    let mut doc = doc_with(4, 4, vec![lower.clone(), middle.clone(), top]);
+
+    let paths = vec!["0".to_string(), "1".to_string()];
+    stamp_scope(&mut doc, StampScope::Selected(&paths), "2").expect("stamp");
+    assert_eq!(doc.layers.len(), 4);
+    assert_eq!(stamp_index(&doc), 3, "inserted above the active top layer");
+
+    let expected = inputs_composite(vec![lower, middle], &doc, rect(4, 4));
+    assert_eq!(node_interleaved(&doc.layers[stamp_index(&doc)]), expected);
+}
+
+#[test]
+fn stamp_refuses_empty_selection_and_bad_anchor() {
+    let mut doc = doc_with(4, 4, vec![solid("a", rect(4, 4), 1, 2, 3, 255)]);
+    let before = doc.clone();
+    assert!(stamp_scope(&mut doc, StampScope::Selected(&[]), "0").is_none());
+    assert!(stamp_scope(&mut doc, StampScope::Visible("0"), "9").is_none());
+    assert_eq!(doc, before, "both refusals leave the document unchanged");
 }

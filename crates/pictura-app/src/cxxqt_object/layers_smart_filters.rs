@@ -66,6 +66,30 @@ pub mod ffi {
         /// smart object so filters can attach. Records one "Convert for Smart
         /// Filters" state on success; false (no state) for an ineligible target.
         fn convert_for_smart_filters(view: Pin<&mut PictureView>, path: &QString) -> bool;
+
+        /// Delete filter `i` on `layer_path`, recomposite, and record one
+        /// "Delete Smart Filter" state. False and no state for an out-of-range
+        /// index, a non-smart layer, or a codec refusal.
+        fn delete_layer_smart_filter(
+            view: Pin<&mut PictureView>,
+            layer_path: &QString,
+            i: i32,
+        ) -> bool;
+
+        /// Remove every smart filter on `layer_path`, recomposite, and record one
+        /// "Clear Smart Filters" state. False and no state when the layer has no
+        /// filters.
+        fn clear_layer_smart_filters(view: Pin<&mut PictureView>, layer_path: &QString) -> bool;
+
+        /// Move filter `from` to `to` on `layer_path` (panel order is apply
+        /// order), recomposite, and record one "Reorder Smart Filters" state.
+        /// False and no state when the move is a no-op or out of range.
+        fn reorder_layer_smart_filter(
+            view: Pin<&mut PictureView>,
+            layer_path: &QString,
+            from: i32,
+            to: i32,
+        ) -> bool;
     }
 }
 
@@ -229,6 +253,59 @@ fn convert_for_smart_filters(mut view: Pin<&mut PictureView>, path: &QString) ->
     changed
 }
 
+fn delete_layer_smart_filter(
+    mut view: Pin<&mut PictureView>,
+    layer_path: &QString,
+    i: i32,
+) -> bool {
+    let path = layer_path.to_string();
+    let changed = match view.as_mut().rust_mut().doc.as_mut() {
+        Some(doc) => pictura_render::delete_smart_filter(doc, base_path(&path), i.max(0) as usize),
+        None => false,
+    };
+    if changed {
+        view.as_mut().recomposite();
+        view.as_mut().record("Delete Smart Filter");
+    }
+    changed
+}
+
+fn clear_layer_smart_filters(mut view: Pin<&mut PictureView>, layer_path: &QString) -> bool {
+    let path = layer_path.to_string();
+    let changed = match view.as_mut().rust_mut().doc.as_mut() {
+        Some(doc) => pictura_render::clear_smart_filters(doc, base_path(&path)),
+        None => false,
+    };
+    if changed {
+        view.as_mut().recomposite();
+        view.as_mut().record("Clear Smart Filters");
+    }
+    changed
+}
+
+fn reorder_layer_smart_filter(
+    mut view: Pin<&mut PictureView>,
+    layer_path: &QString,
+    from: i32,
+    to: i32,
+) -> bool {
+    if from == to || from < 0 || to < 0 {
+        return false;
+    }
+    let path = layer_path.to_string();
+    let changed = match view.as_mut().rust_mut().doc.as_mut() {
+        Some(doc) => {
+            pictura_render::reorder_smart_filters(doc, base_path(&path), from as usize, to as usize)
+        }
+        None => false,
+    };
+    if changed {
+        view.as_mut().recomposite();
+        view.as_mut().record("Reorder Smart Filters");
+    }
+    changed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -360,5 +437,45 @@ mod tests {
         );
         assert_eq!(history.count(), 1, "exactly one history state");
         assert_eq!(history.label(0), "Smart Filter Visibility");
+    }
+
+    #[test]
+    fn add_reorder_delete_and_clear_reach_the_preserved_descriptor() {
+        let ids = |doc: &Document| {
+            pictura_render::resolve_path(doc, "0")
+                .and_then(|layer| layer.smart_object.as_ref())
+                .map(|so| {
+                    so.smart_filters
+                        .iter()
+                        .map(|f| f.filter_id)
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+        };
+        let mut doc = preserved_smart_filter_doc();
+        assert!(pictura_render::add_smart_filter(
+            &mut doc,
+            "0",
+            4242,
+            "Second",
+            &[]
+        ));
+        assert_eq!(ids(&doc), vec![2683, 4242]);
+
+        assert!(pictura_render::reorder_smart_filters(&mut doc, "0", 0, 1));
+        assert_eq!(ids(&doc), vec![4242, 2683]);
+
+        assert!(pictura_render::delete_smart_filter(&mut doc, "0", 0));
+        assert_eq!(ids(&doc), vec![2683]);
+        let back = pictura_codec::read_psd(&pictura_codec::write_psd(&doc).expect("writes"))
+            .expect("re-reads");
+        assert_eq!(
+            ids(&back),
+            vec![2683],
+            "the edit survives a write and re-read"
+        );
+
+        assert!(pictura_render::clear_smart_filters(&mut doc, "0"));
+        assert!(ids(&doc).is_empty());
     }
 }

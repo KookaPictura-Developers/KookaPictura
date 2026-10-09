@@ -1,11 +1,14 @@
 #include <QtTest/QtTest>
 
+#include <QtCore/QCoreApplication>
 #include <QtCore/QStringList>
+#include <QtGui/QAction>
 #include <QtWidgets/QTreeView>
 
 #include <functional>
 
 #include "frame.h"
+#include "commands.h"
 #include "panels/layers_panel.h"
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
 #include "pictura_app/src/cxxqt_object/layers_smart_filters.cxxqt.h"
@@ -19,6 +22,7 @@ private slots:
     void initTestCase();
     void cleanup();
     void treeShowsGroupAndToggles();
+    void clearMenuCommandRemovesFilters();
 
 private:
     pictura::test::ScopedStateHome stateHome_;
@@ -101,6 +105,40 @@ void LayersSmartFiltersTest::treeShowsGroupAndToggles()
     QVERIFY(panel->clickSmartFilterEyeForTest(group));
     QCoreApplication::processEvents();
     QVERIFY(!pictura::layer_smart_filters_enabled(*view, path));
+}
+
+void LayersSmartFiltersTest::clearMenuCommandRemovesFilters()
+{
+    QVERIFY(window_->newDocument(QStringLiteral("ClearFilters"), 16, 16, QStringLiteral("rgb"), 8,
+                                 QStringLiteral("white")));
+    pictura::PictureView* view = window_->activeView();
+    pictura::LayersPanel* panel =
+        window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    QVERIFY(view && panel);
+
+    const QString path = view->add_solid_fill(0xff808080u);
+    QVERIFY(view->rasterize_fill_content(path));
+    QVERIFY(view->apply_pictura_raw_filter(path, 20.0, 0.0, 1.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                           0.0));
+    QCOMPARE(pictura::layer_smart_filter_count(*view, path), 1);
+
+    panel->setView(view);
+    panel->refresh();
+    QVERIFY(panel->selectRowForTest(path));
+    QCoreApplication::processEvents();
+
+    pictura::CommandRegistry* registry = window_->registry();
+    QVERIFY(registry != nullptr);
+    QAction* clear = registry->action(QString::fromLatin1(pictura::command_ids::LayerSmartFiltersClear));
+    QVERIFY(clear != nullptr);
+    registry->refresh();
+    QVERIFY2(clear->isEnabled(), "Clear Smart Filters is enabled when the layer has filters");
+
+    QVERIFY(registry->dispatch(
+        QString::fromLatin1(pictura::command_ids::LayerSmartFiltersClear)));
+    QCOMPARE(pictura::layer_smart_filter_count(*view, path), 0);
+    registry->refresh();
+    QVERIFY2(!clear->isEnabled(), "Clear Smart Filters disables once the stack is empty");
 }
 
 QTEST_MAIN(LayersSmartFiltersTest)

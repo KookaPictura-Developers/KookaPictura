@@ -2423,9 +2423,9 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
             QStringLiteral("layersStripMask"),   QStringLiteral("layersStripFillAdjustment"),
             QStringLiteral("layersStripGroup"),  QStringLiteral("layersStripNewLayer"),
             QStringLiteral("layersStripDelete")};
-        // link/fx/mask have icons but no behaviour yet.
+        // link/fx have icons but no behaviour yet.
         const QSet<QString> stripDisabled = {
-            QStringLiteral("link"), QStringLiteral("fx"), QStringLiteral("mask")};
+            QStringLiteral("link"), QStringLiteral("fx")};
         QWidget* assetsLayers = frame.findChild<QWidget*>(QStringLiteral("layersPanel"));
         int stripOk = 0;
         QString stripWrong;

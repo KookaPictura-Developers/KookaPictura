@@ -333,6 +333,56 @@ fn rasterize_refuses_colour_noise_gradient() {
 }
 
 #[test]
+fn rasterize_shape_bakes_fill_and_drops_the_shape() {
+    use pictura_core::shape::{outline_in_box, ShapeKind, ShapeOptions};
+    let mut d = doc(20, 20, Vec::new());
+    let square = outline_in_box(
+        ShapeOptions::new(ShapeKind::Rectangle, 0.0, 3),
+        (5.0, 5.0, 10.0, 10.0),
+    )
+    .unwrap();
+    let path = add_shape_layer(&mut d, "", [0, 0, 255, 255], "Rectangle", &square, None);
+    assert!(is_shape_layer(resolve_path(&d, &path).unwrap()));
+    let before = composite_rgba(&d);
+
+    assert!(rasterize_shape(&mut d, &path));
+    let layer = resolve_path(&d, &path).unwrap();
+    assert!(layer.adjustment.is_none(), "fill data is cleared");
+    assert!(
+        layer.extra_block(b"vmsk").is_none(),
+        "vector mask is dropped"
+    );
+    assert!(layer.vector_mask.is_none(), "the decoded mask is cleared");
+    assert!(!is_shape_layer(layer), "the layer is no longer a shape");
+    assert_eq!(layer.name, "Rectangle 1", "the name is kept");
+
+    let after = composite_rgba(&d);
+    assert_eq!(before.data, after.data, "the appearance is unchanged");
+
+    assert!(!rasterize_shape(&mut d, &path), "a second run refuses");
+    assert!(!rasterize_shape(&mut d, "99"), "an unknown path refuses");
+}
+
+#[test]
+fn rasterize_shape_refuses_a_plain_layer() {
+    let mut d = doc(
+        2,
+        2,
+        vec![solid(
+            "pix",
+            full(2, 2),
+            (9, 9, 9),
+            255,
+            BlendMode::Normal,
+            255,
+        )],
+    );
+    let before = d.clone();
+    assert!(!rasterize_shape(&mut d, "0"));
+    assert_eq!(d, before, "refusal leaves the document unchanged");
+}
+
+#[test]
 fn rasterize_all_layers_rasterizes_a_type_layer() {
     let mut d = doc(200, 80, Vec::new());
     add_solid_fill(&mut d, "", [1, 1, 1, 255]);

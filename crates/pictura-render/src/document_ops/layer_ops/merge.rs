@@ -12,10 +12,12 @@ use pictura_core::{
     BlendMode, Channel, ColorLabel, Document, Layer, LockFlags, PixelBuffer, PsdRect,
 };
 
+use super::create::{add_raster_layer_from_rgba, next_layer_name};
 use super::paths::{
     container_mut, container_of_mut, flatten_rows, format_segments, parse_path, resolve_path,
     selected_paths,
 };
+use super::properties::move_path_to;
 
 /// Which layers a merge consumes. The app resolves panel selection to paths and
 /// passes them here; `pictura-render` cannot read the panel state.
@@ -260,11 +262,13 @@ fn merge_selected(doc: &mut Document, paths: &[String]) -> Result<MergeOutcome, 
     )
 }
 
-fn merge_visible(doc: &mut Document, active: &str) -> Result<MergeOutcome, MergeError> {
+/// The eye-visible nodes in panel (topmost-first) order, excluding any node
+/// whose ancestor is also visible. `None` when the active layer is hidden or
+/// nothing is visible.
+fn visible_nodes(doc: &Document, active: &str) -> Option<Vec<(Vec<usize>, String)>> {
     if !is_visible_in_panel(doc, active) {
-        return Err(MergeError::NoSelection);
+        return None;
     }
-
     // `flatten_rows` is topmost-first, so an ancestor always precedes its
     // descendants: keep a visible node only when no kept node contains it.
     let mut selected: Vec<(Vec<usize>, String)> = Vec::new();
@@ -283,9 +287,11 @@ fn merge_visible(doc: &mut Document, active: &str) -> Result<MergeOutcome, Merge
         }
         selected.push((segments, path));
     }
-    if selected.is_empty() {
-        return Err(MergeError::NoSelection);
-    }
+    (!selected.is_empty()).then_some(selected)
+}
+
+fn merge_visible(doc: &mut Document, active: &str) -> Result<MergeOutcome, MergeError> {
+    let selected = visible_nodes(doc, active).ok_or(MergeError::NoSelection)?;
 
     let (anchor_segments, anchor_path) = (selected[0].0.clone(), selected[0].1.clone());
     let anchor = resolve_path(doc, &anchor_path).ok_or(MergeError::NoSelection)?;
@@ -693,4 +699,84 @@ fn fold_clipping(base: &Layer, sibling: &mut Layer) {
                 ((current as u32 * base_a as u32) / 255) as u8;
         }
     }
+}
+
+// --- stamping ---------------------------------------------------------------
+
+/// Which layers [`stamp_scope`] flattens into a new layer. `Visible` anchors on
+/// the active layer's panel visibility; `Selected` uses the panel selection.
+#[derive(Debug)]
+pub enum StampScope<'a> {
+    Visible(&'a str),
+    Selected(&'a [String]),
+}
+
+/// Composite the chosen layers and insert the result as a NEW raster layer
+/// directly above `anchor`, leaving every original intact. `Visible` uses the
+/// same eye-visible selection as [`merge_scope`]'s `Visible` scope; `Selected`
+/// uses the given paths. Returns the new layer's path, or `None` when the
+/// document is empty, the anchor does not resolve, or no input is eligible.
+pub fn stamp_scope(doc: &mut Document, scope: StampScope<'_>, anchor: &str) -> Option<String> {
+    if doc.width == 0 || doc.height == 0 || resolve_path(doc, anchor).is_none() {
+        return None;
+    }
+    // Bottom-first stacking order for the scratch composite.
+    let mut inputs: Vec<Layer> = match scope {
+        StampScope::Visible(active) => {
+            let mut nodes = visible_nodes(doc, active)?;
+            nodes.reverse();
+            nodes
+                .iter()
+                .filter_map(|(_, path)| resolve_path(doc, path).cloned())
+                .collect()
+        }
+        StampScope::Selected(paths) => {
+            let refs: Vec<&str> = paths.iter().map(String::as_str).collect();
+            let selected = selected_paths(doc, &refs, false);
+            if selected.is_empty() {
+                return None;
+            }
+            let mut nodes: Vec<Layer> = selected
+                .iter()
+                .filter_map(|(_, path)| resolve_path(doc, path).cloned())
+                .collect();
+            nodes.reverse();
+            nodes
+        }
+    };
+    if inputs.is_empty() {
+        return None;
+    }
+
+    let mut scratch = Document::new(doc.width, doc.height, doc.mode, doc.depth);
+    scratch.layers = std::mem::take(&mut inputs);
+    let buffer = crate::composite_rgba(&scratch);
+
+    let name = next_layer_name(doc, "Stamp");
+    let path = add_raster_layer_from_rgba(doc, &name, doc.width, doc.height, &packed_rgba(&buffer));
+    if path.is_empty() {
+        return None;
+    }
+    if !move_path_to(doc, &path, anchor, 0) {
+        if let Some(segments) = parse_path(&path) {
+            if let Some((container, index)) = container_mut(doc, &segments) {
+                container.remove(index);
+            }
+        }
+        return None;
+    }
+    Some(path)
+}
+
+/// Pack a planar RGBA `PixelBuffer` (planes R, G, B, A) into RGBA8888 bytes.
+fn packed_rgba(buffer: &PixelBuffer) -> Vec<u8> {
+    let plane = buffer.width as usize * buffer.height as usize;
+    let mut out = Vec::with_capacity(plane * 4);
+    for index in 0..plane {
+        out.push(buffer.data[index]);
+        out.push(buffer.data[plane + index]);
+        out.push(buffer.data[2 * plane + index]);
+        out.push(buffer.data[3 * plane + index]);
+    }
+    out
 }

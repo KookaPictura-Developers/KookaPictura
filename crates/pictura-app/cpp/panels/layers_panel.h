@@ -72,8 +72,20 @@ public:
     int thumbSizeIndexForTest() const;
     int thumbContentsForTest() const;
     bool expandNewEffectsForTest() const;
+    bool addCopyOnDuplicateForTest() const;
+    bool useDefaultMasksOnFillForTest() const;
     void setOptionsForTest(int size, int contents, bool expand);
+    void setOptionFlagsForTest(bool addCopy, bool useDefaultMasks);
     QStringList rowMenuTextsForTest(const QString& kind = QStringLiteral("pixel"));
+    bool rowMenuEnabledForTest(const QString& kind, const QString& text);
+    QString rowMenuToolTipForTest(const QString& kind, const QString& text);
+    QStringList shapeRowMenuTextsForTest();
+    bool shapeRowMenuEnabledForTest(const QString& text);
+    QStringList smartRowMenuTextsForTest();
+    bool smartRowMenuEnabledForTest(const QString& text);
+    // Lock-strip toggles by flag: 0 transparency, 1 pixels, 2 position, 3 all.
+    bool lockToggleEnabledForTest(int flag) const;
+    bool lockToggleCheckedForTest(int flag) const;
     QStringList colorLabelTextsForTest();
     int lockButtonCountForTest() const;
     int opacityPercentForTest() const;
@@ -139,8 +151,23 @@ public:
     void setBackgroundConvertForTest(bool accept, const QString& name, int color);
     bool lockNestingHiddenForTest() const;
     bool rowLinkedForTest(const QString& path) const;
+    bool rowMaskLinkedForTest(const QString& path) const;
+    bool rowMaskDisabledForTest(const QString& path) const;
+    // Click the link glyph / Shift-click the mask thumbnail of `path`'s row as a
+    // user would; false when the row shows no mask.
+    bool clickLinkGlyphForTest(const QString& path);
+    bool shiftClickMaskThumbnailForTest(const QString& path);
+    bool rowHasVectorMaskForTest(const QString& path) const;
+    bool rowVectorMaskLinkedForTest(const QString& path) const;
+    bool rowVectorMaskDisabledForTest(const QString& path) const;
+    // Click the vector link glyph / Shift-click the vector thumbnail of
+    // `path`'s row as a user would; false when the row shows no vector mask.
+    bool clickVectorLinkGlyphForTest(const QString& path);
+    bool shiftClickVectorMaskThumbnailForTest(const QString& path);
     bool rowPlacedForTest(const QString& path) const;
     bool rowShapeForTest(const QString& path) const;
+    bool rowSmartObjectForTest(const QString& path) const;
+    QColor rowLabelChipColorForTest(const QString& path) const;
     // Alt-click the line under `path`'s row, as a user would.
     void altClickBelowRowForTest(const QString& path);
     // Click the eye of a synthetic Smart Filters row (the group header or a
@@ -204,7 +231,9 @@ private:
     void selectLayer(int index);
     void selectPath(const QString& path);
     void showContextMenu(const QPoint& pos);
-    void populateRowMenu(QMenu& menu, const QString& path, int color, const QString& kind);
+    void populateRowMenu(QMenu& menu, const QString& path, int color, const QString& kind,
+                         bool shape = false, bool smart = false);
+    bool performRowAction(const QString& id, const QString& path);
     void showEyeMenu(const QPoint& pos, const QModelIndex& index);
     void addColorLabelActions(QMenu* menu, int currentLabel);
     void openPanelOptions();
@@ -246,6 +275,8 @@ private:
     int thumbSizeIndex_ = 2;
     int thumbContents_ = 0;
     bool expandNewEffects_ = true;
+    bool addCopyOnDuplicate_ = true;
+    bool useDefaultMasksOnFill_ = true;
     bool soloActive_ = false;
     QString soloPath_;
     QHash<QString, bool> soloSnapshot_;

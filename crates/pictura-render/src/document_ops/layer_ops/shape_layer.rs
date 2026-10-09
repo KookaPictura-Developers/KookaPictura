@@ -43,6 +43,12 @@ pub fn is_shape_layer(layer: &Layer) -> bool {
     layer.extra_block(VMSK).is_some() && is_fill_content_layer(layer)
 }
 
+/// Whether the layer forces Lock Transparency and Lock Image on in the Layers
+/// panel (CS6: type and shape layers).
+pub fn has_forced_locks(layer: &Layer) -> bool {
+    is_shape_layer(layer) || layer.is_type()
+}
+
 /// The shape layer's outline as editable subpaths (document pixels); `None`
 /// when the layer is not a shape layer or its `vmsk` is malformed.
 pub fn layer_shape_paths(layer: &Layer, width: u32, height: u32) -> Option<Vec<Subpath>> {

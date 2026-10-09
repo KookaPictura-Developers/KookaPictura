@@ -11,9 +11,11 @@
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QMenu>
 #include <QtWidgets/QMenuBar>
+#include <QtWidgets/QSpinBox>
 #include <QtWidgets/QToolButton>
 
 #include "commands.h"
+#include "defringe_dialog.h"
 #include "frame.h"
 #include "icons.h"
 #include "image_view.h"
@@ -21,7 +23,10 @@
 #include "panels/panel_column.h"
 #include "panels/panel_column_internal.h"
 #include "panels/panel_group.h"
+#include "panels/properties_panel.h"
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/impl_layers/vector_masks.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/shapes.cxxqt.h"
 #include "preferences_dialog.h"
 #include "session.h"
 #include "theme.h"
@@ -38,6 +43,8 @@ private slots:
     void menus();
     void dispatch();
     void menusPanel();
+    void layerMaskMenu();
+    void vectorMaskMenu();
     void menuCount();
     void menubarClear();
     void panelMenusToolsIcons();
@@ -49,6 +56,11 @@ private slots:
     void selfAnchorDock();
     void layerAdjustmentMenu();
     void layerMenuGroupsAndDelete();
+    void layerContentOptions();
+    void layerArrangeStamp();
+    void layerLockCommands();
+    void shapeLayerCommands();
+    void layerMattingCommands();
     void railModeResizeGrip();
     void menuMoves();
     void preferencesPages();
@@ -99,30 +111,132 @@ void CommandTreeTest::menusPanel()
 {
     auto* panel = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
     QVERIFY(panel != nullptr);
-    const QStringList expectedRow = {
-        QStringLiteral("Rename"),           QStringLiteral("New Layer"),
-        QStringLiteral("New Group"),        QStringLiteral("Duplicate Layer(s)"),
-        QStringLiteral("Delete Layer(s)"),  QStringLiteral("Group Layers"),
-        QStringLiteral("Ungroup Layers"),   QStringLiteral("Move Layer Up"),
-        QStringLiteral("Move Layer Down"),  QStringLiteral("Export As…"),
-        QStringLiteral("Quick Export as PNG"), QStringLiteral("Color Label")};
+
+    const QStringList common = {
+        QStringLiteral("Rename"),          QStringLiteral("New Layer"),
+        QStringLiteral("New Group"),       QStringLiteral("Duplicate Layer(s)"),
+        QStringLiteral("Delete Layer(s)"), QStringLiteral("Group Layers"),
+        QStringLiteral("Ungroup Layers"),  QStringLiteral("Move Layer Up"),
+        QStringLiteral("Move Layer Down")};
+
+    QStringList expectedPixel = common;
+    expectedPixel << QStringLiteral("Add Layer Mask") << QStringLiteral("Delete Layer Mask")
+                  << QStringLiteral("Enable Layer Mask") << QStringLiteral("Disable Layer Mask")
+                  << QStringLiteral("Blending Options…") << QStringLiteral("Copy Layer Style")
+                  << QStringLiteral("Paste Layer Style") << QStringLiteral("Clear Layer Style")
+                  << QStringLiteral("Export As…") << QStringLiteral("Quick Export as PNG")
+                  << QStringLiteral("Color Label");
+
+    QStringList expectedBackground = common;
+    expectedBackground << QStringLiteral("Blending Options…") << QStringLiteral("Export As…")
+                       << QStringLiteral("Quick Export as PNG") << QStringLiteral("Color Label");
+
+    QStringList expectedGroup = common;
+    expectedGroup << QStringLiteral("Blending Options…") << QStringLiteral("Color Label");
+
+    QStringList expectedAdjustment = common;
+    expectedAdjustment << QStringLiteral("Edit Adjustment…") << QStringLiteral("Color Label");
+
+    QStringList expectedType = common;
+    expectedType << QStringLiteral("Rasterize Type") << QStringLiteral("Color Label");
+
+    QCOMPARE(panel->rowMenuTextsForTest(QStringLiteral("pixel")), expectedPixel);
+    QCOMPARE(panel->rowMenuTextsForTest(QStringLiteral("background")), expectedBackground);
+    QCOMPARE(panel->rowMenuTextsForTest(QStringLiteral("group")), expectedGroup);
+    QCOMPARE(panel->rowMenuTextsForTest(QStringLiteral("adjustment")), expectedAdjustment);
+    QCOMPARE(panel->rowMenuTextsForTest(QStringLiteral("type")), expectedType);
+
+    QVERIFY2(panel->rowMenuEnabledForTest(QStringLiteral("pixel"), QStringLiteral("Add Layer Mask")),
+             "wired mask row is enabled");
+    QVERIFY2(!panel->rowMenuEnabledForTest(QStringLiteral("pixel"),
+                                           QStringLiteral("Blending Options…")),
+             "unimplemented pixel row is disabled");
+    QVERIFY2(panel->rowMenuToolTipForTest(QStringLiteral("pixel"),
+                                          QStringLiteral("Blending Options…"))
+                 .contains(QStringLiteral("not implemented yet")),
+             "unimplemented pixel row tooltip");
+    QVERIFY2(panel->rowMenuEnabledForTest(QStringLiteral("pixel"), QStringLiteral("New Layer")),
+             "wired pixel row is enabled");
+
     const QStringList expectedColor = {
         QStringLiteral("None"),  QStringLiteral("Red"),  QStringLiteral("Orange"),
         QStringLiteral("Yellow"), QStringLiteral("Green"), QStringLiteral("Blue"),
         QStringLiteral("Violet"), QStringLiteral("Gray")};
-    const QStringList groupRow = panel->rowMenuTextsForTest(QStringLiteral("group"));
-    const QStringList adjustmentRow = panel->rowMenuTextsForTest(QStringLiteral("adjustment"));
-    const QStringList typeRow = panel->rowMenuTextsForTest(QStringLiteral("type"));
-    const bool groupHidden = !groupRow.contains(QStringLiteral("Export As…"))
-        && !groupRow.contains(QStringLiteral("Quick Export as PNG"));
-    const bool adjustmentHidden = !adjustmentRow.contains(QStringLiteral("Export As…"))
-        && !adjustmentRow.contains(QStringLiteral("Quick Export as PNG"));
-    const bool typeHidden = !typeRow.contains(QStringLiteral("Export As…"))
-        && !typeRow.contains(QStringLiteral("Quick Export as PNG"));
-    QVERIFY2(panel->rowMenuTextsForTest() == expectedRow && groupHidden && adjustmentHidden
-                 && typeHidden,
-             "row menu");
     QVERIFY2(panel->colorLabelTextsForTest() == expectedColor, "color label menu");
+}
+
+// Layer > Layer Mask: the leaves are implemented, enabled with a document, and
+// wired through the layer-mask bridge for the active layer.
+void CommandTreeTest::layerMaskMenu()
+{
+    pictura::PictureView* view = window_->activeView();
+    QVERIFY(view != nullptr);
+    pictura::CommandRegistry* registry = window_->registry();
+    QVERIFY(registry != nullptr);
+    const auto action = [registry](const char* id) {
+        return registry->action(QString::fromLatin1(id));
+    };
+    registry->refresh();
+    QVERIFY(action(pictura::command_ids::LayerMaskRevealAll)->isEnabled());
+    QVERIFY(!action(pictura::command_ids::LayerMaskDelete)->isEnabled());
+
+    QVERIFY(registry->dispatch(QString::fromLatin1(pictura::command_ids::LayerMaskRevealAll)));
+    QVERIFY2(view->layer_row_has_mask(0), "reveal all adds a mask");
+    registry->refresh();
+    QVERIFY(!action(pictura::command_ids::LayerMaskRevealAll)->isEnabled());
+    QVERIFY(action(pictura::command_ids::LayerMaskDelete)->isEnabled());
+    QVERIFY(action(pictura::command_ids::LayerMaskDisable)->isEnabled());
+
+    QVERIFY(registry->dispatch(QString::fromLatin1(pictura::command_ids::LayerMaskDelete)));
+    QVERIFY2(!view->layer_row_has_mask(0), "delete clears the mask");
+    registry->refresh();
+    QVERIFY(action(pictura::command_ids::LayerMaskRevealAll)->isEnabled());
+
+    auto* strip = window_->findChild<QToolButton*>(QStringLiteral("layersStripMask"));
+    QVERIFY(strip != nullptr && strip->isEnabled());
+    strip->click();
+    QVERIFY2(view->layer_row_has_mask(0), "strip button adds a mask");
+    QVERIFY(registry->dispatch(QString::fromLatin1(pictura::command_ids::LayerMaskDelete)));
+}
+
+// Layer > Vector Mask and Layer > Rasterize > Vector Mask: the add leaves start
+// enabled, Reveal All adds one state, Delete clears, and Rasterize consumes the
+// vector mask into a layer mask.
+void CommandTreeTest::vectorMaskMenu()
+{
+    pictura::PictureView* view = window_->activeView();
+    pictura::CommandRegistry* registry = window_->registry();
+    QVERIFY(view != nullptr && registry != nullptr);
+    const auto action = [registry](const char* id) {
+        return registry->action(QString::fromLatin1(id));
+    };
+    registry->refresh();
+    QVERIFY(action(pictura::command_ids::LayerVectorMaskRevealAll)->isEnabled());
+    QVERIFY(!action(pictura::command_ids::LayerVectorMaskDelete)->isEnabled());
+
+    const int before = view->history_count();
+    QVERIFY(registry->dispatch(
+        QString::fromLatin1(pictura::command_ids::LayerVectorMaskRevealAll)));
+    QVERIFY2(pictura::vector_mask_present(*view), "reveal all adds a vector mask");
+    QCOMPARE(view->history_count(), before + 1);
+    registry->refresh();
+    QVERIFY(!action(pictura::command_ids::LayerVectorMaskRevealAll)->isEnabled());
+    QVERIFY(action(pictura::command_ids::LayerVectorMaskDelete)->isEnabled());
+    QVERIFY(action(pictura::command_ids::LayerRasterizeVectorMask)->isEnabled());
+
+    QVERIFY(registry->dispatch(
+        QString::fromLatin1(pictura::command_ids::LayerVectorMaskDelete)));
+    QVERIFY2(!pictura::vector_mask_present(*view), "delete clears the vector mask");
+    registry->refresh();
+    QVERIFY(!action(pictura::command_ids::LayerRasterizeVectorMask)->isEnabled());
+
+    QVERIFY(registry->dispatch(
+        QString::fromLatin1(pictura::command_ids::LayerVectorMaskRevealAll)));
+    QVERIFY(registry->dispatch(
+        QString::fromLatin1(pictura::command_ids::LayerRasterizeVectorMask)));
+    QVERIFY2(!pictura::vector_mask_present(*view), "rasterize dropped the vector mask");
+    QVERIFY2(view->layer_row_has_mask(0), "rasterize produced a layer mask");
+    QVERIFY(registry->dispatch(QString::fromLatin1(pictura::command_ids::LayerMaskDelete)));
 }
 
 void CommandTreeTest::menuCount()
@@ -678,10 +792,59 @@ void CommandTreeTest::layerMenuGroupsAndDelete()
     }
 }
 
+// Layer > Layer Content Options is enabled only for a fill/adjustment layer and
+// opens that layer's Properties page.
+void CommandTreeTest::layerContentOptions()
+{
+    QVERIFY(window_->newDocument(QStringLiteral("ContentOptions"), 32, 32,
+                                 QStringLiteral("rgb"), 8, QStringLiteral("white")));
+    const int doc = window_->activeDocumentIndex();
+    pictura::PictureView* view = window_->activeView();
+    QVERIFY(view != nullptr);
+    auto* layers = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    auto* props =
+        window_->findChild<pictura::PropertiesPanel*>(QStringLiteral("propertiesPanel"));
+    pictura::PanelColumn* column = window_->panelColumn();
+    QVERIFY(layers && props && column);
+    QVERIFY(layers->selectRowForTest(view->layer_row_path(0)));
+
+    pictura::CommandRegistry* registry = window_->registry();
+    QVERIFY(registry != nullptr);
+    const QString id = QString::fromLatin1(pictura::command_ids::LayerContentOptions);
+    QAction* action = registry->action(id);
+    QVERIFY(action);
+
+    // A pixel current layer disables the command and invoking it is a no-op.
+    column->showPanel(QStringLiteral("propertiesPanel"), false);
+    registry->refresh();
+    QVERIFY2(!action->isEnabled(), "disabled for a pixel layer");
+    action->trigger();
+    QVERIFY2(!column->isPanelVisible(QStringLiteral("propertiesPanel")),
+             "no-op for a pixel layer");
+
+    // An adjustment current layer enables the command and opens Properties.
+    QVERIFY(view->add_adjustment(QStringLiteral("invert")));
+    QString path;
+    for (int i = 0; i < view->layer_row_count(); ++i) {
+        if (view->layer_row_has_adjustment(i)) {
+            path = view->layer_row_path(i);
+        }
+    }
+    QVERIFY2(!path.isEmpty(), "adjustment row");
+    layers->refresh();
+    QVERIFY(layers->selectRowForTest(path));
+    registry->refresh();
+    QVERIFY2(action->isEnabled(), "enabled for an adjustment layer");
+    QVERIFY2(registry->dispatch(id), "dispatch Layer Content Options");
+    QVERIFY2(column->isPanelVisible(QStringLiteral("propertiesPanel")), "Properties shown");
+    QCOMPARE(props->pathForTest(), path);
+
+    window_->closeDocument(doc, false);
+}
+
 // An iconic rail column is resizable from its workspace-facing edge whether it
 // is docked left or right; the grip drives the frame's widget-column resize.
-void CommandTreeTest::railModeResizeGrip()
-{
+void CommandTreeTest::railModeResizeGrip(){
     pictura::PicturaMainWindow& frame = *window_;
     pictura::PanelColumn* right = frame.panelColumn();
     QVERIFY(right != nullptr);
@@ -830,6 +993,268 @@ void CommandTreeTest::toolHintsToggle()
     while (window_->activeDocumentIndex() >= 0) {
         window_->closeDocument(window_->activeDocumentIndex(), false);
     }
+}
+
+// Layer > Arrange / Reverse / Merge Down / Delete Layer / Stamp: the new
+// leaves exist, enable where applicable, and stamp adds one layer while
+// preserving the source layers.
+void CommandTreeTest::layerArrangeStamp()
+{
+    QVERIFY(window_->newDocument(QStringLiteral("ArrangeStamp"), 32, 32,
+                                 QStringLiteral("rgb"), 8, QStringLiteral("white")));
+    const int doc = window_->activeDocumentIndex();
+    pictura::PictureView* view = window_->activeView();
+    auto* layers = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    pictura::CommandRegistry* registry = window_->registry();
+    QVERIFY(view != nullptr);
+    QVERIFY(layers != nullptr);
+    QVERIFY(registry != nullptr);
+    const auto action = [registry](const char* id) {
+        return registry->action(QString::fromLatin1(id));
+    };
+
+    // Two ordinary layers above whatever the fresh document created.
+    view->add_layer(-1);
+    view->add_layer(-1);
+    layers->refresh();
+    QVERIFY(view->layer_row_count() >= 3);
+    const QString topName = view->layer_row_name(0);
+    const QString middleName = view->layer_row_name(1);
+
+    for (const char* id : {pictura::command_ids::LayerArrangeFront,
+                           pictura::command_ids::LayerArrangeForward,
+                           pictura::command_ids::LayerArrangeBackward,
+                           pictura::command_ids::LayerArrangeBack,
+                           pictura::command_ids::LayerArrangeReverse,
+                           pictura::command_ids::LayerMergeDown,
+                           pictura::command_ids::LayerDeleteLayer,
+                           pictura::command_ids::LayerStampVisible,
+                           pictura::command_ids::LayerStampSelected}) {
+        QVERIFY2(action(id) != nullptr, id);
+    }
+
+    // Arrange Forward swaps the middle layer with the one above it.
+    layers->selectPaths({view->layer_row_path(1)}, view->layer_row_path(1));
+    registry->refresh();
+    QVERIFY2(action(pictura::command_ids::LayerArrangeForward)->isEnabled(), "forward enabled");
+    QVERIFY(registry->dispatch(QString::fromLatin1(pictura::command_ids::LayerArrangeForward)));
+    layers->refresh();
+    QCOMPARE(view->layer_row_name(0), middleName);
+    QCOMPARE(view->layer_row_name(1), topName);
+
+    // Reverse flips the contiguous top-two run back.
+    const QString run0 = view->layer_row_path(0);
+    const QString run1 = view->layer_row_path(1);
+    layers->selectPaths({run0, run1}, run0);
+    registry->refresh();
+    QVERIFY2(action(pictura::command_ids::LayerArrangeReverse)->isEnabled(), "reverse enabled");
+    QVERIFY(registry->dispatch(QString::fromLatin1(pictura::command_ids::LayerArrangeReverse)));
+    layers->refresh();
+    QCOMPARE(view->layer_row_name(0), topName);
+    QCOMPARE(view->layer_row_name(1), middleName);
+
+    // Merge Down folds the active layer into the layer below it.
+    layers->selectPaths({view->layer_row_path(0)}, view->layer_row_path(0));
+    registry->refresh();
+    QVERIFY2(action(pictura::command_ids::LayerMergeDown)->isEnabled(), "merge down enabled");
+    const int beforeMerge = view->layer_row_count();
+    QVERIFY(registry->dispatch(QString::fromLatin1(pictura::command_ids::LayerMergeDown)));
+    QCOMPARE(view->layer_row_count(), beforeMerge - 1);
+
+    // Stamp Visible adds exactly one layer and keeps every source.
+    layers->refresh();
+    layers->selectPaths({view->layer_row_path(0)}, view->layer_row_path(0));
+    registry->refresh();
+    const int beforeStamp = view->layer_row_count();
+    QVERIFY2(action(pictura::command_ids::LayerStampVisible)->isEnabled(), "stamp visible enabled");
+    QVERIFY(registry->dispatch(QString::fromLatin1(pictura::command_ids::LayerStampVisible)));
+    QCOMPARE(view->layer_row_count(), beforeStamp + 1);
+
+    // Delete Layer removes the selected (stamp) layer.
+    layers->refresh();
+    layers->selectPaths({view->layer_row_path(0)}, view->layer_row_path(0));
+    registry->refresh();
+    QVERIFY2(action(pictura::command_ids::LayerDeleteLayer)->isEnabled(), "delete enabled");
+    const int beforeDelete = view->layer_row_count();
+    QVERIFY(registry->dispatch(QString::fromLatin1(pictura::command_ids::LayerDeleteLayer)));
+    QCOMPARE(view->layer_row_count(), beforeDelete - 1);
+
+    window_->closeDocument(doc, false);
+}
+
+// Layer > Lock Layers (All / Transparency / Image / Position) over the panel
+// selection, and Lock All Layers In Group… over the current group.
+void CommandTreeTest::layerLockCommands()
+{
+    QVERIFY(window_->newDocument(QStringLiteral("LockCmds"), 32, 32, QStringLiteral("rgb"), 8,
+                                 QStringLiteral("white")));
+    const int doc = window_->activeDocumentIndex();
+    pictura::PictureView* view = window_->activeView();
+    auto* layers = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    pictura::CommandRegistry* registry = window_->registry();
+    QVERIFY(view != nullptr);
+    QVERIFY(layers != nullptr);
+    QVERIFY(registry != nullptr);
+    const auto action = [registry](const char* id) {
+        return registry->action(QString::fromLatin1(id));
+    };
+
+    for (const char* id : {pictura::command_ids::LayerLockLayersAll,
+                           pictura::command_ids::LayerLockLayersTransparency,
+                           pictura::command_ids::LayerLockLayersImage,
+                           pictura::command_ids::LayerLockLayersPosition,
+                           pictura::command_ids::LayerLockAllInGroup}) {
+        QVERIFY2(action(id) != nullptr, id);
+    }
+
+    const auto rowOf = [view](const QString& path) {
+        for (int i = 0; i < view->layer_row_count(); ++i) {
+            if (view->layer_row_path(i) == path) {
+                return i;
+            }
+        }
+        return -1;
+    };
+
+    // No selection disables the lock commands.
+    layers->selectPaths({}, QString());
+    registry->refresh();
+    QVERIFY2(!action(pictura::command_ids::LayerLockLayersAll)->isEnabled(), "disabled empty");
+
+    // Lock Transparency over the selection sets bit 0x01 in one state.
+    view->add_layer(-1);
+    layers->refresh();
+    const QString top = view->layer_row_path(0);
+    layers->selectPaths({top}, top);
+    registry->refresh();
+    QVERIFY2(action(pictura::command_ids::LayerLockLayersTransparency)->isEnabled(),
+             "transparency enabled");
+    const int before = view->history_count();
+    QVERIFY(registry->dispatch(
+        QString::fromLatin1(pictura::command_ids::LayerLockLayersTransparency)));
+    QCOMPARE(view->history_count(), before + 1);
+    QVERIFY((view->layer_row_lock(rowOf(top)) & 0x01) != 0);
+
+    // Lock All sets the full set.
+    layers->selectPaths({top}, top);
+    registry->refresh();
+    QVERIFY(registry->dispatch(QString::fromLatin1(pictura::command_ids::LayerLockLayersAll)));
+    QCOMPARE(view->layer_row_lock(rowOf(top)) & 0x0F, 0x0F);
+
+    // Lock All Layers In Group… locks the group's descendants, not the group.
+    const QString group = view->add_group_in(QString());
+    const QString child = view->add_layer_in(group);
+    layers->refresh();
+    layers->selectPaths({child}, child);
+    registry->refresh();
+    QVERIFY2(action(pictura::command_ids::LayerLockAllInGroup)->isEnabled(), "group lock enabled");
+    const int groupBase = view->history_count();
+    QVERIFY(registry->dispatch(
+        QString::fromLatin1(pictura::command_ids::LayerLockAllInGroup)));
+    QCOMPARE(view->history_count(), groupBase + 1);
+    QCOMPARE(view->layer_row_lock(rowOf(child)) & 0x0F, 0x0F);
+    QCOMPARE(view->layer_row_lock(rowOf(group)) & 0x0F, 0x00);
+
+    window_->closeDocument(doc, false);
+}
+
+// Layer > Rasterize Shape and Copy/Paste Shape Attributes: enabled over a
+// current shape layer, paste only after a copy, and shape rasterize drops the
+// shape.
+void CommandTreeTest::shapeLayerCommands()
+{
+    QVERIFY(window_->newDocument(QStringLiteral("ShapeCmds"), 32, 32, QStringLiteral("rgb"), 8,
+                                 QStringLiteral("white")));
+    const int doc = window_->activeDocumentIndex();
+    pictura::PictureView* view = window_->activeView();
+    auto* layers = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    pictura::CommandRegistry* registry = window_->registry();
+    QVERIFY(view && layers && registry);
+    const auto action = [registry](const char* id) {
+        return registry->action(QString::fromLatin1(id));
+    };
+
+    pictura::ShapeSpec square{};
+    square.kind = 0;
+    square.boxed = true;
+    square.x0 = 4;
+    square.y0 = 4;
+    square.x1 = 20;
+    square.y1 = 20;
+    const QString shape = pictura::shape_add_layer(*view, square, 0xffff0000u);
+    QVERIFY(!shape.isEmpty());
+    layers->refresh();
+    QCoreApplication::processEvents();
+    layers->selectPaths({shape}, shape);
+    registry->refresh();
+
+    QVERIFY2(action(pictura::command_ids::LayerRasterizeShape)->isEnabled(), "shape rasterize");
+    QVERIFY2(action(pictura::command_ids::LayerCopyShapeAttributes)->isEnabled(), "copy attrs");
+    QVERIFY2(!action(pictura::command_ids::LayerPasteShapeAttributes)->isEnabled(),
+             "paste waits for a copy");
+
+    QVERIFY(registry->dispatch(
+        QString::fromLatin1(pictura::command_ids::LayerCopyShapeAttributes)));
+    registry->refresh();
+    QVERIFY2(action(pictura::command_ids::LayerPasteShapeAttributes)->isEnabled(), "paste enabled");
+
+    const int before = view->history_count();
+    QVERIFY(registry->dispatch(
+        QString::fromLatin1(pictura::command_ids::LayerRasterizeShape)));
+    QCOMPARE(view->history_count(), before + 1);
+
+    window_->closeDocument(doc, false);
+}
+
+// Layer > Matting: the three leaves exist, enable over an editable pixel layer,
+// each is one undo state, and the Defringe dialog defaults to a 1-pixel width.
+void CommandTreeTest::layerMattingCommands()
+{
+    QVERIFY(window_->newDocument(QStringLiteral("Matting"), 16, 16, QStringLiteral("rgb"), 8,
+                                 QStringLiteral("white")));
+    const int doc = window_->activeDocumentIndex();
+    pictura::PictureView* view = window_->activeView();
+    auto* layers = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    pictura::CommandRegistry* registry = window_->registry();
+    QVERIFY(view && layers && registry);
+    const auto action = [registry](const char* id) {
+        return registry->action(QString::fromLatin1(id));
+    };
+
+    for (const char* id : {pictura::command_ids::LayerMattingDefringe,
+                           pictura::command_ids::LayerMattingRemoveBlack,
+                           pictura::command_ids::LayerMattingRemoveWhite}) {
+        QVERIFY2(action(id) != nullptr, id);
+    }
+
+    view->add_layer(-1);
+    layers->refresh();
+    const QString top = view->layer_row_path(0);
+    layers->selectPaths({top}, top);
+    registry->refresh();
+    QVERIFY2(action(pictura::command_ids::LayerMattingRemoveBlack)->isEnabled(),
+             "remove black enabled");
+    QVERIFY2(action(pictura::command_ids::LayerMattingRemoveWhite)->isEnabled(),
+             "remove white enabled");
+    QVERIFY2(action(pictura::command_ids::LayerMattingDefringe)->isEnabled(), "defringe enabled");
+
+    const int before = view->history_count();
+    QVERIFY(registry->dispatch(
+        QString::fromLatin1(pictura::command_ids::LayerMattingRemoveBlack)));
+    QCOMPARE(view->history_count(), before + 1);
+
+    pictura::DefringeDialog dialog;
+    auto* width = dialog.findChild<QSpinBox*>(QStringLiteral("defringeWidth"));
+    QVERIFY(width != nullptr);
+    QCOMPARE(width->value(), 1);
+
+    // A zero-selection panel disables every Matting command.
+    layers->selectPaths({}, QString());
+    registry->refresh();
+    QVERIFY2(!action(pictura::command_ids::LayerMattingRemoveBlack)->isEnabled(),
+             "disabled without an active layer");
+
+    window_->closeDocument(doc, false);
 }
 
 QTEST_MAIN(CommandTreeTest)

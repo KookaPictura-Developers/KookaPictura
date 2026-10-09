@@ -4,6 +4,8 @@
 #include "panels/layers_panel.h"
 #include "panels/properties_panel.h"
 #include "pictura_app/src/cxxqt_object.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/impl_layers/layer_masks.cxxqt.h"
+#include "pictura_app/src/cxxqt_object/impl_layers/vector_masks.cxxqt.h"
 
 #include <QtWidgets/QCheckBox>
 #include <QtWidgets/QComboBox>
@@ -26,6 +28,8 @@ private slots:
     void slidersEditLiveAndCommitOnce();
     void groupsCurvesAndFooter();
     void canvasSectionReadsAndResizes();
+    void maskSectionAppearsForAMaskedLayer();
+    void vectorMaskSectionAppears();
 
 private:
     // A white 16x16 document with one `kind` adjustment layer, selected.
@@ -265,6 +269,73 @@ void PropertiesPanelTest::canvasSectionReadsAndResizes()
     QCOMPARE(depths.at(0).at(0).toInt(), 16);
     // The window ran the depth conversion off the panel's request.
     QCOMPARE(view_->document_depth_bits(), 16);
+}
+
+// The Mask section appears only for a masked layer, and Delete clears it.
+void PropertiesPanelTest::maskSectionAppearsForAMaskedLayer()
+{
+    QVERIFY(window_->newDocument(QStringLiteral("Masked"), 16, 16, QStringLiteral("rgb"), 8,
+                                 QStringLiteral("white")));
+    view_ = window_->activeView();
+    panel_ = window_->findChild<pictura::PropertiesPanel*>(QStringLiteral("propertiesPanel"));
+    auto* layers = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    QVERIFY2(view_ && panel_ && layers, "mask fixture");
+    layers->setView(view_);
+    QVERIFY(layers->selectRowForTest(view_->layer_row_path(0)));
+    panel_->setView(view_);
+    panel_->refresh();
+    QVERIFY2(!panel_->maskSectionVisibleForTest(), "no mask section without a mask");
+
+    QVERIFY(layer_mask_add(*view_, QStringLiteral("reveal-all")));
+    panel_->refresh();
+    QVERIFY2(panel_->maskSectionVisibleForTest(), "mask section with a mask");
+
+    auto* remove = panel_->findChild<QToolButton*>(QStringLiteral("propertiesMaskDelete"));
+    QVERIFY(remove);
+    remove->click();
+    panel_->refresh();
+    QVERIFY2(!panel_->maskSectionVisibleForTest(), "section gone after delete");
+    QVERIFY(!view_->layer_row_has_mask(0));
+}
+
+// The Vector Mask section appears only for a vector-masked layer; Delete clears
+// it and Rasterize converts it to a layer mask.
+void PropertiesPanelTest::vectorMaskSectionAppears()
+{
+    QVERIFY(window_->newDocument(QStringLiteral("VectorMasked"), 16, 16, QStringLiteral("rgb"), 8,
+                                 QStringLiteral("white")));
+    view_ = window_->activeView();
+    panel_ = window_->findChild<pictura::PropertiesPanel*>(QStringLiteral("propertiesPanel"));
+    auto* layers = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    QVERIFY2(view_ && panel_ && layers, "vector mask fixture");
+    layers->setView(view_);
+    QVERIFY(layers->selectRowForTest(view_->layer_row_path(0)));
+    panel_->setView(view_);
+    panel_->refresh();
+    QVERIFY2(!panel_->vectorMaskSectionVisibleForTest(), "no vector mask section without a mask");
+
+    QVERIFY(vector_mask_add(*view_, QStringLiteral("reveal-all")));
+    panel_->refresh();
+    QVERIFY2(panel_->vectorMaskSectionVisibleForTest(), "vector mask section with a mask");
+
+    auto* rasterize =
+        panel_->findChild<QToolButton*>(QStringLiteral("propertiesVectorMaskRasterize"));
+    QVERIFY(rasterize);
+    rasterize->click();
+    panel_->refresh();
+    QVERIFY2(!panel_->vectorMaskSectionVisibleForTest(), "section gone after rasterize");
+    QVERIFY(!vector_mask_present(*view_));
+    QVERIFY(view_->layer_row_has_mask(0));
+
+    QVERIFY(vector_mask_add(*view_, QStringLiteral("hide-all")));
+    panel_->refresh();
+    QVERIFY2(panel_->vectorMaskSectionVisibleForTest(), "section back with a new mask");
+    auto* remove = panel_->findChild<QToolButton*>(QStringLiteral("propertiesVectorMaskDelete"));
+    QVERIFY(remove);
+    remove->click();
+    panel_->refresh();
+    QVERIFY2(!panel_->vectorMaskSectionVisibleForTest(), "section gone after delete");
+    QVERIFY(!vector_mask_present(*view_));
 }
 
 QTEST_MAIN(PropertiesPanelTest)
