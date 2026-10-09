@@ -719,7 +719,7 @@ fn legacy_solid_fill_changes_interior_only() {
 }
 
 #[test]
-fn legacy_inner_bevel_renders_and_outer_is_a_noop() {
+fn legacy_inner_and_outer_bevels_render() {
     let inner = legacy_layer(lr_fx(&[(
         b"bevl",
         bevel_body(&BevelArgs {
@@ -736,7 +736,7 @@ fn legacy_inner_bevel_renders_and_outer_is_a_noop() {
             ..Default::default()
         }),
     )]));
-    assert_eq!(compose_legacy(outer), plain_legacy());
+    assert_ne!(compose_legacy(outer), plain_legacy());
 }
 
 #[test]

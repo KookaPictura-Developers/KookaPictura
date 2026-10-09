@@ -338,6 +338,9 @@ private:
     // frame_menus_align.cpp: Layer > Align / Align Layers To Selection /
     // Distribute, and the Move tool's buttons, over the selected layers.
     void wireAlignMenu();
+    // frame_menus_layer_style.cpp: Layer > Layer Style, the Layer Style dialog
+    // and the style commands over the Layers panel's selection.
+    void wireLayerStyleMenu();
     // frame_menus_image.cpp: Image > Crop, Trim, and Duplicate.
     void wireImageMenu();
     // frame_menus_image_mode.cpp: Image > Mode, the color-mode and bit-depth

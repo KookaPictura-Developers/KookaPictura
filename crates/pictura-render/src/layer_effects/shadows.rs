@@ -5,8 +5,8 @@ use crate::composite::{blend_parts, desc_item, mask_alpha, Canvas};
 
 use super::{
     blur_matte, bool_or, clamp_finite, clip_rect, content_matte, decode_color, dilate_matte,
-    effect_blend_mode, erode_matte, num_clamped, num_or, pad_rect, rect_empty, MAX_CHOKE,
-    MAX_DISTANCE, MAX_OPACITY, MAX_SIZE, MAX_SPREAD,
+    effect_blend_mode, erode_matte, noise_factor, num_clamped, num_or, pad_rect, rect_empty,
+    MAX_CHOKE, MAX_DISTANCE, MAX_OPACITY, MAX_SIZE, MAX_SPREAD,
 };
 
 /// The typed drop shadow decoded from a layer's `lfx2` block.
@@ -28,6 +28,8 @@ pub struct DropShadow {
     pub size: f32,
     pub use_global_angle: bool,
     pub knocks_out: bool,
+    /// `Nose`, the grain in percent.
+    pub noise: f32,
 }
 
 /// The typed inner shadow decoded from a layer's `lfx2` block.
@@ -50,6 +52,8 @@ pub struct InnerShadow {
     pub use_global_angle: bool,
     /// `layerConceals`, decoded for symmetry with `DropShadow`; no render effect.
     pub knocks_out: bool,
+    /// `Nose`, the grain in percent.
+    pub noise: f32,
 }
 
 /// Decode a layer's `lfx2` Drop Shadow.
@@ -92,6 +96,7 @@ pub fn decode_drop_shadow(layer: &Layer) -> Option<DropShadow> {
         size: num_clamped(drsh, b"blur", 5.0, 0.0, MAX_SIZE)?,
         use_global_angle: bool_or(drsh, b"uglg", true)?,
         knocks_out: bool_or(drsh, b"layerConceals", true)?,
+        noise: num_clamped(drsh, b"Nose", 0.0, 0.0, MAX_OPACITY)?,
     })
 }
 
@@ -133,6 +138,7 @@ pub fn decode_inner_shadow(layer: &Layer) -> Option<InnerShadow> {
         size: num_clamped(irsh, b"blur", 5.0, 0.0, MAX_SIZE)?,
         use_global_angle: bool_or(irsh, b"uglg", true)?,
         knocks_out: bool_or(irsh, b"layerConceals", true)?,
+        noise: num_clamped(irsh, b"Nose", 0.0, 0.0, MAX_OPACITY)?,
     })
 }
 
@@ -219,7 +225,8 @@ pub(super) fn composite_drop_shadow(
         for x in cx0..cx1 {
             let sx = (x - ox - px0 as i64) as usize;
             let sy = (y - oy - py0 as i64) as usize;
-            let alpha = blurred[sy * pw + sx] * opacity;
+            let alpha =
+                blurred[sy * pw + sx] * opacity * noise_factor(shadow.noise, x as i32, y as i32);
             if alpha > 0.0 {
                 blend_parts(
                     canvas,
@@ -320,7 +327,7 @@ pub(super) fn composite_inner_shadow(
                 1.0
             };
             let m = matte[(y - py0) as usize * pw + (x - px0) as usize];
-            let alpha = m * b * opacity;
+            let alpha = m * b * opacity * noise_factor(shadow.noise, x, y);
             if alpha > 0.0 {
                 blend_parts(
                     canvas,

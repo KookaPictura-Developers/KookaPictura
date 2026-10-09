@@ -2,6 +2,8 @@
 
 #include "layers_panel.h"
 
+#include "blend_modes.h"
+
 #include "icons.h"
 #include "theme.h"
 
@@ -109,43 +111,6 @@ constexpr int kClipLineGrab = 4;
 
 // Panel Options thumbnail sizes by enum order (None/Small/Medium/Large).
 constexpr std::array<int, 4> kThumbSizePx{0, 16, 24, 32};
-
-// The 27 CS6 blend entries: 4-byte PSD key plus display name. Shared by the
-// blend combo and the filter bar's Mode dimension.
-struct BlendEntry {
-    const char* key;
-    const char* name;
-};
-
-constexpr std::array<BlendEntry, 27> kBlends{{
-    {"norm", "Normal"},
-    {"diss", "Dissolve"},
-    {"dark", "Darken"},
-    {"mul ", "Multiply"},
-    {"idiv", "Color Burn"},
-    {"lbrn", "Linear Burn"},
-    {"dkCl", "Darker Color"},
-    {"lite", "Lighten"},
-    {"scrn", "Screen"},
-    {"div ", "Color Dodge"},
-    {"lddg", "Linear Dodge (Add)"},
-    {"lgCl", "Lighter Color"},
-    {"over", "Overlay"},
-    {"sLit", "Soft Light"},
-    {"hLit", "Hard Light"},
-    {"vLit", "Vivid Light"},
-    {"lLit", "Linear Light"},
-    {"pLit", "Pin Light"},
-    {"hMix", "Hard Mix"},
-    {"diff", "Difference"},
-    {"smud", "Exclusion"},
-    {"fsub", "Subtract"},
-    {"fdiv", "Divide"},
-    {"hue ", "Hue"},
-    {"sat ", "Saturation"},
-    {"colr", "Color"},
-    {"lum ", "Luminosity"},
-}};
 
 // Frozen per-row roles (see `docs/dev/m39-panel-anatomy.md` §3.6). ClipBaseRole
 // is panel-local: a row whose sibling displayed immediately above it is clipped

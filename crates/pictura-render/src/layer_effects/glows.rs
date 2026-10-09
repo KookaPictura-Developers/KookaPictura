@@ -5,8 +5,8 @@ use crate::composite::{blend_parts, desc_item, mask_alpha, Canvas};
 
 use super::{
     blur_matte, bool_or, clamp_finite, clip_rect, content_matte, decode_color, dilate_matte,
-    effect_blend_mode, erode_matte, num_clamped, pad_rect, rect_empty, GlowTechnique, MAX_CHOKE,
-    MAX_OPACITY, MAX_SIZE, MAX_SPREAD,
+    effect_blend_mode, erode_matte, noise_factor, num_clamped, pad_rect, rect_empty, GlowTechnique,
+    MAX_CHOKE, MAX_OPACITY, MAX_SIZE, MAX_SPREAD,
 };
 
 /// The typed outer glow decoded from a layer's `lfx2` block.
@@ -23,6 +23,8 @@ pub struct OuterGlow {
     /// Pixels, Gaussian radius, `0..=250`.
     pub size: f32,
     pub technique: GlowTechnique,
+    /// `Nose`, the grain in percent.
+    pub noise: f32,
 }
 
 /// The inner-glow source stored in `glwS` (typeID `IGSr`; the legacy `IGsr`
@@ -51,6 +53,8 @@ pub struct InnerGlow {
     /// `glwS` (typeID `IGSr`), default Edge.
     pub source: GlowSource,
     pub technique: GlowTechnique,
+    /// `Nose`, the grain in percent.
+    pub noise: f32,
 }
 
 /// Decode a layer's `lfx2` Outer Glow.
@@ -99,6 +103,7 @@ pub fn decode_outer_glow(layer: &Layer) -> Option<OuterGlow> {
         opacity: num_clamped(orgl, b"Opct", 75.0, 0.0, MAX_OPACITY)?,
         spread: num_clamped(orgl, b"Ckmt", 0.0, 0.0, MAX_SPREAD)?,
         size: num_clamped(orgl, b"blur", 5.0, 0.0, MAX_SIZE)?,
+        noise: num_clamped(orgl, b"Nose", 0.0, 0.0, MAX_OPACITY)?,
         technique,
     })
 }
@@ -167,6 +172,7 @@ pub fn decode_inner_glow(layer: &Layer) -> Option<InnerGlow> {
         opacity: num_clamped(irgl, b"Opct", 75.0, 0.0, MAX_OPACITY)?,
         choke: num_clamped(irgl, b"Ckmt", 0.0, 0.0, MAX_CHOKE)?,
         size: num_clamped(irgl, b"blur", 5.0, 0.0, MAX_SIZE)?,
+        noise: num_clamped(irgl, b"Nose", 0.0, 0.0, MAX_OPACITY)?,
         source,
         technique,
     })
@@ -239,7 +245,7 @@ pub(super) fn composite_outer_glow(
     for y in py0..py1 {
         for x in px0..px1 {
             let i = (y - py0) as usize * pw + (x - px0) as usize;
-            let alpha = blurred[i] * exterior[i] * opacity;
+            let alpha = blurred[i] * exterior[i] * opacity * noise_factor(glow.noise, x, y);
             if alpha > 0.0 {
                 blend_parts(
                     canvas,
@@ -329,7 +335,7 @@ pub(super) fn composite_inner_glow(
                 GlowSource::Edge => 1.0 - blurred[i],
                 GlowSource::Center => blurred[i],
             };
-            let alpha = matte[i] * field * opacity;
+            let alpha = matte[i] * field * opacity * noise_factor(glow.noise, x, y);
             if alpha > 0.0 {
                 blend_parts(
                     canvas,
