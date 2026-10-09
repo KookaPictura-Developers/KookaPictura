@@ -34,3 +34,10 @@
 ## 6. Docs
 
 - [x] 6.1 `docs/dev/STATE.md`: record the large-image work.
+
+## 7. Filter follow-ups
+
+- [x] 7.1 GPU filter passes split into bounded submissions (a whole-image pass hung the GPU past the amdgpu timeout); chunked/unchunked parity test.
+- [x] 7.2 Device-loss latch: the GPU is disabled for the session, uploads no longer panic, and readbacks fail over to the CPU.
+- [x] 7.3 `FilterProxy`: box-reduced copy of a document region; the Filter Gallery previews on it in its pane, with OK filtering the full layer.
+- [x] 7.4 `tst_filter_gallery` previews in the pane only and at reduced size; `filter_proxy` unit tests.
