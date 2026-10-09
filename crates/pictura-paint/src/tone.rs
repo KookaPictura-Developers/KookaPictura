@@ -283,14 +283,19 @@ mod tests {
             ..StrokeConfig::default()
         };
         let mut stroke = Stroke::begin_tone(d, "0", cfg, options).expect("begin");
+        let mut out = d.clone();
         for &x in xs {
-            stroke.sample(StrokeSample {
-                x,
-                y: 20.0,
-                pressure: 1.0,
-            });
+            stroke.sample(
+                &mut out,
+                StrokeSample {
+                    x,
+                    y: 20.0,
+                    pressure: 1.0,
+                },
+            );
         }
-        stroke.finish().map_or_else(|| d.clone(), |o| o.document)
+        stroke.finish();
+        out
     }
 
     /// `passes` separate one-dab strokes at (20, 20).

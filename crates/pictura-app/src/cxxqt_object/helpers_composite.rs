@@ -106,14 +106,45 @@ pub(super) fn patch_buffer_region(dst: &mut PixelBuffer, region: &PixelBuffer, x
     if x0 + rw > fw || y0 + rh > fh {
         return;
     }
+    use rayon::prelude::*;
     let fplane = fw * fh;
     let rplane = rw * rh;
-    for c in 0..(dst.channels as usize).min(4) {
-        for ry in 0..rh {
-            let src = c * rplane + ry * rw;
-            let at = c * fplane + (y0 + ry) * fw + x0;
-            dst.data[at..at + rw].copy_from_slice(&region.data[src..src + rw]);
+    let planes = (dst.channels as usize).min(4);
+    if fplane == 0 || rw == 0 {
+        return;
+    }
+    // A whole-document region is a gigabyte on a large image: rows go to
+    // every core.
+    for (c, plane) in dst.data.as_mut_slice()[..planes * fplane]
+        .chunks_mut(fplane)
+        .enumerate()
+    {
+        plane[y0 * fw..(y0 + rh) * fw]
+            .par_chunks_mut(fw)
+            .enumerate()
+            .for_each(|(ry, row)| {
+                let src = c * rplane + ry * rw;
+                row[x0..x0 + rw].copy_from_slice(&region.data[src..src + rw]);
+            });
+    }
+}
+/// The `w × h` region of planar `buffer` at `(x0, y0)`, every channel kept.
+/// The caller clamps the region to the buffer.
+pub(super) fn crop_planar(buffer: &PixelBuffer, x0: i32, y0: i32, w: u32, h: u32) -> PixelBuffer {
+    let (fw, plane) = (buffer.width as usize, buffer.pixel_count());
+    let (x0, y0, w, h) = (x0 as usize, y0 as usize, w as usize, h as usize);
+    let mut data = Vec::with_capacity(w * h * buffer.channels as usize);
+    for c in 0..buffer.channels as usize {
+        for y in y0..y0 + h {
+            let at = c * plane + y * fw + x0;
+            data.extend_from_slice(&buffer.data[at..at + w]);
         }
+    }
+    PixelBuffer {
+        width: w as u32,
+        height: h as u32,
+        channels: buffer.channels,
+        data: data.into(),
     }
 }
 /// A full-frame raster mask whose coverage is the selection.
@@ -160,12 +191,9 @@ pub(super) fn rebuild_display(
     stroke: Option<&Stroke>,
     gpu_compute: bool,
 ) -> Option<QImage> {
-    if let Some(stroke) = stroke {
-        let rendered = current_buffer(stroke.document(), gpu_compute);
-        return Some(premultiplied_display_image(&buffer_to_srgb(
-            stroke.document(),
-            &rendered,
-        )));
+    if let (Some(_), Some(doc)) = (stroke, doc.as_ref()) {
+        let rendered = current_buffer(doc, gpu_compute);
+        return Some(premultiplied_display_image(&buffer_to_srgb(doc, &rendered)));
     }
     doc.as_ref()
         .map(|doc| premultiplied_display_image(&buffer_to_srgb(doc, &doc.composite)))
@@ -547,32 +575,40 @@ fn premul(c: u8, a: u8) -> u8 {
 /// transparent edges correctly. [`buffer_to_rgba_bytes`] stays straight alpha
 /// for the export encoder.
 pub(super) fn display_rgba_bytes(buffer: &PixelBuffer) -> Vec<u8> {
+    use rayon::prelude::*;
     let plane = buffer.pixel_count();
     let channels = buffer.channels as usize;
     let mut rgba = vec![0u8; plane * 4];
-    for i in 0..plane {
-        let (r, g, b, a) = if channels <= 1 {
-            let v = buffer.data[i];
-            (v, v, v, 255)
-        } else if channels == 2 {
-            let v = buffer.data[i];
-            (v, v, v, buffer.data[plane + i])
-        } else {
-            let a = if channels >= 4 {
-                buffer.data[3 * plane + i]
-            } else {
-                255
-            };
-            (
-                buffer.data[i],
-                buffer.data[plane + i],
-                buffer.data[2 * plane + i],
-                a,
-            )
-        };
-        let o = i * 4;
-        rgba[o..o + 4].copy_from_slice(&[premul(r, a), premul(g, a), premul(b, a), a]);
-    }
+    // A full-document frame is hundreds of megabytes on a large image; spread
+    // it over every core in runs of pixels.
+    const RUN: usize = 1 << 16;
+    rgba.par_chunks_mut(RUN * 4)
+        .enumerate()
+        .for_each(|(run, out)| {
+            for (k, px) in out.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+                let i = run * RUN + k;
+                let (r, g, b, a) = if channels <= 1 {
+                    let v = buffer.data[i];
+                    (v, v, v, 255)
+                } else if channels == 2 {
+                    let v = buffer.data[i];
+                    (v, v, v, buffer.data[plane + i])
+                } else {
+                    let a = if channels >= 4 {
+                        buffer.data[3 * plane + i]
+                    } else {
+                        255
+                    };
+                    (
+                        buffer.data[i],
+                        buffer.data[plane + i],
+                        buffer.data[2 * plane + i],
+                        a,
+                    )
+                };
+                px.copy_from_slice(&[premul(r, a), premul(g, a), premul(b, a), a]);
+            }
+        });
     rgba
 }
 /// Convert a planar 8-bit buffer to a premultiplied `RGBA8888` `QImage`.
@@ -636,8 +672,16 @@ pub(super) fn level0_buffer(source: &Document) -> PixelBuffer {
 }
 
 /// The level-0 frame for an already-rendered `buffer` of `source`.
+///
+/// Level 0 is patched on its own (mid-stroke it runs ahead of the document's
+/// composite), so it never shares the buffer's plane: a shared plane would be
+/// copied whole by whichever of the two is written first.
 pub(super) fn level0_from_buffer(source: &Document, buffer: &PixelBuffer) -> PixelBuffer {
-    into_rgba_frame(buffer_to_srgb(source, buffer).into_owned())
+    let mut frame = into_rgba_frame(buffer_to_srgb(source, buffer).into_owned());
+    if frame.data.shares(&buffer.data) {
+        frame.data = crate::history::copy_plane(&frame.data);
+    }
+    frame
 }
 
 /// The level-0 frame for `source`, compositing its layers first. Used when

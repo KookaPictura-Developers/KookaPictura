@@ -10,7 +10,7 @@
 
 use super::super::impl_core::make_background;
 use super::super::qobject::PictureView;
-use crate::history::{History, Snapshot};
+use crate::history::History;
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::QString;
@@ -165,13 +165,10 @@ fn create_document(
     view.as_mut().recomposite();
     // The conversions are part of making the document, not edits to undo.
     let mut rust = view.as_mut().rust_mut();
-    let snapshot = rust.doc.as_ref().map(|doc| Snapshot {
-        doc: doc.clone(),
-        selection: None,
-    });
     rust.history = History::default();
-    if let Some(snapshot) = snapshot {
-        rust.history.capture(snapshot, "New");
+    let rust = &mut *rust;
+    if let Some(doc) = rust.doc.as_mut() {
+        rust.history.capture_live(doc, &None, "New");
     }
     true
 }

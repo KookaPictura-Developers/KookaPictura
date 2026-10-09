@@ -41,6 +41,7 @@ set(PICTURA_QT_TESTS
     tst_edit_shortcuts
     tst_workspaces
     tst_zoom_tool
+    tst_large_document
 )
 
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/qt-test-results)

@@ -318,6 +318,15 @@ fn layer_visibility_region_bounds_raster_and_bounded_adjustments() {
     let raster = pixel_layer("raster", 8, 4, (10, 20, 30));
     assert_eq!(layer_visibility_region(&raster), Some(raster.rect));
 
+    // A type layer, with or without its rasterized proxy, draws inside its rect.
+    let mut doc = Document::new(200, 120, ColorMode::Rgb, BitDepth::Eight);
+    let spec = pictura_core::TypeSpec::new("Type", "Liberation Sans", 32.0);
+    let path = pictura_render::add_type_layer(&mut doc, "", &spec);
+    let text = pictura_render::resolve_path_mut(&mut doc, &path).expect("type layer");
+    assert_eq!(layer_visibility_region(text), Some(text.rect));
+    text.channels.clear();
+    assert_eq!(layer_visibility_region(text), Some(text.rect));
+
     let mask = |t, l, b, r, data: Option<Vec<u8>>, default_color, disabled| LayerMask {
         rect: PsdRect {
             top: t,

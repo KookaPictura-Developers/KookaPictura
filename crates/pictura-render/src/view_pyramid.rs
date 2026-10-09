@@ -334,8 +334,7 @@ fn shrink_from_planes(level0: &Planes<'_>, dst: &mut PyramidLevel, rect: PsdRect
     }
     let lw = level0.width as i32;
     let lh = level0.height as i32;
-    let dw = dst.width as usize;
-    for y in rect.top..rect.bottom {
+    each_row(dst, rect, |y, row| {
         for x in rect.left..rect.right {
             let (mut sr, mut sg, mut sb, mut sa, mut n) = (0u32, 0u32, 0u32, 0u32, 0u32);
             for dy in 0..2 {
@@ -357,13 +356,26 @@ fn shrink_from_planes(level0: &Planes<'_>, dst: &mut PyramidLevel, rect: PsdRect
                     n += 1;
                 }
             }
-            let o = (y as usize * dw + x as usize) * 4;
-            dst.data[o] = average(sr, n);
-            dst.data[o + 1] = average(sg, n);
-            dst.data[o + 2] = average(sb, n);
-            dst.data[o + 3] = average(sa, n);
+            let o = x as usize * 4;
+            row[o] = average(sr, n);
+            row[o + 1] = average(sg, n);
+            row[o + 2] = average(sb, n);
+            row[o + 3] = average(sa, n);
         }
-    }
+    });
+}
+
+/// Run `f` over each destination row of `rect` in parallel, handing it the
+/// row's document `y` and the whole row's bytes. Rows are independent: every
+/// level texel reads only the level above.
+fn each_row(dst: &mut PyramidLevel, rect: PsdRect, f: impl Fn(i32, &mut [u8]) + Sync) {
+    use rayon::prelude::*;
+    let stride = dst.width as usize * 4;
+    let (top, bottom) = (rect.top as usize, rect.bottom as usize);
+    dst.data[top * stride..bottom * stride]
+        .par_chunks_mut(stride)
+        .enumerate()
+        .for_each(|(k, row)| f(rect.top + k as i32, row));
 }
 
 /// Fill `rect` of `dst` from `src`, one level up: each pixel the average of the
@@ -375,8 +387,7 @@ fn shrink_into(src: &PyramidLevel, dst: &mut PyramidLevel, rect: PsdRect) {
     }
     let sw = src.width as i32;
     let sh = src.height as i32;
-    let dw = dst.width as usize;
-    for y in rect.top..rect.bottom {
+    each_row(dst, rect, |y, row| {
         for x in rect.left..rect.right {
             let mut sum = [0u32; 4];
             let mut n = 0u32;
@@ -397,12 +408,12 @@ fn shrink_into(src: &PyramidLevel, dst: &mut PyramidLevel, rect: PsdRect) {
                     n += 1;
                 }
             }
-            let o = (y as usize * dw + x as usize) * 4;
+            let o = x as usize * 4;
             for (c, value) in sum.iter().enumerate() {
-                dst.data[o + c] = average(*value, n);
+                row[o + c] = average(*value, n);
             }
         }
-    }
+    });
 }
 
 #[cfg(test)]

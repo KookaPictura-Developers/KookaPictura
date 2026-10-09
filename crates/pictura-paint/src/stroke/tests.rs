@@ -91,7 +91,7 @@ fn red() -> Rgba {
 
 #[test]
 fn take_dirty_reports_each_dab_not_the_stroke_union() {
-    let doc = layer_doc(128, 32, BASE);
+    let mut doc = layer_doc(128, 32, BASE);
     let cfg = StrokeConfig {
         color: red(),
         diameter: 8,
@@ -103,9 +103,9 @@ fn take_dirty_reports_each_dab_not_the_stroke_union() {
     };
     // Diameter 8 at 150% spacing steps 12 px, so each sample places one dab.
     let mut stroke = Stroke::begin_at(&doc, "0", cfg).expect("begin");
-    assert!(stroke.sample(sample(50.0, 16.0)));
+    assert!(stroke.sample(&mut doc, sample(50.0, 16.0)));
     let first = stroke.take_dirty().expect("first dab");
-    assert!(stroke.sample(sample(62.0, 16.0)));
+    assert!(stroke.sample(&mut doc, sample(62.0, 16.0)));
     let second = stroke.take_dirty().expect("second dab");
     assert!(
         second.left >= first.right,
@@ -118,9 +118,9 @@ fn take_dirty_reports_each_dab_not_the_stroke_union() {
     );
     assert!(stroke.take_dirty().is_none(), "take_dirty must clear");
     // The committed union still covers the whole stroke.
-    let outcome = stroke.finish().expect("painted");
-    assert!(outcome.dirty.left <= first.left);
-    assert!(outcome.dirty.right >= second.right);
+    let dirty = stroke.finish().expect("painted");
+    assert!(dirty.left <= first.left);
+    assert!(dirty.right >= second.right);
 }
 
 #[test]
@@ -503,17 +503,18 @@ fn default_brush_paints_center_with_configured_color() {
     );
 }
 
-fn run(doc: &Document, cfg: StrokeConfig, kind: StrokeKind, xs: &[f32]) -> Stroke {
+fn run(doc: &mut Document, cfg: StrokeConfig, kind: StrokeKind, xs: &[f32]) -> Stroke {
     let mut stroke = Stroke::begin_kind(doc, "0", cfg, kind).expect("begin");
     for &x in xs {
-        stroke.sample(sample(x, 16.0));
+        stroke.sample(doc, sample(x, 16.0));
     }
     stroke
 }
 
 #[test]
 fn a_replace_stroke_recolours_the_layer_live_and_commits_once() {
-    let doc = layer_doc(32, 32, (120, 120, 120, 255));
+    let base = layer_doc(32, 32, (120, 120, 120, 255));
+    let mut doc = base.clone();
     let cfg = StrokeConfig {
         color: Rgba {
             r: 220,
@@ -525,19 +526,22 @@ fn a_replace_stroke_recolours_the_layer_live_and_commits_once() {
         ..StrokeConfig::default()
     };
     let kind = StrokeKind::Replace(ReplaceOptions::default());
-    let mut stroke = run(&doc, cfg, kind, &[8.0, 24.0]);
+    let mut stroke = run(&mut doc, cfg, kind, &[8.0, 24.0]);
     let i = 16 * 32 + 16;
-    let live = (chan(stroke.document(), 0, i), chan(stroke.document(), 1, i));
+    let live = (chan(&doc, 0, i), chan(&doc, 1, i));
     assert!(
         live.0 > live.1 + 20,
         "the grey was not recoloured: {live:?}"
     );
     assert!(stroke.take_dirty().is_some());
     assert_eq!(stroke.mixer_reservoir(), None);
-    let outcome = stroke.finish().expect("painted");
-    assert_eq!(chan(&outcome.document, 0, i), live.0);
-    assert_eq!(chan(&outcome.document, -1, i), 255);
-    assert_eq!(chan(&doc, 0, i), 120, "the base document changed");
+    assert!(stroke.finish().is_some(), "painted");
+    assert_eq!(chan(&doc, 0, i), live.0);
+    assert_eq!(chan(&doc, -1, i), 255);
+
+    let mut again = base.clone();
+    run(&mut again, cfg, kind, &[8.0, 24.0]).cancel(&mut again);
+    assert!(again == base, "a cancelled stroke left paint behind");
 }
 
 #[test]
@@ -570,11 +574,8 @@ fn a_mixer_stroke_smears_and_reports_its_reservoir() {
             a: 255,
         },
     };
-    let stroke = run(&doc, cfg, kind, &[10.0, 40.0]);
-    assert!(
-        chan(stroke.document(), 0, 16 * 64 + 26) < 250,
-        "nothing was dragged"
-    );
+    let stroke = run(&mut doc, cfg, kind, &[10.0, 40.0]);
+    assert!(chan(&doc, 0, 16 * 64 + 26) < 250, "nothing was dragged");
     let carried = stroke.mixer_reservoir().expect("a mixer reservoir");
     assert!(carried.r < 255, "the reservoir picked nothing up");
 }
@@ -679,14 +680,14 @@ fn gpu_seed_and_patch_use_the_layer_document_rect() {
         bottom: 4,
         right: 6,
     };
-    let doc = offset_layer_doc(8, 8, rect, (10, 20, 30, 200));
+    let mut doc = offset_layer_doc(8, 8, rect, (10, 20, 30, 200));
     let cfg = StrokeConfig {
         color: red(),
         ..StrokeConfig::default()
     };
     let mut stroke = Stroke::begin_at(&doc, "0", cfg).expect("begin");
 
-    let seed = stroke.base_layer_rgba_doc();
+    let seed = stroke.base_layer_rgba_doc(&doc);
     assert_eq!(seed.len(), 8 * 8 * 4);
     assert_eq!(
         &seed[..4],
@@ -706,6 +707,7 @@ fn gpu_seed_and_patch_use_the_layer_document_rect() {
         39, 38, 37, 36, // A
     ];
     let changed = stroke.patch_working_layer(
+        &mut doc,
         PsdRect {
             top: 0,
             left: 1,
@@ -716,16 +718,16 @@ fn gpu_seed_and_patch_use_the_layer_document_rect() {
         &planes,
     );
     assert!(changed);
-    let layer = &stroke.document().layers[0];
+    let layer = &doc.layers[0];
     let at = |id| channel_data(layer, id).unwrap()[0];
     assert_eq!(
         (at(0), at(1), at(2), at(-1)),
         (6, 16, 26, 36),
         "the patch's document (2,1) writes the layer's local (0,0)"
     );
-    let outcome = stroke.finish().expect("patched");
+    let dirty = stroke.finish().expect("patched");
     assert_eq!(
-        outcome.dirty,
+        dirty,
         PsdRect {
             top: 1,
             left: 2,
@@ -733,4 +735,149 @@ fn gpu_seed_and_patch_use_the_layer_document_rect() {
             right: 3,
         },
     );
+}
+
+/// A layer of distinct pixels, offset into the document, so a pixel read from
+/// the wrong place or a tile never saved shows up in the result.
+fn textured_doc() -> Document {
+    let rect = PsdRect {
+        top: 7,
+        left: -5,
+        bottom: 7 + 150,
+        right: -5 + 170,
+    };
+    let mut doc = offset_layer_doc(160, 170, rect, BASE);
+    for (id, c) in doc.layers[0].channels.iter_mut().enumerate() {
+        for (i, v) in c.data.as_mut_slice().iter_mut().enumerate() {
+            *v = ((i * (7 + id) + id * 31) % 251) as u8;
+        }
+    }
+    doc
+}
+
+#[test]
+fn painting_in_place_matches_a_stroke_that_saved_the_whole_layer() {
+    let samples: Vec<StrokeSample> = (0..40)
+        .map(|i| {
+            let t = i as f32 * 0.37;
+            sample(
+                20.0 + t.cos() * 40.0 + i as f32 * 2.5,
+                70.0 + t.sin() * 45.0,
+            )
+        })
+        .collect();
+    let base = StrokeConfig {
+        color: red(),
+        diameter: 30,
+        hardness: 40,
+        spacing: SpacingMode::Fixed(10),
+        opacity: 60,
+        flow: 45,
+        ..StrokeConfig::default()
+    };
+    let configs = [
+        base,
+        StrokeConfig {
+            mode: PaintMode::Behind,
+            ..base
+        },
+        StrokeConfig {
+            mode: PaintMode::Clear,
+            ..base
+        },
+        StrokeConfig {
+            mode: PaintMode::Dissolve,
+            ..base
+        },
+        StrokeConfig {
+            roundness: 30,
+            angle_deg: 35,
+            diameter: 64,
+            ..base
+        },
+        StrokeConfig {
+            square: true,
+            ..base
+        },
+        StrokeConfig {
+            scatter: 120,
+            count: 3,
+            size_jitter: 60,
+            angle_jitter: 90,
+            roundness_jitter: 50,
+            ..base
+        },
+        StrokeConfig {
+            aliased: true,
+            opacity: 100,
+            flow: 100,
+            ..base
+        },
+    ];
+    for (n, cfg) in configs.into_iter().enumerate() {
+        let original = textured_doc();
+        let mut lazy = original.clone();
+        let mut stroke = Stroke::begin_at(&lazy, "0", cfg).expect("begin");
+        let mut oracle = original.clone();
+        let mut whole = Stroke::begin_at(&oracle, "0", cfg).expect("begin");
+        whole.save_all(&oracle);
+        for &s in &samples {
+            stroke.sample(&mut lazy, s);
+            whole.sample(&mut oracle, s);
+        }
+        assert_eq!(stroke.finish(), whole.finish(), "config {n}: dirty differs");
+        assert!(
+            lazy == oracle,
+            "config {n}: in-place pixels differ from the oracle"
+        );
+        assert!(lazy != original, "config {n}: the stroke painted nothing");
+    }
+}
+
+#[test]
+fn cancelling_a_stroke_restores_every_pixel_it_touched() {
+    let original = textured_doc();
+    let mut doc = original.clone();
+    let cfg = StrokeConfig {
+        color: red(),
+        diameter: 50,
+        scatter: 80,
+        ..StrokeConfig::default()
+    };
+    let mut stroke = Stroke::begin_at(&doc, "0", cfg).expect("begin");
+    for i in 0..30 {
+        stroke.sample(&mut doc, sample(i as f32 * 6.0, 20.0 + i as f32 * 4.0));
+    }
+    assert!(doc != original, "the stroke painted nothing");
+    stroke.cancel(&mut doc);
+    assert!(doc == original, "cancel left paint behind");
+}
+
+#[test]
+fn a_stroke_refuses_a_layer_restructured_under_it() {
+    let mut doc = textured_doc();
+    let mut stroke = Stroke::begin_at(&doc, "0", StrokeConfig::default()).expect("begin");
+    doc.layers[0].channels.pop();
+    let before = doc.clone();
+    assert!(
+        !stroke.sample(&mut doc, sample(40.0, 40.0)),
+        "painted a changed layer"
+    );
+    stroke.cancel(&mut doc);
+    assert!(doc == before, "a refused stroke touched the document");
+}
+
+#[test]
+fn a_stroke_refuses_a_target_moved_under_it() {
+    let mut doc = textured_doc();
+    let mut stroke = Stroke::begin_at(&doc, "0", StrokeConfig::default()).expect("begin");
+    let r = &mut doc.layers[0].rect;
+    (r.left, r.right) = (r.left + 5, r.right + 5);
+    let before = doc.clone();
+    assert!(
+        !stroke.sample(&mut doc, sample(40.0, 40.0)),
+        "painted a moved layer"
+    );
+    stroke.cancel(&mut doc);
+    assert!(doc == before, "a refused stroke touched the document");
 }

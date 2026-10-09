@@ -578,16 +578,20 @@ mod tests {
             .collect();
 
         // CPU oracle.
-        let doc = layer_doc(w, h, base);
+        let mut doc = layer_doc(w, h, base);
         let mut stroke = Stroke::begin_at(&doc, "0", cfg).expect("stroke begins");
         for &(x, y) in &dabs {
-            stroke.sample(StrokeSample {
-                x,
-                y,
-                pressure: 1.0,
-            });
+            stroke.sample(
+                &mut doc,
+                StrokeSample {
+                    x,
+                    y,
+                    pressure: 1.0,
+                },
+            );
         }
-        let cpu = interleaved(&stroke.finish().expect("painted").document.layers[0], w, h);
+        stroke.finish().expect("painted");
+        let cpu = interleaved(&doc.layers[0], w, h);
 
         // GPU stroke, seeded from the same pixels and driven through the same
         // dab placer the exact stroke uses, so both place identical dabs.

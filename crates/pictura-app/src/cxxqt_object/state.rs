@@ -136,6 +136,14 @@ pub struct PictureViewRust {
     /// `image` or the pyramid is rebuilt. Lets the shell cache without draining
     /// the damage account before `image` reads it.
     pub(super) canvas_revision: u64,
+    /// Bumped only when the level-0 frame is rebuilt whole; a region change
+    /// always reaches the shell as a `region_blitted`. A shell whose copy of
+    /// the frame carries this revision needs no full image on `changed`.
+    pub(super) frame_revision: u64,
+    /// The document before a stroke that had to change its structure to begin
+    /// (the Background Eraser layering a Background); cancelling restores it,
+    /// since the stroke's saved tiles cannot undo a structural change.
+    pub(super) stroke_base: Option<Document>,
     /// The halved-level view of the composite, fed by `recomposite` and
     /// `refresh_region`.
     pub(super) pyramid: ViewPyramid,
@@ -257,6 +265,8 @@ impl Default for PictureViewRust {
             color_policy: pictura_codec::Policy::Preserve,
             damage: CanvasDamage::default(),
             canvas_revision: 0,
+            frame_revision: 0,
+            stroke_base: None,
             pyramid: ViewPyramid::default(),
             level0: None,
             link_sets: HashMap::new(),

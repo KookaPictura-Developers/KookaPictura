@@ -19,6 +19,15 @@ use crate::composite_rows::{composite_canvas, composite_pixels};
 /// Returns a 4-channel (R,G,B,A) planar, straight-alpha, 8-bit buffer at
 /// document resolution.
 pub fn composite_rgba(doc: &Document) -> PixelBuffer {
+    if banded(doc, doc.height) {
+        return composite_banded(doc, 0, 0, doc.width, doc.height);
+    }
+    composite_whole(doc)
+}
+
+/// [`composite_rgba`] on one canvas, the path every stack can take; the
+/// banded compositor is held to it.
+pub(crate) fn composite_whole(doc: &Document) -> PixelBuffer {
     let mut canvas = Canvas::new(doc.width as usize, doc.height as usize);
     composite_layers(&mut canvas, doc);
     canvas.into_pixel_buffer()
@@ -48,6 +57,9 @@ pub(crate) fn composite_rgba_region(
     if rw == 0 || rh == 0 {
         return PixelBuffer::new(0, 0, 4);
     }
+    if banded(doc, rh) {
+        return composite_banded(doc, x0, y0, rw, rh);
+    }
     let region = (x0 as i32, y0 as i32, (x0 + rw) as i32, (y0 + rh) as i32);
     let mut canvas = Canvas::new_region(x0 as i32, y0 as i32, rw as usize, rh as usize);
     if doc.layers.iter().any(has_effect_block) {
@@ -58,6 +70,66 @@ pub(crate) fn composite_rgba_region(
     }
     composite_layers(&mut canvas, doc);
     canvas.into_pixel_buffer()
+}
+
+/// Rows per band of the banded compositor: a band's `f32` canvas stays a few
+/// tens of megabytes on a 16k-wide document.
+const BAND: u32 = 64;
+
+/// Whether `rows` rows of `doc` composite in bands: a tall region of a stack
+/// whose every layer composites per pixel. Effects, type and smart objects
+/// render whole sources, so a band would redo that work or miss a neighbour.
+fn banded(doc: &Document, rows: u32) -> bool {
+    fn per_pixel(layer: &Layer) -> bool {
+        // ponytail: a type layer without a rasterized proxy re-renders its text
+        // in every band it meets, so only one a few bands tall is banded; cache
+        // the rendered text if a tall one shows up in a profile.
+        let renders_text = layer.type_tool.is_some() && channel(layer, 0).is_none();
+        let short = layer.rect.height() <= 4 * BAND as i32;
+        !has_effect_block(layer)
+            && layer.smart_object.is_none()
+            && (!renders_text || short)
+            && layer.children.iter().all(per_pixel)
+    }
+    rows > 2 * BAND && doc.layers.iter().all(per_pixel)
+}
+
+/// Composite `[x0, x0+rw) × [y0, y0+rh)` a band of rows at a time, the bands in
+/// parallel, each written straight into the output planes. Exact because a
+/// region of a per-pixel stack composites exactly (see
+/// [`composite_rgba_region`]); it never holds the region's whole `f32` canvas,
+/// which on a 267-megapixel document is 4 GB.
+fn composite_banded(doc: &Document, x0: u32, y0: u32, rw: u32, rh: u32) -> PixelBuffer {
+    use rayon::prelude::*;
+    let (w, plane) = (rw as usize, rw as usize * rh as usize);
+    let run = BAND as usize * w;
+    let data = pictura_core::Plane::build(plane * 4, |out| {
+        let (r, rest) = out.split_at_mut(plane);
+        let (g, rest) = rest.split_at_mut(plane);
+        let (b, a) = rest.split_at_mut(plane);
+        r.par_chunks_mut(run)
+            .zip(g.par_chunks_mut(run))
+            .zip(b.par_chunks_mut(run))
+            .zip(a.par_chunks_mut(run))
+            .enumerate()
+            .for_each(|(band, (((r, g), b), a))| {
+                let top = y0 as i32 + (band * BAND as usize) as i32;
+                let mut canvas = Canvas::new_region(x0 as i32, top, w, r.len() / w);
+                composite_layers(&mut canvas, doc);
+                for (i, p) in canvas.px.iter().enumerate() {
+                    r[i] = to_u8(p.r);
+                    g[i] = to_u8(p.g);
+                    b[i] = to_u8(p.b);
+                    a[i] = to_u8(p.a);
+                }
+            });
+    });
+    PixelBuffer {
+        width: rw,
+        height: rh,
+        channels: 4,
+        data,
+    }
 }
 
 /// Whether the layer (or a descendant) carries a layer-effects block, which the
@@ -192,16 +264,40 @@ impl Canvas {
         (y as i32 - self.oy) as usize * self.w + (x as i32 - self.ox) as usize
     }
 
+    /// The canvas as a planar RGBA8 buffer. A full document is hundreds of
+    /// millions of pixels, so the planes are filled in parallel runs straight
+    /// into one allocation (a write through the buffer's plane checks its
+    /// refcount every time).
     pub(crate) fn into_pixel_buffer(self) -> PixelBuffer {
+        use rayon::prelude::*;
+        const RUN: usize = 1 << 16;
         let plane = self.w * self.h;
-        let mut out = PixelBuffer::new(self.w as u32, self.h as u32, 4);
-        for (i, p) in self.px.iter().enumerate() {
-            out.data[i] = to_u8(p.r);
-            out.data[plane + i] = to_u8(p.g);
-            out.data[2 * plane + i] = to_u8(p.b);
-            out.data[3 * plane + i] = to_u8(p.a);
+        let px = &self.px;
+        let data = pictura_core::Plane::build(plane * 4, |out| {
+            let (r, rest) = out.split_at_mut(plane);
+            let (g, rest) = rest.split_at_mut(plane);
+            let (b, a) = rest.split_at_mut(plane);
+            r.par_chunks_mut(RUN)
+                .zip(g.par_chunks_mut(RUN))
+                .zip(b.par_chunks_mut(RUN))
+                .zip(a.par_chunks_mut(RUN))
+                .enumerate()
+                .for_each(|(run, (((r, g), b), a))| {
+                    let src = &px[run * RUN..run * RUN + r.len()];
+                    for (i, p) in src.iter().enumerate() {
+                        r[i] = to_u8(p.r);
+                        g[i] = to_u8(p.g);
+                        b[i] = to_u8(p.b);
+                        a[i] = to_u8(p.a);
+                    }
+                });
+        });
+        PixelBuffer {
+            width: self.w as u32,
+            height: self.h as u32,
+            channels: 4,
+            data,
         }
-        out
     }
 }
 

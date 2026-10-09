@@ -1,43 +1,113 @@
+mod display;
 mod purge;
 
-use super::qobject;
+use super::helpers::clamp_region;
+use super::helpers_composite::{crop_planar, into_rgba_frame, premultiplied_display_image};
+use super::{qobject, PictureViewRust};
+use crate::history::{detached_copy, History, Restored, Snapshot};
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
-use cxx_qt_lib::QString;
+use cxx_qt_lib::{QImage, QString};
+use pictura_core::{Document, PsdRect};
+use pictura_select::Selection;
+
+impl PictureViewRust {
+    /// Fold `rect` of the document's own composite into level 0 and the
+    /// pyramid without compositing it again — history has just restored those
+    /// bytes — and return the blit image with its origin.
+    pub(super) fn refresh_from_composite(&mut self, rect: PsdRect) -> Option<(QImage, i32, i32)> {
+        let doc = self.doc.as_ref()?;
+        if doc.composite.width != doc.width || doc.composite.height != doc.height {
+            return self.refresh_regions(&[rect]);
+        }
+        let (x0, y0, w, h) = clamp_region(rect, doc.width, doc.height)?;
+        let crop = crop_planar(&doc.composite, x0, y0, w, h);
+        let srgb = into_rgba_frame(pictura_codec::buffer_to_srgb(doc, &crop).into_owned());
+        let image = premultiplied_display_image(&srgb);
+        let clipped = PsdRect {
+            top: y0,
+            left: x0,
+            bottom: y0 + h as i32,
+            right: x0 + w as i32,
+        };
+        self.apply_refreshed_region(x0, y0, clipped, srgb);
+        Some((image, x0, y0))
+    }
+
+    /// Restore through the history in place into the live document, or by
+    /// replacement when there is none. A live stroke is cancelled first; its
+    /// pixels were never captured.
+    fn restore(
+        &mut self,
+        step: impl FnOnce(&mut History, &mut Document, &mut Option<Selection>) -> Option<Restored>,
+        legacy: impl FnOnce(&mut History) -> Option<Snapshot>,
+    ) -> Option<Restored> {
+        let painting = self.stroke.is_some();
+        self.cancel_stroke();
+        let restored = match self.doc.as_mut() {
+            Some(doc) => step(&mut self.history, doc, &mut self.selection),
+            None => legacy(&mut self.history).map(|snapshot| {
+                self.doc = Some(snapshot.doc);
+                self.selection = snapshot.selection;
+                Restored::Everywhere
+            }),
+        }?;
+        self.content_revision = self.content_revision.wrapping_add(1);
+        Some(if painting {
+            Restored::Everywhere
+        } else {
+            restored
+        })
+    }
+}
 
 impl qobject::PictureView {
     pub fn undo(mut self: Pin<&mut Self>) -> bool {
-        let restored = self.as_mut().rust_mut().history.undo();
-        let Some(snapshot) = restored else {
+        if !self.rust().history.can_undo() {
             return false;
-        };
-        {
-            let mut rust = self.as_mut().rust_mut();
-            rust.doc = Some(snapshot.doc);
-            rust.selection = snapshot.selection;
-            // Undo during a stroke cancels it rather than committing it.
-            rust.stroke = None;
-            rust.reset_pyramid();
-            rust.content_revision = rust.content_revision.wrapping_add(1);
         }
-        self.changed();
-        true
+        let restored = self
+            .as_mut()
+            .rust_mut()
+            .restore(History::undo_live, History::undo);
+        self.show_restored(restored, false)
     }
 
     pub fn redo(mut self: Pin<&mut Self>) -> bool {
-        let restored = self.as_mut().rust_mut().history.redo();
-        let Some(snapshot) = restored else {
+        if !self.rust().history.can_redo() {
             return false;
-        };
-        {
-            let mut rust = self.as_mut().rust_mut();
-            rust.doc = Some(snapshot.doc);
-            rust.selection = snapshot.selection;
-            rust.stroke = None;
-            rust.reset_pyramid();
-            rust.content_revision = rust.content_revision.wrapping_add(1);
         }
-        self.changed();
+        let restored = self
+            .as_mut()
+            .rust_mut()
+            .restore(History::redo_live, History::redo);
+        self.show_restored(restored, false)
+    }
+
+    /// Present a restore: only the restored region when history bounded it,
+    /// otherwise the whole canvas — rebuilt from the restored composite, or
+    /// recomposited when `recomposite`. Either way `changed` follows for the
+    /// panels and overlays; a bounded restore leaves `frame_revision` alone, so
+    /// the shell skips the full image.
+    fn show_restored(
+        mut self: Pin<&mut Self>,
+        restored: Option<Restored>,
+        recomposite: bool,
+    ) -> bool {
+        match restored {
+            None => return false,
+            Some(Restored::Everywhere) if recomposite => self.as_mut().recomposite(),
+            Some(Restored::Everywhere) => {
+                self.as_mut().rust_mut().reset_pyramid();
+                self.as_mut().changed();
+            }
+            Some(Restored::Region(rect)) => {
+                if let Some((image, x, y)) = self.as_mut().rust_mut().refresh_from_composite(rect) {
+                    self.as_mut().region_blitted(image, x, y);
+                }
+                self.as_mut().changed();
+            }
+        }
         true
     }
 
@@ -72,22 +142,26 @@ impl qobject::PictureView {
         if i < 0 {
             return false;
         }
-        let restored = self.as_mut().rust_mut().history.jump(i as usize);
-        let Some(snapshot) = restored else {
+        let i = i as usize;
+        if i >= self.rust().history.count() {
             return false;
-        };
-        let mut rust = self.as_mut().rust_mut();
-        rust.doc = Some(snapshot.doc);
-        rust.selection = snapshot.selection;
-        rust.content_revision = rust.content_revision.wrapping_add(1);
-        rust.stroke = None;
-        self.as_mut().recomposite();
-        true
+        }
+        let restored = self.as_mut().rust_mut().restore(
+            |history, doc, selection| history.jump_live(i, doc, selection),
+            |history| history.jump(i),
+        );
+        self.show_restored(restored, true)
     }
 
     pub fn history_add_snapshot(mut self: Pin<&mut Self>, label: &QString) -> bool {
+        // The named state gets planes of its own: one shared with the live
+        // document would make the next dab copy a whole plane.
         let Some(snapshot) = self.snapshot() else {
             return false;
+        };
+        let snapshot = Snapshot {
+            doc: detached_copy(&snapshot.doc),
+            ..snapshot
         };
         self.as_mut()
             .rust_mut()
@@ -116,7 +190,7 @@ impl qobject::PictureView {
             return false;
         };
         let mut rust = self.as_mut().rust_mut();
-        rust.doc = Some(snapshot.doc);
+        rust.doc = Some(detached_copy(&snapshot.doc));
         rust.selection = snapshot.selection;
         rust.content_revision = rust.content_revision.wrapping_add(1);
         rust.stroke = None;

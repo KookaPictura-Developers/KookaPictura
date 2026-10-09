@@ -1,10 +1,12 @@
 use std::borrow::Cow;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
-use pictura_core::{BlendMode, ColorMode, Document, Layer, PixelBuffer};
+use pictura_core::{BlendMode, Document, Layer, PixelBuffer};
 
-use crate::{channel, decode_adjustment, mask_alpha, sample};
+use crate::decode_adjustment;
 
+use super::assemble::{mask_writer, padded, source_geom, source_writer, Region, RUN};
+use super::resident::{mask_key, source_key, Resident, UploadKey};
 use super::shader::{PLANAR_SHADER, SHADER, STROKE_SHADER};
 use super::{adjustment_params, mode_id, storage_entry, GpuError, NO_ADJ};
 
@@ -158,6 +160,15 @@ pub(super) struct Devices {
     resources: OnceLock<ComputeResources>,
     planar: OnceLock<PlanarResources>,
     stroke: OnceLock<StrokeResources>,
+    /// The last composite's readback buffer, kept for the next one.
+    ///
+    /// ponytail: a fresh gigabyte mapping costs ~0.8 s of page faults on the
+    /// map before the first byte is read (an integrated GPU's "device" memory
+    /// is system RAM), so the largest recent readback stays resident; release
+    /// it under memory pressure if that ever matters.
+    readback: Mutex<Option<wgpu::Buffer>>,
+    /// Layer sources and coverages kept between composites (`resident.rs`).
+    resident: Mutex<Resident>,
 }
 
 impl Devices {
@@ -191,7 +202,9 @@ async fn request_device() -> Option<Devices> {
         })
         .await
         .ok()?;
-    if adapter.limits().max_storage_buffers_per_shader_stage < 3 {
+    if !accelerates(adapter.get_info().device_type)
+        || adapter.limits().max_storage_buffers_per_shader_stage < 3
+    {
         return None;
     }
     let (device, queue) = adapter
@@ -213,8 +226,23 @@ async fn request_device() -> Option<Devices> {
         resources: OnceLock::new(),
         planar: OnceLock::new(),
         stroke: OnceLock::new(),
+        readback: Mutex::new(None),
+        resident: Mutex::new(Resident::default()),
     })
 }
+
+/// Whether an adapter of this type can speed compositing up. A software
+/// Vulkan device (Mesa's lavapipe/llvmpipe, found on machines without a GPU)
+/// emulates the GPU on the CPU and measured slower than the CPU compositor
+/// itself, so it is treated as no GPU at all.
+pub(super) fn accelerates(device_type: wgpu::DeviceType) -> bool {
+    device_type != wgpu::DeviceType::Cpu
+}
+
+/// Uploads served from the resident cache, for the tests.
+#[cfg(test)]
+pub(super) static RESIDENT_HITS: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
 
 pub(super) fn devices() -> Result<&'static Devices, GpuError> {
     static DEVICES: OnceLock<Option<Devices>> = OnceLock::new();
@@ -300,6 +328,23 @@ impl Gpu {
         })
     }
 
+    /// A mappable readback buffer of at least `size` bytes: the kept one when
+    /// it is large enough, else a fresh one.
+    fn readback_buffer(&self, size: u64) -> wgpu::Buffer {
+        let kept = devices()
+            .ok()
+            .and_then(|d| d.readback.lock().ok().and_then(|mut k| k.take()))
+            .filter(|b| b.size() >= size);
+        kept.unwrap_or_else(|| {
+            self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("pictura-readback"),
+                size,
+                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            })
+        })
+    }
+
     pub(super) fn region(&self) -> Region {
         Region {
             x0: self.x0,
@@ -330,22 +375,6 @@ impl Gpu {
         canvas
     }
 
-    pub(super) fn make_buffer(
-        &self,
-        label: &str,
-        usage: wgpu::BufferUsages,
-        bytes: &[u8],
-    ) -> wgpu::Buffer {
-        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some(label),
-            size: bytes.len() as u64,
-            usage: usage | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        self.queue.write_buffer(&buffer, 0, bytes);
-        buffer
-    }
-
     /// Assemble the source for one pixel layer over its layer-rect intersection
     /// with the region, matching `composite_pixels`: planar 8-bit channel
     /// planes, grayscale replicating channel 0 (one colour plane), and straight
@@ -356,9 +385,71 @@ impl Gpu {
         layer: &Layer,
         doc: &Document,
     ) -> Option<(wgpu::Buffer, SrcLayout)> {
-        let (data, layout) = assemble_source(self.region(), layer, doc)?;
-        let buffer = self.make_buffer("pictura-src", wgpu::BufferUsages::STORAGE, &data);
-        Some((buffer, layout))
+        let g = source_geom(self.region(), layer, doc)?;
+        let key = source_key(self.region(), layer, g.gray);
+        let buffer = self.kept_or_upload(key, || {
+            self.upload_with("pictura-src", g.planes * g.n, source_writer(layer, &g))
+        });
+        Some((buffer, g.layout()))
+    }
+
+    /// The upload kept under `key`, or `upload()`'s, kept for next time. A
+    /// `None` key (an unstamped plane) always uploads and keeps nothing.
+    fn kept_or_upload(
+        &self,
+        key: Option<UploadKey>,
+        upload: impl FnOnce() -> wgpu::Buffer,
+    ) -> wgpu::Buffer {
+        let resident = || devices().ok().and_then(|d| d.resident.lock().ok());
+        if let Some(buffer) = key
+            .as_ref()
+            .and_then(|k| resident().and_then(|mut r| r.get(k)))
+        {
+            #[cfg(test)]
+            RESIDENT_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            return buffer;
+        }
+        let buffer = upload();
+        if let (Some(key), Some(mut r)) = (key, resident()) {
+            r.put(key, buffer.clone());
+        }
+        buffer
+    }
+
+    /// A storage buffer of `len` bytes (padded to a word) whose bytes `write`
+    /// produces straight into the queue's staging memory, a [`RUN`] per staging
+    /// write, the runs in parallel: a large layer is never first assembled
+    /// into a host buffer and then copied again.
+    fn upload_with(
+        &self,
+        label: &str,
+        len: usize,
+        write: impl Fn(usize, wgpu::WriteOnly<'_, [u8]>) + Sync,
+    ) -> wgpu::Buffer {
+        use rayon::prelude::*;
+        let size = padded(len).max(4);
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(label),
+            size: size as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let views: Vec<_> = (0..size)
+            .step_by(RUN)
+            .map(|at| {
+                let bytes =
+                    wgpu::BufferSize::new(RUN.min(size - at) as u64).expect("a run is never empty");
+                let view = self
+                    .queue
+                    .write_buffer_with(&buffer, at as u64, bytes)
+                    .expect("a run lies inside the fresh buffer");
+                (at, view)
+            })
+            .collect();
+        views
+            .into_par_iter()
+            .for_each(|(at, mut view)| write(at, view.slice(..)));
+        buffer
     }
 
     /// Per-region-pixel mask coverage as an 8-bit plane, reusing the CPU
@@ -370,8 +461,11 @@ impl Gpu {
     /// ponytail: the plane is region-sized even for a rect-scoped layer; bound
     /// it by the rect if a many-small-layers mask profile ever shows up.
     pub(super) fn build_mask(&self, layer: &Layer) -> wgpu::Buffer {
-        let data = assemble_mask(self.region(), layer);
-        self.make_buffer("pictura-mask", wgpu::BufferUsages::STORAGE, &data)
+        let region = self.region();
+        let len = region.w as usize * region.h as usize;
+        self.kept_or_upload(mask_key(region, layer), || {
+            self.upload_with("pictura-mask", len, mask_writer(region, layer))
+        })
     }
 
     pub(super) fn composite_layer(&self, canvas: &wgpu::Buffer, layer: &Layer, doc: &Document) {
@@ -598,12 +692,7 @@ impl Gpu {
         }
         self.queue.submit(Some(encoder.finish()));
 
-        let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("pictura-readback"),
-            size,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let staging = self.readback_buffer(size);
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -612,7 +701,7 @@ impl Gpu {
         encoder.copy_buffer_to_buffer(&planar, 0, &staging, 0, size);
         self.queue.submit(Some(encoder.finish()));
 
-        let slice = staging.slice(..);
+        let slice = staging.slice(..size);
         let (tx, rx) = std::sync::mpsc::channel();
         slice.map_async(wgpu::MapMode::Read, move |result| {
             let _ = tx.send(result);
@@ -627,12 +716,32 @@ impl Gpu {
         let mapped = slice.get_mapped_range().map_err(|_| GpuError::Readback)?;
         let plane = pw as usize * 4;
         let n = n as usize;
-        let mut out = PixelBuffer::new(self.w, self.h, 4);
-        for c in 0..4 {
-            out.data[c * n..c * n + n].copy_from_slice(&mapped[c * plane..c * plane + n]);
-        }
+        let src: &[u8] = &mapped;
+        // One allocation straight from zeroed pages, each plane copied in one
+        // pass: a 267-megapixel readback is a gigabyte. Its pages are faulted
+        // in on every core first; the copy itself stays on one thread, since
+        // parallel reads of the mapped range measured four times slower.
+        let data = pictura_core::Plane::build(4 * n, |out| {
+            use rayon::prelude::*;
+            if n == 0 {
+                return;
+            }
+            out.par_chunks_mut(RUN).for_each(|run| run.fill(0));
+            for (c, dst) in out.chunks_mut(n).enumerate() {
+                dst.copy_from_slice(&src[c * plane..c * plane + n]);
+            }
+        });
+        let out = PixelBuffer {
+            width: self.w,
+            height: self.h,
+            channels: 4,
+            data,
+        };
         drop(mapped);
         staging.unmap();
+        if let Ok(mut kept) = devices()?.readback.lock() {
+            *kept = Some(staging);
+        }
         Ok(out)
     }
 
@@ -656,252 +765,15 @@ impl Gpu {
     }
 }
 
-/// The region origin and dimensions a composite runs over. Pure assembly (no
-/// device) so the row-wise and per-pixel paths are unit-testable without a GPU.
+/// How the shader should read the source binding for one dispatch.
 #[derive(Clone, Copy)]
-pub(super) struct Region {
+pub(super) struct SrcLayout {
     pub(super) x0: u32,
     pub(super) y0: u32,
     pub(super) w: u32,
     pub(super) h: u32,
-}
-
-/// The clamped layer-rect ∩ region intersection plus the plane layout, the
-/// shared product of both source-assembly paths.
-pub(super) struct SourceGeom {
-    pub(super) x0: i32,
-    pub(super) y0: i32,
-    pub(super) x1: i32,
-    pub(super) y1: i32,
-    pub(super) cw: usize,
-    pub(super) ch: usize,
-    pub(super) n: usize,
-    pub(super) planes: usize,
     pub(super) gray: bool,
-}
-
-impl SourceGeom {
-    fn layout(&self) -> SrcLayout {
-        SrcLayout {
-            x0: self.x0 as u32,
-            y0: self.y0 as u32,
-            w: self.cw as u32,
-            h: self.ch as u32,
-            gray: self.gray,
-            packed: false,
-        }
-    }
-}
-
-pub(super) fn source_geom(region: Region, layer: &Layer, doc: &Document) -> Option<SourceGeom> {
-    if layer.rect.width() <= 0 || layer.rect.height() <= 0 {
-        return None;
-    }
-    let region_right = (region.x0 + region.w) as i32;
-    let region_bottom = (region.y0 + region.h) as i32;
-    let x0 = layer.rect.left.max(region.x0 as i32);
-    let y0 = layer.rect.top.max(region.y0 as i32);
-    let x1 = layer.rect.right.min(region_right);
-    let y1 = layer.rect.bottom.min(region_bottom);
-    if x1 <= x0 || y1 <= y0 {
-        return None;
-    }
-    let gray = matches!(
-        doc.mode,
-        ColorMode::Grayscale | ColorMode::Bitmap | ColorMode::Duotone
-    );
-    let cw = (x1 - x0) as usize;
-    let ch = (y1 - y0) as usize;
-    Some(SourceGeom {
-        x0,
-        y0,
-        x1,
-        y1,
-        cw,
-        ch,
-        n: cw * ch,
-        planes: if gray { 2 } else { 4 },
-        gray,
-    })
-}
-
-/// The retained per-pixel reference assembly; the fast path must match it byte
-/// for byte. Kept reachable for the equivalence tests and as the short/absent
-/// plane fallback.
-pub(super) fn assemble_source_per_pixel(layer: &Layer, g: &SourceGeom) -> Vec<u8> {
-    let lw = layer.rect.width() as usize;
-    let ch0 = channel(layer, 0);
-    let ch1 = channel(layer, 1).or(ch0);
-    let ch2 = channel(layer, 2).or(ch0);
-    let alpha = channel(layer, -1);
-    let n = g.n;
-    let mut data = vec![0u8; g.planes * n];
-    for y in g.y0..g.y1 {
-        let row = (y - g.y0) as usize;
-        for (col, x) in (g.x0..g.x1).enumerate() {
-            let li = (y - layer.rect.top) as usize * lw + (x - layer.rect.left) as usize;
-            let d = row * g.cw + col;
-            let a = sample(alpha, li).unwrap_or(255);
-            if g.gray {
-                data[d] = sample(ch0, li).unwrap_or(0);
-                data[n + d] = a;
-            } else {
-                data[d] = sample(ch0, li).unwrap_or(0);
-                data[n + d] = sample(ch1, li).unwrap_or(0);
-                data[2 * n + d] = sample(ch2, li).unwrap_or(0);
-                data[3 * n + d] = a;
-            }
-        }
-    }
-    pad_to_4(&mut data);
-    data
-}
-
-/// Whole-row copies when every required channel covers the clamped row
-/// intersection; `None` (the fallback) when a present plane is short or channel
-/// 0 is absent.
-pub(super) fn assemble_source_rowwise(layer: &Layer, g: &SourceGeom) -> Option<Vec<u8>> {
-    let lw = layer.rect.width() as usize;
-    let base = (g.y0 - layer.rect.top) as usize * lw + (g.x0 - layer.rect.left) as usize;
-    let last_end = base + (g.ch - 1) * lw + g.cw;
-    let ch0 = channel(layer, 0)?;
-    let ch1 = channel(layer, 1).or(Some(ch0))?;
-    let ch2 = channel(layer, 2).or(Some(ch0))?;
-    let alpha = channel(layer, -1);
-    if ch0.len() < last_end || ch1.len() < last_end || ch2.len() < last_end {
-        return None;
-    }
-    if alpha.is_some_and(|a| a.len() < last_end) {
-        return None;
-    }
-
-    let n = g.n;
-    let mut data = vec![0u8; g.planes * n];
-    for row in 0..g.ch {
-        let src = base + row * lw;
-        let d = row * g.cw;
-        data[d..d + g.cw].copy_from_slice(&ch0[src..src + g.cw]);
-        if g.gray {
-            match alpha {
-                Some(a) => data[n + d..n + d + g.cw].copy_from_slice(&a[src..src + g.cw]),
-                None => data[n + d..n + d + g.cw].fill(255),
-            }
-        } else {
-            data[n + d..n + d + g.cw].copy_from_slice(&ch1[src..src + g.cw]);
-            data[2 * n + d..2 * n + d + g.cw].copy_from_slice(&ch2[src..src + g.cw]);
-            match alpha {
-                Some(a) => {
-                    data[3 * n + d..3 * n + d + g.cw].copy_from_slice(&a[src..src + g.cw]);
-                }
-                None => data[3 * n + d..3 * n + d + g.cw].fill(255),
-            }
-        }
-    }
-    pad_to_4(&mut data);
-    Some(data)
-}
-
-pub(super) fn assemble_source(
-    region: Region,
-    layer: &Layer,
-    doc: &Document,
-) -> Option<(Vec<u8>, SrcLayout)> {
-    let g = source_geom(region, layer, doc)?;
-    let data =
-        assemble_source_rowwise(layer, &g).unwrap_or_else(|| assemble_source_per_pixel(layer, &g));
-    Some((data, g.layout()))
-}
-
-/// Whether `mask_alpha` has data to sample: absent, disabled, or data-less
-/// masks (including an empty/all-open vector mask) are the constant-255 case
-/// the row fill covers.
-pub(super) fn mask_has_data(layer: &Layer) -> bool {
-    layer
-        .mask
-        .as_ref()
-        .is_some_and(|m| !m.disabled && m.data.is_some())
-        || layer.vector_mask.as_ref().is_some_and(|v| v.has_fill())
-}
-
-/// The coverage influence rectangle: the whole region for a group or an
-/// adjustment layer, the clamped layer rect for a pixel layer.
-pub(super) fn mask_influence_rect(region: Region, layer: &Layer) -> (i32, i32, i32, i32) {
-    let region_right = (region.x0 + region.w) as i32;
-    let region_bottom = (region.y0 + region.h) as i32;
-    if layer.is_group || layer.adjustment.is_some() {
-        (
-            region.x0 as i32,
-            region.y0 as i32,
-            region_right,
-            region_bottom,
-        )
-    } else {
-        (
-            layer.rect.left.max(region.x0 as i32),
-            layer.rect.top.max(region.y0 as i32),
-            layer.rect.right.min(region_right),
-            layer.rect.bottom.min(region_bottom),
-        )
-    }
-}
-
-/// Constant-255 coverage over the influence rect, 0 elsewhere.
-pub(super) fn assemble_mask_fill(region: Region, r: (i32, i32, i32, i32)) -> Vec<u8> {
-    let (x0, y0, x1, y1) = r;
-    let mut data = vec![0u8; region.w as usize * region.h as usize];
-    if x1 > x0 && y1 > y0 {
-        let stride = region.w as usize;
-        let left = (x0 - region.x0 as i32) as usize;
-        let right = (x1 - region.x0 as i32) as usize;
-        for y in y0..y1 {
-            let row = (y - region.y0 as i32) as usize * stride;
-            data[row + left..row + right].fill(255);
-        }
-    }
-    pad_to_4(&mut data);
-    data
-}
-
-/// The retained per-pixel `mask_alpha` reference, kept for data-carrying masks
-/// and the equivalence tests.
-pub(super) fn assemble_mask_per_pixel(
-    region: Region,
-    layer: &Layer,
-    r: (i32, i32, i32, i32),
-) -> Vec<u8> {
-    let (x0, y0, x1, y1) = r;
-    let mut data = vec![0u8; region.w as usize * region.h as usize];
-    if x1 > x0 && y1 > y0 {
-        let stride = region.w as usize;
-        for y in y0..y1 {
-            let row = (y - region.y0 as i32) as usize * stride;
-            for x in x0..x1 {
-                data[row + (x - region.x0 as i32) as usize] = mask_alpha(layer, x, y);
-            }
-        }
-    }
-    pad_to_4(&mut data);
-    data
-}
-
-pub(super) fn assemble_mask(region: Region, layer: &Layer) -> Vec<u8> {
-    let r = mask_influence_rect(region, layer);
-    if mask_has_data(layer) {
-        assemble_mask_per_pixel(region, layer, r)
-    } else {
-        assemble_mask_fill(region, r)
-    }
-}
-
-/// How the shader should read the source binding for one dispatch.
-#[derive(Clone, Copy)]
-pub(super) struct SrcLayout {
-    x0: u32,
-    y0: u32,
-    w: u32,
-    h: u32,
-    gray: bool,
-    packed: bool,
+    pub(super) packed: bool,
 }
 
 /// A group's inner canvas: one packed RGBA word per region pixel.
@@ -913,11 +785,3 @@ const PACKED_SRC: SrcLayout = SrcLayout {
     gray: false,
     packed: true,
 };
-
-/// A byte-packed `array<u32>` binding's size and every upload must be a
-/// multiple of 4; pad the tail rather than relying on the caller.
-fn pad_to_4(data: &mut Vec<u8>) {
-    while !data.len().is_multiple_of(4) {
-        data.push(0);
-    }
-}

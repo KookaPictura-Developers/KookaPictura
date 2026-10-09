@@ -1,5 +1,18 @@
-use pictura_core::{CharacterOverrides, Document, Layer, ParagraphOverrides, Plane, StyleError};
+use pictura_core::{Document, PsdRect};
 use pictura_select::Selection;
+
+mod planes;
+mod styles;
+
+use planes::{
+    adopt_metadata, apply_tiles, diff, hollow, plane_kinds, planes_agree, private_copy,
+    stamp_agreed, tile_rect, Dir, PlaneDelta, PlaneKind,
+};
+pub(crate) use planes::{copy_plane, detached_copy};
+pub use styles::{
+    create_character_style, create_paragraph_style, delete_character_style, delete_paragraph_style,
+    edit_character_style, edit_paragraph_style,
+};
 
 #[derive(Clone)]
 pub struct Snapshot {
@@ -7,31 +20,14 @@ pub struct Snapshot {
     pub selection: Option<Selection>,
 }
 
-/// Tile edge for the region deltas: a changed plane keeps only the 64×64 tiles
-/// whose bytes differ, so a small edit costs a small delta rather than a whole
-/// 61 MiB plane.
-const TILE: usize = 64;
-
-enum Dir {
-    Before,
-    After,
-}
-
-/// One changed tile of one plane, laid out row-major with the plane's stride.
-struct TileDelta {
-    x: usize,
-    y: usize,
-    w: usize,
-    h: usize,
-    before: Vec<u8>,
-    after: Vec<u8>,
-}
-
-/// The changed tiles of one tracked plane, anchored at the previous state.
-struct PlaneDelta {
-    index: usize,
-    width: usize,
-    tiles: Vec<TileDelta>,
+/// Where restoring a state changed the picture of the live document.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Restored {
+    /// The composite changed only inside this rectangle; an empty one means
+    /// nowhere.
+    Region(PsdRect),
+    /// The change has no bound to report: redraw the whole document.
+    Everywhere,
 }
 
 /// A state's delta against the previous state within one geometry-stable
@@ -47,10 +43,15 @@ struct Delta {
     selection: Option<Selection>,
 }
 
-/// A state is either a full anchor (the oldest state, or a geometry change that
-/// breaks the delta chain) or a delta against the previous state.
+/// A state is an anchor (the oldest state, or a geometry change that breaks
+/// the delta chain) or a delta against the previous state. The anchor of the
+/// segment holding the cursor is hollow: its pixels are `current` with the
+/// segment's deltas reverted, so history never holds that state twice. Every
+/// other anchor is full.
 enum Stored {
     Full(Snapshot),
+    /// Metadata and selection only; every tracked plane cleared.
+    Hollow(Snapshot),
     Delta(Delta),
 }
 
@@ -77,17 +78,15 @@ pub enum BrushSource {
     Pinned,
 }
 
-// Clones are refcount bumps: the planes are copy-on-write, so a state costs
-// one shared set of pixels plus the planes it has since forked.
 /// Bounded undo/redo over labeled `(Document, Selection)` states plus up to
 /// [`MAX_SNAPSHOTS`] named restore points.
 ///
-/// Internally each state after the oldest is stored as the 64×64 tiles that
-/// changed against the previous state, so retention scales with the edited
-/// area, not with the document. A geometry or structure change stores that
-/// state in full instead and starts a new anchor. `states` is the linear
-/// history in capture order (oldest first) and `cursor` indexes the current
-/// state; `current` is the materialized state at the cursor.
+/// History keeps one materialized state, `current`, the state at the cursor,
+/// in planes the live document never shares: a write to the live document then
+/// happens in place rather than copying a whole plane, and a capture finds what
+/// changed by comparing the two. Every other state is stored as the 64×64 tiles
+/// that changed against its predecessor, so retention scales with the edited
+/// area. A geometry or structure change starts a new segment at an anchor.
 #[derive(Default)]
 pub struct History {
     states: Vec<Entry>,
@@ -101,27 +100,134 @@ pub struct History {
 const MAX_DEPTH: usize = 20;
 const MAX_SNAPSHOTS: usize = 10;
 
+/// The picture change a walk through the states accumulates.
+struct Damage {
+    kinds: Vec<PlaneKind>,
+    height: usize,
+    rect: Option<PsdRect>,
+    everywhere: bool,
+}
+
+impl Damage {
+    fn new(doc: &Document) -> Self {
+        Self {
+            kinds: plane_kinds(doc),
+            height: doc.height as usize,
+            rect: None,
+            everywhere: false,
+        }
+    }
+
+    /// The document rows a composite tile covers. The composite stacks its
+    /// channels in one plane, so a tile row is a document row modulo the
+    /// height, and a tile straddling two channels covers the whole height.
+    fn rows(&self, tile: &planes::TileDelta) -> (i32, i32) {
+        let h = self.height.max(1);
+        let (first, last) = (tile.y / h, (tile.y + tile.h - 1) / h);
+        if first == last {
+            ((tile.y % h) as i32, ((tile.y + tile.h - 1) % h + 1) as i32)
+        } else {
+            (0, h as i32)
+        }
+    }
+
+    fn add(&mut self, deltas: &[PlaneDelta]) {
+        for delta in deltas {
+            match self.kinds.get(delta.index) {
+                Some(PlaneKind::Composite) => {
+                    for tile in &delta.tiles {
+                        let (top, bottom) = self.rows(tile);
+                        let r = PsdRect {
+                            top,
+                            bottom,
+                            ..tile_rect(tile)
+                        };
+                        self.rect = Some(match self.rect {
+                            None => r,
+                            Some(u) => PsdRect {
+                                top: u.top.min(r.top),
+                                left: u.left.min(r.left),
+                                bottom: u.bottom.max(r.bottom),
+                                right: u.right.max(r.right),
+                            },
+                        });
+                    }
+                }
+                Some(PlaneKind::LayerChannel) => {}
+                _ => self.everywhere = true,
+            }
+        }
+    }
+}
+
+/// Whether two states would display differently with the same composite.
+fn display_differs(a: &Document, b: &Document) -> bool {
+    (a.width, a.height, a.mode, a.depth) != (b.width, b.height, b.mode, b.depth)
+        || a.document_icc != b.document_icc
+}
+
 impl History {
-    /// Diff `snapshot` against the current state and store it as changed tiles,
-    /// or in full when the tracked-plane geometry changed.
+    /// Capture `snapshot` as the next state. The snapshot is consumed; see
+    /// [`History::capture_live`] for capturing a live document by reference.
+    #[cfg(test)]
     pub fn capture(&mut self, snapshot: Snapshot, label: &str) {
+        let Snapshot { mut doc, selection } = snapshot;
+        self.capture_live(&mut doc, &selection, label);
+    }
+
+    /// Capture the live document as the next state: diff it against the
+    /// private current state and store the changed tiles, or start a new
+    /// segment when the tracked-plane geometry changed. `doc` is left sharing
+    /// no plane with the history, so its next write is in place.
+    pub fn capture_live(&mut self, doc: &mut Document, selection: &Option<Selection>, label: &str) {
         if matches!(self.brush_source, BrushSource::State(i) if i > self.cursor) {
             self.pin_source();
         }
         self.states.truncate(self.cursor + 1);
-        let stored = match self.current.as_ref() {
-            Some(prev) => match build_delta(prev, &snapshot) {
-                Some(delta) => Stored::Delta(delta),
-                None => Stored::Full(snapshot.clone()),
+        let fresh_segment = |doc: &mut Document| {
+            (
+                Snapshot {
+                    doc: private_copy(doc),
+                    selection: selection.clone(),
+                },
+                Stored::Hollow(Snapshot {
+                    doc: hollow(doc),
+                    selection: selection.clone(),
+                }),
+            )
+        };
+        let stored = match self.current.take() {
+            None => {
+                let (current, stored) = fresh_segment(doc);
+                self.current = Some(current);
+                stored
+            }
+            Some(mut cur) => match diff(&cur.doc, doc) {
+                Some(tiles) => {
+                    apply_tiles(&mut cur.doc, &tiles, &Dir::After);
+                    adopt_metadata(&mut cur.doc, doc);
+                    cur.selection = selection.clone();
+                    stamp_agreed(&mut cur.doc, doc);
+                    self.current = Some(cur);
+                    Stored::Delta(Delta {
+                        meta: hollow(doc),
+                        tiles,
+                        selection: selection.clone(),
+                    })
+                }
+                None => {
+                    self.fill_anchor(cur);
+                    let (current, stored) = fresh_segment(doc);
+                    self.current = Some(current);
+                    stored
+                }
             },
-            None => Stored::Full(snapshot.clone()),
         };
         self.states.push(Entry {
             label: label.to_string(),
             stored,
         });
         self.cursor = self.states.len() - 1;
-        self.current = Some(snapshot);
         while self.states.len() > MAX_DEPTH + 1 {
             match self.brush_source {
                 BrushSource::Oldest | BrushSource::State(0) => self.pin_source(),
@@ -136,14 +242,46 @@ impl History {
         if self.cursor == 0 {
             return None;
         }
-        Some(self.step_to(self.cursor - 1))
+        self.step_to(self.cursor - 1, None);
+        self.current.clone()
     }
 
     pub fn redo(&mut self) -> Option<Snapshot> {
         if self.cursor + 1 >= self.states.len() {
             return None;
         }
-        Some(self.step_to(self.cursor + 1))
+        self.step_to(self.cursor + 1, None);
+        self.current.clone()
+    }
+
+    /// Undo into the live document in place, reporting where its picture
+    /// changed; `None` at the oldest state.
+    pub fn undo_live(
+        &mut self,
+        doc: &mut Document,
+        selection: &mut Option<Selection>,
+    ) -> Option<Restored> {
+        (self.cursor > 0).then(|| self.restore_live(self.cursor - 1, doc, selection))
+    }
+
+    /// Redo into the live document in place; `None` at the newest state.
+    pub fn redo_live(
+        &mut self,
+        doc: &mut Document,
+        selection: &mut Option<Selection>,
+    ) -> Option<Restored> {
+        (self.cursor + 1 < self.states.len())
+            .then(|| self.restore_live(self.cursor + 1, doc, selection))
+    }
+
+    /// Jump the live document to state `i` in place; `None` when out of range.
+    pub fn jump_live(
+        &mut self,
+        i: usize,
+        doc: &mut Document,
+        selection: &mut Option<Selection>,
+    ) -> Option<Restored> {
+        (i < self.states.len()).then(|| self.restore_live(i, doc, selection))
     }
 
     pub fn can_undo(&self) -> bool {
@@ -165,11 +303,14 @@ impl History {
     /// Drop every undo state but the current one, keeping the named restore
     /// points. The stack restarts at a single anchor.
     pub fn purge_states(&mut self) {
-        if let Some(current) = self.current.clone() {
+        if let Some(current) = self.current.as_ref() {
             let label = self.label(self.cursor).to_string();
             self.states = vec![Entry {
                 label,
-                stored: Stored::Full(current),
+                stored: Stored::Hollow(Snapshot {
+                    doc: hollow(&current.doc),
+                    selection: current.selection.clone(),
+                }),
             }];
             self.cursor = 0;
         } else {
@@ -222,7 +363,8 @@ impl History {
         if i >= self.states.len() {
             return None;
         }
-        Some(self.step_to(i))
+        self.step_to(i, None);
+        self.current.clone()
     }
 
     pub fn add_snapshot(&mut self, label: &str, snapshot: Snapshot) {
@@ -254,99 +396,226 @@ impl History {
         self.snapshots.get(i).map(|s| s.snapshot.clone())
     }
 
-    /// Move the materialized current state to `target`, applying or reverting
-    /// deltas. Crossing a full anchor backward rematerializes from that anchor.
-    fn step_to(&mut self, target: usize) -> Snapshot {
-        while self.cursor < target {
-            self.step_forward();
+    /// Move to `target` and bring the live document there: in place when it
+    /// agreed with `current` and no anchor was crossed, otherwise as a fresh
+    /// private copy.
+    fn restore_live(
+        &mut self,
+        target: usize,
+        doc: &mut Document,
+        selection: &mut Option<Selection>,
+    ) -> Restored {
+        let agreed = self
+            .current
+            .as_ref()
+            .is_some_and(|cur| planes_agree(&cur.doc, doc));
+        let before = self.current.as_ref().map(|cur| hollow(&cur.doc));
+        let mut damage = self.step_to(target, agreed.then_some(&mut *doc));
+        let cur = self
+            .current
+            .as_mut()
+            .expect("current state is always materialized");
+        if agreed && !damage.everywhere {
+            adopt_metadata(doc, &cur.doc);
+            stamp_agreed(&mut cur.doc, doc);
+        } else {
+            damage.everywhere = true;
+            *doc = private_copy(&mut cur.doc);
         }
-        while self.cursor > target {
-            if matches!(self.states[self.cursor].stored, Stored::Full(_)) {
-                self.current = Some(self.materialize(target));
-                self.cursor = target;
-            } else {
-                self.step_backward();
-            }
+        *selection = cur.selection.clone();
+        if before.is_none_or(|b| display_differs(&b, &cur.doc)) {
+            damage.everywhere = true;
         }
-        self.current
-            .clone()
-            .expect("current state is always materialized")
+        if damage.everywhere {
+            Restored::Everywhere
+        } else {
+            Restored::Region(damage.rect.unwrap_or(PsdRect {
+                top: 0,
+                left: 0,
+                bottom: 0,
+                right: 0,
+            }))
+        }
     }
 
-    fn step_forward(&mut self) {
-        let next = self.cursor + 1;
-        match &self.states[next].stored {
-            Stored::Full(snapshot) => self.current = Some(snapshot.clone()),
-            Stored::Delta(delta) => {
-                let mut cur = self.current.take().expect("current state");
-                adopt_metadata(&mut cur.doc, &delta.meta);
-                apply_tiles(&mut cur.doc, &delta.tiles, Dir::After);
-                cur.selection = delta.selection.clone();
-                self.current = Some(cur);
-            }
-        }
-        self.cursor = next;
-    }
-
-    fn step_backward(&mut self) {
-        let here = self.cursor;
-        let mut cur = self.current.take().expect("current state");
-        match &self.states[here].stored {
-            Stored::Full(_) => unreachable!("a full anchor is handled by step_to"),
-            Stored::Delta(delta) => {
-                apply_tiles(&mut cur.doc, &delta.tiles, Dir::Before);
-                let prev = here - 1;
-                match &self.states[prev].stored {
-                    Stored::Full(snapshot) => cur = snapshot.clone(),
-                    Stored::Delta(prev_delta) => {
-                        adopt_metadata(&mut cur.doc, &prev_delta.meta);
-                        cur.selection = prev_delta.selection.clone();
-                    }
-                }
-            }
-        }
-        self.cursor = here - 1;
-        self.current = Some(cur);
-    }
-
-    /// Rebuild state `target` from the nearest full anchor at or before it.
-    fn materialize(&self, target: usize) -> Snapshot {
-        let anchor = (0..=target)
+    /// The anchor of the segment holding state `i`.
+    fn anchor_of(&self, i: usize) -> usize {
+        (0..=i)
             .rev()
-            .find(|&i| matches!(self.states[i].stored, Stored::Full(_)))
-            .expect("state 0 is always a full anchor");
-        let Stored::Full(base) = &self.states[anchor].stored else {
-            unreachable!()
-        };
-        if anchor == target {
-            return base.clone();
-        }
-        let mut doc = base.doc.clone();
-        let mut selection = base.selection.clone();
-        for k in anchor + 1..=target {
-            match &self.states[k].stored {
-                Stored::Full(snapshot) => {
-                    doc = snapshot.doc.clone();
-                    selection = snapshot.selection.clone();
-                }
-                Stored::Delta(delta) => {
-                    adopt_metadata(&mut doc, &delta.meta);
-                    apply_tiles(&mut doc, &delta.tiles, Dir::After);
-                    selection = delta.selection.clone();
-                }
-            }
-        }
-        Snapshot { doc, selection }
+            .find(|&k| !matches!(self.states[k].stored, Stored::Delta(_)))
+            .expect("state 0 is always an anchor")
     }
 
-    /// Promote state 1 to a full anchor, then drop state 0.
-    fn drop_oldest(&mut self) {
-        let state1 = self.materialize(1);
-        let label = std::mem::take(&mut self.states[1].label);
-        self.states[1] = Entry {
-            label,
-            stored: Stored::Full(state1),
+    /// The first state after `i`'s segment: the next anchor, or the end.
+    fn segment_end(&self, i: usize) -> usize {
+        (i + 1..self.states.len())
+            .find(|&k| !matches!(self.states[k].stored, Stored::Delta(_)))
+            .unwrap_or(self.states.len())
+    }
+
+    /// State `k`'s metadata document and selection.
+    fn meta_of(&self, k: usize) -> (&Document, &Option<Selection>) {
+        match &self.states[k].stored {
+            Stored::Full(s) | Stored::Hollow(s) => (&s.doc, &s.selection),
+            Stored::Delta(d) => (&d.meta, &d.selection),
+        }
+    }
+
+    /// Move `snap` from state `from` to state `to` of the same segment by the
+    /// deltas between them, writing the same tiles into `live` when given.
+    fn walk(
+        &self,
+        snap: &mut Snapshot,
+        from: usize,
+        to: usize,
+        mut live: Option<&mut Document>,
+        damage: &mut Damage,
+    ) {
+        let steps: Vec<(usize, Dir)> = if to < from {
+            (to + 1..=from).rev().map(|k| (k, Dir::Before)).collect()
+        } else {
+            (from + 1..=to).map(|k| (k, Dir::After)).collect()
         };
+        for (k, dir) in steps {
+            if let Stored::Delta(delta) = &self.states[k].stored {
+                apply_tiles(&mut snap.doc, &delta.tiles, &dir);
+                if let Some(live) = live.as_deref_mut() {
+                    apply_tiles(live, &delta.tiles, &dir);
+                }
+                damage.add(&delta.tiles);
+            }
+        }
+        if from != to {
+            let (meta, selection) = self.meta_of(to);
+            adopt_metadata(&mut snap.doc, meta);
+            snap.selection = selection.clone();
+        }
+    }
+
+    /// Store `cur`, the state at the cursor, reverted to its segment's anchor
+    /// as that anchor's full state. The cursor is leaving the segment.
+    fn fill_anchor(&mut self, mut cur: Snapshot) {
+        let anchor = self.anchor_of(self.cursor);
+        let mut ignored = Damage::new(&cur.doc);
+        self.walk(&mut cur, self.cursor, anchor, None, &mut ignored);
+        self.states[anchor].stored = Stored::Full(cur);
+    }
+
+    /// Move `current` to `target`, writing the same tiles into `live` while no
+    /// anchor is crossed. The damage is `everywhere` once one is.
+    fn step_to(&mut self, target: usize, mut live: Option<&mut Document>) -> Damage {
+        let mut damage = Damage::new(
+            &self
+                .current
+                .as_ref()
+                .expect("current state is always materialized")
+                .doc,
+        );
+        while self.cursor != target {
+            let anchor = self.anchor_of(self.cursor);
+            let end = self.segment_end(self.cursor);
+            let mut cur = self.current.take().expect("current state");
+            let stop = target.clamp(anchor, end - 1);
+            self.walk(
+                &mut cur,
+                self.cursor,
+                stop,
+                live.as_deref_mut(),
+                &mut damage,
+            );
+            self.cursor = stop;
+            if stop == target {
+                self.current = Some(cur);
+                break;
+            }
+            damage.everywhere = true;
+            live = None;
+            if target < anchor {
+                // Back across this segment's anchor: it keeps the state it is,
+                // and the previous segment's full anchor turns hollow.
+                self.states[anchor].stored = Stored::Full(cur);
+                let prev = self.anchor_of(anchor - 1);
+                let Stored::Full(base) = std::mem::replace(
+                    &mut self.states[prev].stored,
+                    Stored::Delta(Delta {
+                        meta: Document::default(),
+                        tiles: Vec::new(),
+                        selection: None,
+                    }),
+                ) else {
+                    unreachable!("an anchor outside the cursor's segment is full");
+                };
+                self.states[prev].stored = Stored::Hollow(Snapshot {
+                    doc: hollow(&base.doc),
+                    selection: base.selection.clone(),
+                });
+                let mut moved = base;
+                let mut ignored = Damage::new(&moved.doc);
+                self.walk(&mut moved, prev, anchor - 1, None, &mut ignored);
+                self.current = Some(moved);
+                self.cursor = anchor - 1;
+            } else {
+                // Forward into the next segment: this anchor becomes full and
+                // the next one hands over its state and turns hollow.
+                self.cursor = stop;
+                self.fill_anchor(cur);
+                let Stored::Full(next) = std::mem::replace(
+                    &mut self.states[end].stored,
+                    Stored::Delta(Delta {
+                        meta: Document::default(),
+                        tiles: Vec::new(),
+                        selection: None,
+                    }),
+                ) else {
+                    unreachable!("an anchor outside the cursor's segment is full");
+                };
+                self.states[end].stored = Stored::Hollow(Snapshot {
+                    doc: hollow(&next.doc),
+                    selection: next.selection.clone(),
+                });
+                self.current = Some(next);
+                self.cursor = end;
+            }
+        }
+        damage
+    }
+
+    /// Rebuild state `target` without moving the cursor.
+    fn materialize(&self, target: usize) -> Snapshot {
+        let anchor = self.anchor_of(target);
+        let mut ignored = Damage {
+            kinds: Vec::new(),
+            height: 0,
+            rect: None,
+            everywhere: false,
+        };
+        match &self.states[anchor].stored {
+            Stored::Full(base) => {
+                let mut snap = base.clone();
+                self.walk(&mut snap, anchor, target, None, &mut ignored);
+                snap
+            }
+            _ => {
+                let mut snap = self.current.clone().expect("current state");
+                self.walk(&mut snap, self.cursor, target, None, &mut ignored);
+                snap
+            }
+        }
+    }
+
+    /// Make state 1 an anchor, then drop state 0.
+    fn drop_oldest(&mut self) {
+        let promoted = match (&self.states[0].stored, &self.states[1].stored) {
+            (_, Stored::Full(_) | Stored::Hollow(_)) => None,
+            (Stored::Hollow(_), Stored::Delta(d)) => Some(Stored::Hollow(Snapshot {
+                doc: d.meta.clone(),
+                selection: d.selection.clone(),
+            })),
+            _ => Some(Stored::Full(self.materialize(1))),
+        };
+        if let Some(stored) = promoted {
+            self.states[1].stored = stored;
+        }
         self.states.remove(0);
         self.cursor -= 1;
     }
@@ -357,7 +626,7 @@ impl History {
             .iter()
             .filter_map(|e| match &e.stored {
                 Stored::Delta(d) => Some(d),
-                Stored::Full(_) => None,
+                _ => None,
             })
             .flat_map(|d| d.tiles.iter())
             .flat_map(|p| p.tiles.iter())
@@ -365,242 +634,22 @@ impl History {
             .sum()
     }
 
+    /// States retained with their whole pixels: full anchors, plus `current`.
     #[cfg(test)]
     fn full_state_count(&self) -> usize {
         self.states
             .iter()
             .filter(|e| matches!(e.stored, Stored::Full(_)))
             .count()
-    }
-}
-
-/// Build a delta from `prev` to `next`, or `None` when the tracked-plane
-/// geometry (count, stride, or height) differs and a full snapshot is needed.
-///
-/// ponytail: a geometry or structure change retains that one state in full and
-/// restarts the tile chain there, so deltas never span incompatible planes.
-fn build_delta(prev: &Snapshot, next: &Snapshot) -> Option<Delta> {
-    let mut prev_planes: Vec<(Plane<u8>, usize, usize)> = Vec::new();
-    each_plane(&prev.doc, &mut |p, w, h| {
-        prev_planes.push((p.clone(), w, h))
-    });
-    let mut next_planes: Vec<(Plane<u8>, usize, usize)> = Vec::new();
-    each_plane(&next.doc, &mut |p, w, h| {
-        next_planes.push((p.clone(), w, h))
-    });
-    if prev_planes.len() != next_planes.len() {
-        return None;
-    }
-    if prev_planes
-        .iter()
-        .zip(&next_planes)
-        .any(|(a, b)| a.0.len() != b.0.len() || a.1 != b.1 || a.2 != b.2)
-    {
-        return None;
+            + usize::from(self.current.is_some())
     }
 
-    let mut tiles = Vec::new();
-    for (index, (before, width, _)) in prev_planes.iter().enumerate() {
-        let after = &next_planes[index];
-        if shares_plane(before, &after.0) || before.as_slice() == after.0.as_slice() {
-            continue;
-        }
-        let changed = diff_tiles(before.as_slice(), after.0.as_slice(), *width);
-        if !changed.is_empty() {
-            tiles.push(PlaneDelta {
-                index,
-                width: *width,
-                tiles: changed,
-            });
-        }
-    }
-
-    let mut meta = next.doc.clone();
-    each_plane_mut(&mut meta, &mut |p, _, _| *p = Plane::default());
-    Some(Delta {
-        meta,
-        tiles,
-        selection: next.selection.clone(),
-    })
-}
-
-fn shares_plane(a: &Plane<u8>, b: &Plane<u8>) -> bool {
-    a.len() == b.len() && std::ptr::eq(a.as_slice().as_ptr(), b.as_slice().as_ptr())
-}
-
-fn diff_tiles(before: &[u8], after: &[u8], width: usize) -> Vec<TileDelta> {
-    if width == 0 {
-        return Vec::new();
-    }
-    let height = before.len() / width;
-    let mut out = Vec::new();
-    let mut y0 = 0;
-    while y0 < height {
-        let h = TILE.min(height - y0);
-        let mut x0 = 0;
-        while x0 < width {
-            let w = TILE.min(width - x0);
-            let changed = (y0..y0 + h).any(|row| {
-                let start = row * width + x0;
-                before[start..start + w] != after[start..start + w]
-            });
-            if changed {
-                let mut b = Vec::with_capacity(w * h);
-                let mut a = Vec::with_capacity(w * h);
-                for row in y0..y0 + h {
-                    let start = row * width + x0;
-                    b.extend_from_slice(&before[start..start + w]);
-                    a.extend_from_slice(&after[start..start + w]);
-                }
-                out.push(TileDelta {
-                    x: x0,
-                    y: y0,
-                    w,
-                    h,
-                    before: b,
-                    after: a,
-                });
-            }
-            x0 += TILE;
-        }
-        y0 += TILE;
-    }
-    out
-}
-
-fn apply_tiles(doc: &mut Document, deltas: &[PlaneDelta], dir: Dir) {
-    for delta in deltas {
-        let mut index = 0;
-        each_plane_mut(doc, &mut |plane, _, _| {
-            if index == delta.index {
-                for tile in &delta.tiles {
-                    let bytes = match dir {
-                        Dir::Before => &tile.before,
-                        Dir::After => &tile.after,
-                    };
-                    write_tile(plane, delta.width, tile, bytes);
-                }
-            }
-            index += 1;
-        });
-    }
-}
-
-fn write_tile(plane: &mut Plane<u8>, width: usize, tile: &TileDelta, bytes: &[u8]) {
-    if width == 0 {
-        return;
-    }
-    for row in 0..tile.h {
-        let dst = (tile.y + row) * width + tile.x;
-        let src = row * tile.w;
-        if dst + tile.w > plane.len() {
-            return;
-        }
-        plane[dst..dst + tile.w].copy_from_slice(&bytes[src..src + tile.w]);
-    }
-}
-
-/// Replace `doc`'s metadata with `meta`'s, keeping `doc`'s tracked-plane bytes.
-fn adopt_metadata(doc: &mut Document, meta: &Document) {
-    let mut planes: Vec<Plane<u8>> = Vec::new();
-    each_plane(doc, &mut |p, _, _| planes.push(p.clone()));
-    *doc = meta.clone();
-    let mut index = 0;
-    each_plane_mut(doc, &mut |p, _, _| {
-        if let Some(src) = planes.get(index) {
-            *p = src.clone();
-        }
-        index += 1;
-    });
-}
-
-fn plane_height(len: usize, width: usize) -> usize {
-    len.checked_div(width).unwrap_or(0)
-}
-
-/// Visit every tracked plane (composite, document channels, layer channels,
-/// layer masks, depth-first) with its row stride and height. The traversal is
-/// fixed by the document structure, not the plane lengths, so it enumerates the
-/// same indices before and after a plane is cleared or written.
-fn each_plane(doc: &Document, f: &mut impl FnMut(&Plane<u8>, usize, usize)) {
-    let width = doc.width as usize;
-    let h = plane_height(doc.composite.data.len(), width);
-    f(&doc.composite.data, width, h);
-    for channel in &doc.channels {
-        let h = plane_height(channel.data.len(), width);
-        f(&channel.data, width, h);
-    }
-    for layer in &doc.layers {
-        each_layer_plane(layer, f);
-    }
-}
-
-fn each_layer_plane(layer: &Layer, f: &mut impl FnMut(&Plane<u8>, usize, usize)) {
-    let layer_width = layer.rect.width().max(0) as usize;
-    for channel in &layer.channels {
-        let width = if layer_width > 0 {
-            layer_width
-        } else {
-            channel.data.len()
-        };
-        let h = plane_height(channel.data.len(), width);
-        f(&channel.data, width, h);
-    }
-    if let Some(mask) = &layer.mask {
-        if let Some(data) = &mask.data {
-            let mask_width = mask.rect.width().max(0) as usize;
-            let width = if mask_width > 0 {
-                mask_width
-            } else {
-                data.len()
-            };
-            let h = plane_height(data.len(), width);
-            f(data, width, h);
-        }
-    }
-    for child in &layer.children {
-        each_layer_plane(child, &mut *f);
-    }
-}
-
-fn each_plane_mut(doc: &mut Document, f: &mut impl FnMut(&mut Plane<u8>, usize, usize)) {
-    let width = doc.width as usize;
-    let h = plane_height(doc.composite.data.len(), width);
-    f(&mut doc.composite.data, width, h);
-    for channel in doc.channels.iter_mut() {
-        let h = plane_height(channel.data.len(), width);
-        f(&mut channel.data, width, h);
-    }
-    for layer in doc.layers.iter_mut() {
-        each_layer_plane_mut(layer, f);
-    }
-}
-
-fn each_layer_plane_mut(layer: &mut Layer, f: &mut impl FnMut(&mut Plane<u8>, usize, usize)) {
-    let layer_width = layer.rect.width().max(0) as usize;
-    for channel in layer.channels.iter_mut() {
-        let width = if layer_width > 0 {
-            layer_width
-        } else {
-            channel.data.len()
-        };
-        let h = plane_height(channel.data.len(), width);
-        f(&mut channel.data, width, h);
-    }
-    if let Some(mask) = layer.mask.as_mut() {
-        if let Some(data) = mask.data.as_mut() {
-            let mask_width = mask.rect.width().max(0) as usize;
-            let width = if mask_width > 0 {
-                mask_width
-            } else {
-                data.len()
-            };
-            let h = plane_height(data.len(), width);
-            f(data, width, h);
-        }
-    }
-    for child in layer.children.iter_mut() {
-        each_layer_plane_mut(child, &mut *f);
+    #[cfg(test)]
+    fn anchor_count(&self) -> usize {
+        self.states
+            .iter()
+            .filter(|e| !matches!(e.stored, Stored::Delta(_)))
+            .count()
     }
 }
 
@@ -647,133 +696,6 @@ impl History {
         };
         self.pinned = snapshot;
         self.brush_source = BrushSource::Pinned;
-    }
-}
-
-/// Create a named character style. No history; the caller records one state.
-pub fn create_character_style(
-    doc: &mut Document,
-    name: &str,
-    attrs: CharacterOverrides,
-) -> Result<(), StyleError> {
-    doc.text_styles.create_character_style(name, attrs)
-}
-
-/// Edit a named character style and re-resolve every type layer applying it.
-pub fn edit_character_style(
-    doc: &mut Document,
-    name: &str,
-    attrs: CharacterOverrides,
-) -> Result<(), StyleError> {
-    doc.text_styles.edit_character_style(name, attrs)?;
-    re_resolve_layers(doc, name, false);
-    Ok(())
-}
-
-/// Delete a named character style and unlink the type layers applying it.
-pub fn delete_character_style(doc: &mut Document, name: &str) -> Result<(), StyleError> {
-    doc.text_styles.delete_character_style(name)?;
-    clear_applied(&mut doc.layers, name, false);
-    Ok(())
-}
-
-/// Create a named paragraph style. No history; the caller records one state.
-pub fn create_paragraph_style(
-    doc: &mut Document,
-    name: &str,
-    character: CharacterOverrides,
-    paragraph: ParagraphOverrides,
-) -> Result<(), StyleError> {
-    doc.text_styles
-        .create_paragraph_style(name, character, paragraph)
-}
-
-/// Edit a named paragraph style and re-resolve every type layer applying it.
-pub fn edit_paragraph_style(
-    doc: &mut Document,
-    name: &str,
-    character: CharacterOverrides,
-    paragraph: ParagraphOverrides,
-) -> Result<(), StyleError> {
-    doc.text_styles
-        .edit_paragraph_style(name, character, paragraph)?;
-    re_resolve_layers(doc, name, true);
-    Ok(())
-}
-
-/// Delete a named paragraph style and unlink the type layers applying it.
-pub fn delete_paragraph_style(doc: &mut Document, name: &str) -> Result<(), StyleError> {
-    doc.text_styles.delete_paragraph_style(name)?;
-    clear_applied(&mut doc.layers, name, true);
-    Ok(())
-}
-
-/// Re-resolve every type layer that applies `name`, preserving its manual
-/// overrides, after an edit to that style.
-fn re_resolve_layers(doc: &mut Document, name: &str, paragraph: bool) -> bool {
-    let styles = doc.text_styles.clone();
-    let mut paths = Vec::new();
-    styled_layer_paths(&doc.layers, "", name, paragraph, &mut paths);
-    let mut changed = false;
-    for path in paths {
-        let Some(mut spec) =
-            pictura_render::resolve_path(doc, &path).and_then(pictura_render::type_layer_spec)
-        else {
-            continue;
-        };
-        let resolved = styles.resolve(
-            &spec.overrides,
-            spec.applied_character_style.as_deref(),
-            spec.applied_paragraph_style.as_deref(),
-        );
-        spec.character = resolved.character;
-        spec.paragraph = resolved.paragraph;
-        changed |= pictura_render::replace_type_layer(doc, &path, &spec);
-    }
-    changed
-}
-
-fn styled_layer_paths(
-    layers: &[Layer],
-    prefix: &str,
-    name: &str,
-    paragraph: bool,
-    out: &mut Vec<String>,
-) {
-    for (i, layer) in layers.iter().enumerate() {
-        let path = if prefix.is_empty() {
-            i.to_string()
-        } else {
-            format!("{prefix}/{i}")
-        };
-        if layer.is_group {
-            styled_layer_paths(&layer.children, &path, name, paragraph, out);
-            continue;
-        }
-        let matches = if paragraph {
-            layer.applied_paragraph_style.as_deref() == Some(name)
-        } else {
-            layer.applied_character_style.as_deref() == Some(name)
-        };
-        if matches {
-            out.push(path);
-        }
-    }
-}
-
-fn clear_applied(layers: &mut [Layer], name: &str, paragraph: bool) {
-    for layer in layers {
-        if layer.is_group {
-            clear_applied(&mut layer.children, name, paragraph);
-            continue;
-        }
-        if paragraph {
-            if layer.applied_paragraph_style.as_deref() == Some(name) {
-                layer.applied_paragraph_style = None;
-            }
-        } else if layer.applied_character_style.as_deref() == Some(name) {
-            layer.applied_character_style = None;
-        }
     }
 }
 

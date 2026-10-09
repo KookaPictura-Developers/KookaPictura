@@ -49,6 +49,12 @@ public:
     // Replace the image but keep the current zoom and pan.
     void replaceImage(const QImage& image);
 
+    // Present a document of `size` from the level provider alone, holding no
+    // full-resolution image: as setImage (fit-and-centre) and replaceImage
+    // (keep the view) respectively.
+    void setDocument(const QSize& size);
+    void replaceDocument(const QSize& size);
+
     // Overwrite the canvas at document-space (x, y) with a region-sized image
     // under CompositionMode_Source (no blending), then invalidate the zoom
     // present cache so the next paint rebuilds it. A null/empty region and a
@@ -79,7 +85,12 @@ public:
     // The coarsest level whose scale is still at least as fine as the screen.
     static int presentLevelForZoom(double zoom, int levelCount);
 
-    const QImage& image() const { return image_; }
+    // The document as one image: the one set by setImage/replaceImage, or, for
+    // a document presented from the level provider, level 0 cropped whole. That
+    // crop is the full resolution, so size-only callers use documentSize().
+    QImage image() const;
+    QSize documentSize() const { return docSize_; }
+    bool hasDocument() const { return !docSize_.isEmpty(); }
 
     // Zoom about a cursor position so the point under the cursor stays put.
     void zoomAt(const QPointF& cursor, int angleDelta);
@@ -314,6 +325,7 @@ public:
     // Test hooks for the internal level-crop present cache.
     bool presentCacheRebuiltOnLastPaint() const { return presentCacheRebuiltLastPaint_; }
     int presentCacheRebuildCount() const { return presentCache_.rebuilds; }
+    bool holdsImageForTest() const { return !image_.isNull(); }
     QSize presentCacheImageSize() const { return presentCache_.crop.size(); }
     qint64 presentCacheImageKey() const { return presentCache_.key; }
     void setPresentCacheEnabledForTest(bool enabled);
@@ -398,7 +410,12 @@ private:
     };
     const QImage* presentCrop(QRect& docRect);
 
+    // Held only for a canvas without a level provider (tests, dialogs); a
+    // document canvas presents from pyramid crops and keeps none.
     QImage image_;
+    QSize docSize_;
+    // Bumped whenever the document is replaced; keys the present caches.
+    qint64 frameKey_ = 0;
     int channelMask_ = 0x7;
     // The single visible channel as greyscale, rebuilt when the image or the
     // mask changes.
@@ -407,7 +424,8 @@ private:
     int channelImageMask_ = -1;
     // The visible channel when exactly one is, else -1.
     int singleChannel() const;
-    const QImage& channelImage();
+    // `source` with only the visible channel, as greyscale, cached by `key`.
+    const QImage& channelImage(const QImage& source, qint64 key);
     QColor canvasColor_{Theme::workspaceColor()};
     double zoom_ = 1.0;
     QPointF offset_;

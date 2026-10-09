@@ -337,16 +337,21 @@ mod tests {
             ..StrokeConfig::default()
         };
         let mut stroke = Stroke::begin_focus(d, "0", cfg, options, sampled).expect("begin");
+        let mut out = d.clone();
         for _ in 0..passes {
             for x in [20.0, 25.0, 20.0] {
-                stroke.sample(StrokeSample {
-                    x,
-                    y: 20.0,
-                    pressure: 1.0,
-                });
+                stroke.sample(
+                    &mut out,
+                    StrokeSample {
+                        x,
+                        y: 20.0,
+                        pressure: 1.0,
+                    },
+                );
             }
         }
-        stroke.finish().map_or_else(|| d.clone(), |o| o.document)
+        stroke.finish();
+        out
     }
 
     fn full() -> FocusOptions {
@@ -405,14 +410,17 @@ mod tests {
 
     #[test]
     fn a_flat_area_is_left_alone() {
-        let flat = doc(40, 40, [123, 45, 67, 255]);
+        let mut out = doc(40, 40, [123, 45, 67, 255]);
         let cfg = StrokeConfig::default();
-        let mut stroke = Stroke::begin_focus(&flat, "0", cfg, full(), None).unwrap();
-        stroke.sample(StrokeSample {
-            x: 20.0,
-            y: 20.0,
-            pressure: 1.0,
-        });
+        let mut stroke = Stroke::begin_focus(&out, "0", cfg, full(), None).unwrap();
+        stroke.sample(
+            &mut out,
+            StrokeSample {
+                x: 20.0,
+                y: 20.0,
+                pressure: 1.0,
+            },
+        );
         assert!(stroke.finish().is_none(), "rounding drifted a flat colour");
     }
 
@@ -534,14 +542,17 @@ mod tests {
             assert!((a - b).abs() <= 1, "the ramp moved: {a} -> {b}");
         }
 
-        let flat = doc(40, 40, [123, 45, 67, 255]);
+        let mut out = doc(40, 40, [123, 45, 67, 255]);
         let cfg = StrokeConfig::default();
-        let mut stroke = Stroke::begin_focus(&flat, "0", cfg, sharpen_with(true), None).unwrap();
-        stroke.sample(StrokeSample {
-            x: 20.0,
-            y: 20.0,
-            pressure: 1.0,
-        });
+        let mut stroke = Stroke::begin_focus(&out, "0", cfg, sharpen_with(true), None).unwrap();
+        stroke.sample(
+            &mut out,
+            StrokeSample {
+                x: 20.0,
+                y: 20.0,
+                pressure: 1.0,
+            },
+        );
         assert!(
             stroke.finish().is_none(),
             "sharpening drifted a flat colour"

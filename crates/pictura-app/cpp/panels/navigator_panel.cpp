@@ -281,9 +281,11 @@ void NavigatorPanel::refresh()
         zoomLabel_->setText(QStringLiteral("—"));
         return;
     }
-    QSize docSize = canvas_->image().size();
-    QImage thumb = canvas_->image();
-    if (view_ && view_->has_document()) {
+    QSize docSize = canvas_->documentSize();
+    QImage thumb;
+    if (!view_ || !view_->has_document()) {
+        thumb = canvas_->image();
+    } else {
         docSize = QSize(view_->document_width(), view_->document_height());
         const int levels = view_->display_level_count();
         if (levels > 0) {

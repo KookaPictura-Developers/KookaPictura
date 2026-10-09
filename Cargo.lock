@@ -964,6 +964,7 @@ dependencies = [
  "pictura-render",
  "pictura-select",
  "pollster",
+ "rayon",
  "wgpu",
 ]
 

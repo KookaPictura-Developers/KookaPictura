@@ -439,22 +439,9 @@ impl qobject::PictureView {
     /// Reuses the cached base when the content revision, topmost layer, and
     /// clamped rect all match; otherwise it recomputes.
     pub fn begin_move_preview(mut self: Pin<&mut Self>) -> bool {
-        let Some(index) = self.as_ref().move_cache_target() else {
+        let Some(index) = self.as_ref().movable_target() else {
             return false;
         };
-        {
-            let rust = self.rust();
-            let Some(layer) = rust
-                .doc
-                .as_ref()
-                .and_then(|doc| doc.layers.get(index as usize))
-            else {
-                return false;
-            };
-            if layer_move_locked(layer) {
-                return false;
-            }
-        }
         if self.as_ref().move_cache_valid(index) {
             {
                 let mut rust = self.as_mut().rust_mut();
@@ -500,9 +487,11 @@ impl qobject::PictureView {
         self.as_mut().compute_move_preview(new_index as usize)
     }
 
-    /// Warm the move-preview cache without entering preview mode.
+    /// Warm the move-preview cache without entering preview mode. A layer the
+    /// Move tool may not move (a Background) is never previewed, so it is not
+    /// warmed either: the warm composites the whole document.
     pub fn prepare_move_preview(mut self: Pin<&mut Self>) -> bool {
-        let Some(index) = self.as_ref().move_cache_target() else {
+        let Some(index) = self.as_ref().movable_target() else {
             return false;
         };
         if self.as_ref().move_cache_valid(index) {
@@ -523,6 +512,14 @@ impl qobject::PictureView {
         let path = rust.active_layer.as_deref()?;
         active_pixel_layer(doc, Some(path))?;
         path.parse::<usize>().ok().map(|index| index as i32)
+    }
+
+    /// [`Self::move_cache_target`] when its layer is not move-locked.
+    fn movable_target(&self) -> Option<i32> {
+        let index = self.move_cache_target()?;
+        let rust = self.rust();
+        let layer = rust.doc.as_ref()?.layers.get(index as usize)?;
+        (!layer_move_locked(layer)).then_some(index)
     }
 
     fn move_cache_valid(&self, index: i32) -> bool {

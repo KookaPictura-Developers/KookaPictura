@@ -193,14 +193,12 @@ void PicturaMainWindow::registerHandlers()
     registry_->setEnabledProvider(command_ids::FileRevert,
                                   [this]() { return !activeFilePath().isEmpty(); });
 
+    // A restore announces itself: `changed` (wired to refresh()) when it
+    // redraws everything, `regionBlitted` when history bounded it. A refresh()
+    // here would rebuild the full canvas image after every bounded undo.
     registry_->setHandler(command_ids::EditUndo, [this]() {
-        PictureView* view = activeView();
-        if (!view) {
-            return;
-        }
-        const bool ok = view->can_undo() ? view->undo() : view->redo();
-        if (ok) {
-            refresh();
+        if (PictureView* view = activeView()) {
+            view->can_undo() ? view->undo() : view->redo();
         }
     });
     registry_->setEnabledProvider(command_ids::EditUndo, [this]() {
@@ -213,24 +211,24 @@ void PicturaMainWindow::registerHandlers()
     });
 
     registry_->setHandler(command_ids::EditRedo, [this]() {
-        if (PictureView* view = activeView(); view && view->redo()) {
-            refresh();
+        if (PictureView* view = activeView()) {
+            view->redo();
         }
     });
     registry_->setEnabledProvider(command_ids::EditRedo,
                                   [this]() { return activeView() && activeView()->can_redo(); });
 
     registry_->setHandler(command_ids::EditStepBackward, [this]() {
-        if (PictureView* view = activeView(); view && view->undo()) {
-            refresh();
+        if (PictureView* view = activeView()) {
+            view->undo();
         }
     });
     registry_->setEnabledProvider(command_ids::EditStepBackward,
                                   [this]() { return activeView() && activeView()->can_undo(); });
 
     registry_->setHandler(command_ids::EditStepForward, [this]() {
-        if (PictureView* view = activeView(); view && view->redo()) {
-            refresh();
+        if (PictureView* view = activeView()) {
+            view->redo();
         }
     });
     registry_->setEnabledProvider(command_ids::EditStepForward,

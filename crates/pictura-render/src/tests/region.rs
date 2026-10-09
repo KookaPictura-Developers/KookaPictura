@@ -127,3 +127,153 @@ fn shape_layer_region_profile() {
     );
     time(&d, "4 shapes, one stroked away from the region");
 }
+
+/// `layer` with every channel textured, so a band composited from the wrong
+/// rows or columns cannot go unnoticed.
+fn textured(mut layer: Layer, seed: usize) -> Layer {
+    for (c, channel) in layer.channels.iter_mut().enumerate() {
+        for (i, v) in channel.data.as_mut_slice().iter_mut().enumerate() {
+            *v = ((i * (3 + c) + seed * 17 + c * 41) % 256) as u8;
+        }
+    }
+    layer
+}
+
+/// A per-pixel stack taller than two bands: offset and partial layers, blend
+/// modes including Dissolve, a raster mask, an isolated group with a clipped
+/// child, and an adjustment.
+fn banded_doc() -> Document {
+    let (w, h) = (101u32, 333u32);
+    let mut masked = textured(
+        solid(
+            "Masked",
+            rect(40, 10, 300, 90),
+            (0, 0, 0),
+            255,
+            BlendMode::Screen,
+            220,
+        ),
+        3,
+    );
+    masked.mask = Some(LayerMask {
+        rect: rect(50, 0, 280, 70),
+        default_color: 0,
+        data: Some((0..230 * 70).map(|i| (i % 253) as u8).collect()),
+        ..Default::default()
+    });
+    let mut clipped = textured(
+        solid(
+            "Clipped",
+            rect(0, 0, 333, 101),
+            (0, 0, 0),
+            255,
+            BlendMode::Overlay,
+            255,
+        ),
+        5,
+    );
+    clipped.clipping = true;
+    doc(
+        w,
+        h,
+        vec![
+            textured(
+                solid("Base", full(w, h), (0, 0, 0), 255, BlendMode::Normal, 255),
+                1,
+            ),
+            textured(
+                solid(
+                    "Offset",
+                    rect(-7, -9, 200, 60),
+                    (0, 0, 0),
+                    255,
+                    BlendMode::Multiply,
+                    200,
+                ),
+                2,
+            ),
+            masked,
+            group(
+                "Group",
+                BlendMode::Normal,
+                230,
+                None,
+                vec![
+                    textured(
+                        solid(
+                            "Inner",
+                            rect(100, 20, 320, 101),
+                            (0, 0, 0),
+                            255,
+                            BlendMode::Difference,
+                            255,
+                        ),
+                        4,
+                    ),
+                    clipped,
+                ],
+            ),
+            textured(
+                solid(
+                    "Dissolve",
+                    rect(120, 5, 250, 95),
+                    (0, 0, 0),
+                    255,
+                    BlendMode::Dissolve,
+                    140,
+                ),
+                6,
+            ),
+            adjustment_layer("Invert", *b"nvrt", Vec::new(), 180, None),
+        ],
+    )
+}
+
+#[test]
+fn banded_compositing_equals_one_canvas() {
+    let d = banded_doc();
+    let whole = crate::composite::composite_whole(&d);
+    let banded = composite_rgba(&d);
+    assert!(banded.data == whole.data, "the banded composite differs");
+
+    let (x0, y0, w, h) = (3, 17, 90, 290);
+    let region = composite_rgba_region(&d, x0, y0, w, h);
+    for y in 0..h {
+        for x in 0..w {
+            assert_eq!(
+                px(&region, x, y),
+                px(&whole, x0 + x, y0 + y),
+                "pixel ({}, {})",
+                x0 + x,
+                y0 + y
+            );
+        }
+    }
+}
+
+#[test]
+fn banding_with_a_short_type_layer_equals_one_canvas() {
+    let mut d = banded_doc();
+    let mut spec = pictura_core::TypeSpec::new("Band", "Liberation Sans", 40.0);
+    spec.origin = (10.0, 140.0);
+    spec.character.fill_color = [0.9, 0.2, 0.1, 1.0];
+    let path = crate::add_type_layer(&mut d, "", &spec);
+    let layer = crate::resolve_path_mut(&mut d, &path).expect("type layer");
+    layer.blend = BlendMode::Multiply;
+    // Without its rasterized proxy the text is rendered while compositing.
+    layer.channels.clear();
+    assert!(
+        layer.rect.height() > 0 && layer.rect.height() <= 256,
+        "{:?}",
+        layer.rect
+    );
+    let whole = crate::composite::composite_whole(&d);
+    assert!(
+        composite_rgba(&d).data == whole.data,
+        "the banded composite differs"
+    );
+    assert!(
+        whole.data != crate::composite::composite_whole(&banded_doc()).data,
+        "no text drawn"
+    );
+}

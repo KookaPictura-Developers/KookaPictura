@@ -83,22 +83,21 @@ fn paint_dab_profile_4000() {
             y: 2000.0,
             pressure: 1.0,
         };
-        if !stroke.sample(sample) {
+        if !stroke.sample(&mut doc, sample) {
             continue;
         }
         let Some(rect) = stroke.take_dirty() else {
             continue;
         };
         let t = std::time::Instant::now();
-        let (cpu_buffer, cpu_backend) =
-            pictura_render::composite_region_active(stroke.document(), rect, false);
+        let (cpu_buffer, cpu_backend) = pictura_render::composite_region_active(&doc, rect, false);
         let cpu_composite = t.elapsed();
         let t = std::time::Instant::now();
         let _ = buffer_to_image(&cpu_buffer);
         let blit = t.elapsed();
         let gpu_composite = if gpu_available {
             let t = std::time::Instant::now();
-            let _ = pictura_render::composite_region_active(stroke.document(), rect, true);
+            let _ = pictura_render::composite_region_active(&doc, rect, true);
             Some(t.elapsed())
         } else {
             None
