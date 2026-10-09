@@ -4,14 +4,15 @@
 
 - [x] 1.1 Port photorust's `shear` into `photorust/distort.rs` on the shared `remap`: a `(position, offset)` curve shifts each row horizontally by `offset · width/2`, top row `-1`, bottom row `1`, `wrap` selecting the edge mode.
 - [x] 1.2 Route `Filter::Shear` through `photorust::dispatch::plan` with the curve validation; remove the old `distort/coord.rs` vertical shift and its `apply.rs` arm.
-- [x] 1.3 Export `SHEAR_POINTS = 17` from `pictura-filters`.
+- [x] 1.3 Export `SHEAR_MAX_POINTS = 8` from `pictura-filters`.
 - [x] 1.4 Port photorust's Shear unit tests (straight curve no-op, rows pushed by the curve, fill modes differ) and the validation cases.
 
 ## 2. App
 
-- [x] 2.1 Map the `shear` kind to 18 slots: 17 lattice offsets + fill, defaulting to a straight curve and `Wrap Around`.
+- [x] 2.1 Map the `shear` kind to 18 slots: a point count, eight `(position, offset)` pairs, then the fill, defaulting to a straight curve and `Wrap Around`.
 - [x] 2.2 Add `shear` to `filter_preview_needs_whole_layer`.
-- [x] 2.3 Add the `ShearCurve` (17 slots) and `Radio` (1 slot) controls and the `previewBelow` dialog layout; switch the Shear spec row to the curve box + `Undefined Areas` radios.
+- [x] 2.3 Add the `ShearCurve` (a count plus eight pairs = 17 slots) and `Radio` (1 slot) controls and the `previewBelow` dialog layout; switch the Shear spec row to the curve box + `Undefined Areas` radios.
+- [x] 2.4 Composite the pane's filtered active layer over the document with it hidden, so only the active layer is filtered (`filter_proxy_base` / `filter_proxy_layer`); cover the multilayer pane in `tst_shear_dialog`.
 
 ## 3. Verification
 

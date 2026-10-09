@@ -8,11 +8,11 @@ its dialog is six independent "Top Left / Middle Right / …" sliders. CS6's
 Shear runs a line from the top of the image to the bottom and dragging it
 sideways pushes those **rows** sideways; its dialog is a square curve box with
 draggable control points over an `Undefined Areas` radio pair, with the
-preview under it. Photorust already models the CS6 behavior (17 sampled
-offsets top to bottom, a horizontal shift per row, a wrap flag) and ships the
-curve widget. This change reconciles the two: the engine takes Kooka's
-`curve` + `fill`, now read as `(row position, horizontal offset)`, and the
-dialog becomes the CS6 curve box.
+preview under it. Photorust already models the CS6 behavior (an offset
+curve sampled top to bottom, a horizontal shift per row, a wrap flag) and
+ships the curve widget. This change reconciles the two: the engine takes
+Kooka's `curve` + `fill`, now read as `(row position, horizontal offset)`,
+and the dialog becomes the CS6 curve box.
 
 ## What Changes
 
@@ -23,9 +23,11 @@ dialog becomes the CS6 curve box.
   (`photorust::distort::shear`, via the shared `remap`), so it premultiplies
   translucent edges like the rest of the ported Distort family. The old
   vertical column shift in `distort/coord.rs` is removed.
-- `SHEAR_POINTS` (17) is exported from `pictura-filters`; the dialog samples
-  its curve into 17 offsets, and the `shear` kind grows from 7 to 18 slots
-  (17 offsets + fill) in `filter_map.rs` and `filter_commands.cpp`.
+- `SHEAR_MAX_POINTS` (8) is exported from `pictura-filters`; the `shear`
+  kind grows from 7 to 18 slots (a control-point count, eight
+  `(position, offset)` pairs with the unused ones zero, then the fill) in
+  `filter_map.rs` and `filter_commands.cpp`. The dialog edits those same
+  points, never a sampled lattice.
 - The Shear defaults become a straight curve and `Wrap Around`, as CS6's
   dialog opens.
 - `Filter ▸ Distort ▸ Shear…` and Last Filter Settings open the CS6 dialog:
@@ -40,7 +42,8 @@ dialog becomes the CS6 curve box.
 ### Modified Capabilities
 
 - `imaging/distort-filters`: Shear shifts rows horizontally by a
-  `(position, offset)` control-point curve, sampled at `SHEAR_POINTS`.
+  `(position, offset)` control-point curve of up to `SHEAR_MAX_POINTS` (8)
+  points.
 
 ### New Capabilities
 

@@ -57,6 +57,7 @@ same Hermite the engine runs. `Radio` is a new one-slot control for CS6's
 `FilterCommandSpec` gains `previewBelow`: the generic `FilterPreviewDialog`
 then puts the thumbnail under the body instead of beside it, drops the zoom
 row, and drops the Preview checkbox (CS6's Shear has neither; the preview is
-live). The bottom pane re-filters a cached 320 px proxy on every change — a
-drag follows live — while the whole-layer canvas render waits for the mouse
-release.
+live). The bottom pane composites the active layer — filtered at proxy scale
+over the layer's own bounds, mask and opacity baked in — over the document
+with that layer hidden, so a drag follows live and the other layers are never
+displaced with it; the whole-layer canvas render waits for the mouse release.
