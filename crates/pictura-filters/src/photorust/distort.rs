@@ -193,7 +193,11 @@ pub fn polar_coordinates(pixmap: &mut Pixmap, to_polar: bool) {
 /// `curve` is that curve as `(position, offset)` control points top to bottom,
 /// with `offset` in fractions of half the image's width. All zeroes is a
 /// straight line down the middle and does nothing.
-pub fn shear(pixmap: &mut Pixmap, curve: &[(f32, f32)], wrap: bool) {
+///
+/// The curve stays `f64` through the interpolation: the caller validates the
+/// strictly-increasing positions at that width, and a lossy cast to `f32`
+/// could collapse two of them onto one zero-width span.
+pub fn shear(pixmap: &mut Pixmap, curve: &[(f64, f64)], wrap: bool) {
     // The all-zero shortcut keeps a straight curve bit-exact on translucent
     // pixels, where the premultiplied round trip in `remap` would not be.
     if pixmap.is_empty() || curve.iter().all(|&(_, offset)| offset == 0.0) {
@@ -211,11 +215,11 @@ pub fn shear(pixmap: &mut Pixmap, curve: &[(f32, f32)], wrap: bool) {
         // The pixel centre of the top row reads the curve at -1 and of the
         // bottom row at 1; between them the curve is a smooth line.
         let position = if height > 1.0 {
-            (y - 0.5) / (height - 1.0) * 2.0 - 1.0
+            f64::from((y - 0.5) / (height - 1.0) * 2.0 - 1.0)
         } else {
             0.0
         };
-        (x - curve_at(curve, position) * half_w, y)
+        (x - curve_at(curve, position) as f32 * half_w, y)
     });
 }
 
@@ -225,7 +229,7 @@ pub fn shear(pixmap: &mut Pixmap, curve: &[(f32, f32)], wrap: bool) {
 /// the line bends rather than kinks where the points are, the way CS6's curve
 /// does. With two points both tangents are the secant, which makes the curve
 /// exactly the straight line between them.
-fn curve_at(curve: &[(f32, f32)], position: f32) -> f32 {
+fn curve_at(curve: &[(f64, f64)], position: f64) -> f64 {
     let first = curve[0];
     let last = curve[curve.len() - 1];
     if position <= first.0 {
@@ -259,7 +263,7 @@ fn curve_at(curve: &[(f32, f32)], position: f32) -> f32 {
 }
 
 /// The cubic Hermite blend over one segment.
-fn hermite(o1: f32, slope1: f32, o2: f32, slope2: f32, span: f32, t: f32) -> f32 {
+fn hermite(o1: f64, slope1: f64, o2: f64, slope2: f64, span: f64, t: f64) -> f64 {
     let t2 = t * t;
     let t3 = t2 * t;
     (2.0 * t3 - 3.0 * t2 + 1.0) * o1
@@ -956,7 +960,7 @@ mod tests {
     fn a_two_point_shear_curve_is_a_straight_line() {
         // Two points make both Hermite tangents the secant, so the shift has
         // to grow evenly down the image rather than easing.
-        let curve = [(-1.0f32, -0.5), (1.0, 0.5)];
+        let curve = [(-1.0f64, -0.5), (1.0, 0.5)];
         for (position, expected) in [
             (-1.0, -0.5),
             (-0.5, -0.25),
@@ -976,8 +980,8 @@ mod tests {
     fn an_interior_shear_point_bends_the_line_without_kinking() {
         // The slope either side of a control point has to agree, or the line
         // is pointy exactly where CS6's is rounded.
-        let curve = [(-1.0f32, 0.0), (0.0, 0.5), (1.0, 0.0)];
-        let eps = 1e-3f32;
+        let curve = [(-1.0f64, 0.0), (0.0, 0.5), (1.0, 0.0)];
+        let eps = 1e-3f64;
         let before = (curve_at(&curve, -eps) - curve_at(&curve, -3.0 * eps)) / (2.0 * eps);
         let after = (curve_at(&curve, 3.0 * eps) - curve_at(&curve, eps)) / (2.0 * eps);
         assert!(

@@ -222,9 +222,8 @@ fn plan(filter: &Filter) -> Option<Result<(u64, Run), FilterError>> {
             Ok(unseeded(move |p| distort::polar_coordinates(p, to_polar)))
         }
         Filter::Shear { ref curve, fill } => check_shear_curve(curve).map(|()| {
-            let points: Vec<(f32, f32)> =
-                curve.iter().map(|&(p, o)| (p as f32, o as f32)).collect();
-            unseeded(move |p| distort::shear(p, &points, fill == ShearFill::WrapAround))
+            let curve = curve.clone();
+            unseeded(move |p| distort::shear(p, &curve, fill == ShearFill::WrapAround))
         }),
         Filter::ZigZag {
             amount,
@@ -1020,4 +1019,47 @@ fn plan_sketch(filter: &Filter) -> Option<Result<(u64, Run), FilterError>> {
         _ => return None,
     };
     Some(plan)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ramp() -> PixelBuffer {
+        let mut buffer = PixelBuffer::new(8, 8, 3);
+        for (i, v) in buffer.data.iter_mut().enumerate() {
+            *v = (i * 7) as u8;
+        }
+        buffer
+    }
+
+    #[test]
+    fn shear_validation_rejects_bad_curves_without_touching_the_buffer() {
+        // The rejected shapes the spec fixes: fewer than two points, a
+        // non-finite coordinate, a position that does not strictly increase,
+        // and a coordinate outside -1..=1.
+        let cases: &[&[(f64, f64)]] = &[
+            &[(0.0, 0.0)],
+            &[(0.0, 0.0), (0.0, 1.0)],
+            &[(0.5, 0.0), (0.2, 1.0)],
+            &[(0.0, 0.0), (f64::NAN, 1.0)],
+            &[(0.0, 0.0), (1.0, f64::INFINITY)],
+            &[(-1.5, 0.0), (1.0, 0.0)],
+            &[(0.0, 0.0), (1.0, 1.5)],
+        ];
+        for curve in cases {
+            let mut buffer = ramp();
+            let before = buffer.data.clone();
+            let filter = Filter::Shear {
+                curve: curve.to_vec(),
+                fill: ShearFill::WrapAround,
+            };
+            let applied = apply(&filter, &mut buffer);
+            assert!(
+                matches!(applied, Some(Err(FilterError::InvalidParams(_)))),
+                "curve {curve:?} was not rejected: {applied:?}"
+            );
+            assert_eq!(buffer.data, before, "curve {curve:?} mutated the buffer");
+        }
+    }
 }
