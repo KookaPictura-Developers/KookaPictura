@@ -195,3 +195,36 @@ fn lighting_maps_a_rig_of_any_size_up_to_the_cap() {
     let over: Vec<f64> = full.iter().chain(spot.iter()).copied().collect();
     assert!(filter_from_kind_params("lighting-effects", &over).is_none());
 }
+
+#[test]
+fn gallery_distort_kinds_default_to_cs6() {
+    assert_eq!(
+        filter_from_kind_params("diffuse-glow", &[]),
+        Some(Filter::DiffuseGlow {
+            graininess: 6,
+            glow_amount: 10,
+            clear_amount: 15,
+            seed: 1,
+        })
+    );
+    assert_eq!(
+        filter_from_kind_params("glass", &[]),
+        Some(Filter::Glass {
+            distortion: 5,
+            smoothness: 3,
+            texture: GlassTexture::Frosted,
+            scaling: 100,
+            invert: false,
+        })
+    );
+    assert_eq!(
+        filter_from_kind_params("glass", &[19.0, 15.0, 3.0, 162.0, 1.0]),
+        Some(Filter::Glass {
+            distortion: 19,
+            smoothness: 15,
+            texture: GlassTexture::TinyLens,
+            scaling: 162,
+            invert: true,
+        })
+    );
+}

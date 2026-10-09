@@ -1,7 +1,11 @@
-//! Distort family (`FILT-040`): Ocean Ripple, the last warp Kooka still runs
-//! itself. The rest of the family is the photorust engine's
+//! Distort family (`FILT-040`): the Filter Gallery three — Diffuse Glow,
+//! Glass and Ocean Ripple — which Kooka runs itself. The rest of the family is the photorust engine's
 //! (`crate::photorust::distort`).
 
+mod diffuse_glow;
+mod glass;
 mod ripples;
 
+pub use diffuse_glow::diffuse_glow;
+pub use glass::glass;
 pub use ripples::ocean_ripple;

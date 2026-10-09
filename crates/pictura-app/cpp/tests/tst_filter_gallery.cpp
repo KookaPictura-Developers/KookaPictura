@@ -77,13 +77,14 @@ void FilterGalleryTest::categoriesFollowCs6()
     for (const auto& category : categories) {
         names.append(category.first);
     }
-    // Distort's Diffuse Glow and Glass have no kernel yet; Ocean Ripple keeps
-    // the category.
     QCOMPARE(names, (QStringList{QStringLiteral("Artistic"), QStringLiteral("Brush Strokes"),
                                  QStringLiteral("Distort"), QStringLiteral("Sketch"),
                                  QStringLiteral("Stylize"), QStringLiteral("Texture")}));
     QCOMPARE(categories.at(0).second.size(), 15);
     QCOMPARE(categories.at(1).second.size(), 8);
+    QCOMPARE(categories.at(2).second.size(), 3);
+    QCOMPARE(categories.at(2).second.first()->kind, QStringLiteral("diffuse-glow"));
+    QCOMPARE(categories.at(2).second.at(1)->kind, QStringLiteral("glass"));
     QCOMPARE(categories.at(3).second.size(), 14);
     QCOMPARE(categories.at(4).second.size(), 1);
     QCOMPARE(categories.at(4).second.first()->kind, QStringLiteral("glowing-edges"));

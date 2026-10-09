@@ -74,7 +74,7 @@ block checker in B, so every filter sees both gradients and hard edges. All
 | `PolarCoordinates` | — | **no** | — | Closest `-distort Polar 0` (RectangularToPolar) / `-distort DePolar 0` (PolarToRectangular); IM uses a different angle origin (≈180° off) and pixel-center/radius anchor plus its own resampling. Best measured max delta 189 (mean 58.3) and 194 (58.9); the crossed directions give max 240. Guarded by the remap/no-op property tests. |
 | `Shear` | — | **no** | — | IM `-shear {angle}x0` is a whole-canvas horizontal shear that **background-fills** the expanded canvas; Pictura shifts each row by a smooth spline through the control points with clamp/wrap and expands nothing. Curve `[(-1,-0.5),(1,0.5)]` = 26.565° (IM's sign runs the other way); best measured `-shear -26.565x0 -crop 16x16+4+0 +repage` max 255 / mean 18.4 (WrapAround 23.4). Guarded by the zero-curve no-op and fill-mode tests. |
 | `ZigZag` | — | **no** | — | IM `-swirl` uses a smooth falloff about `min(w,h)/2`; Pictura's cosine radial profile is pinned to zero at the edge with `ridges` reversals. Best measured `-swirl 50` (amount 80 / ridges 5 / AroundCenter) max 170 / mean 14.3. Guarded by the zero no-op and style tests. |
-| `OceanRipple` | — | **no** | — | IM `-wave` is an unseeded single-axis sine that pads the canvas; Pictura sums 8 seeded direction sinusoids with clamp-to-edge. Best measured `-wave 2x8 -crop 16x16+0+2 +repage` (size 9 / magnitude 20 / seed 42) max 227 / mean 53.7. Guarded by seed determinism and the zero-magnitude no-op. |
+| `OceanRipple` | — | **no** | — | IM `-wave` is an unseeded single-axis sine that pads the canvas; Pictura refracts through the slope of seeded 2-D value noise with clamp-to-edge. The old sinusoid model measured `-wave 2x8 -crop 16x16+0+2 +repage` max 227 / mean 53.7; the current model was not remeasured. Guarded by seed determinism, the zero-magnitude no-op and the reach test. |
 | `DustAndScratches` | — | **no** | — | IM `-statistic median NxN` is an **ungated** rank filter; Pictura replaces a pixel only when it differs from the local median by more than `threshold`, and no IM operator exposes that gate. Guarded by the speck-removal and determinism unit tests. |
 | `Extrude` | — | **no** | — | No ImageMagick extrusion renderer; the block/face geometry plus the solid-front, level-based and mask-incomplete options have no operator. Guarded by the changed-image and determinism unit test. |
 | `Tiles` | — | **no** | — | No IM tiled-offset-with-fill operator; `-roll` and `-spread` neither offset a fixed grid nor fill the gaps with the foreground/background choice. Guarded by the determinism unit test. |
@@ -273,7 +273,7 @@ are the evidence for the no-equivalent rows. Verified against ImageMagick
 | `Shear` | same, WrapAround | `-shear -26.565x0 -crop 16x16+4+0 +repage` | 255 (23.4) |
 | `ZigZag` | amount 80, ridges 5, AroundCenter | `-swirl 50` | 170 (14.3) |
 | `ZigZag` | same | `-swirl -80` / `-implode 0.8` | 170 (18.8 / 18.6) |
-| `OceanRipple` | size 9, magnitude 20, seed 42 | `-wave 2x8 -crop 16x16+0+2 +repage` | 227 (53.7) |
+| `OceanRipple` | size 9, magnitude 20, seed 42 (old sinusoid model) | `-wave 2x8 -crop 16x16+0+2 +repage` | 227 (53.7) |
 
 The mismatches are structural:
 
@@ -295,9 +295,9 @@ The mismatches are structural:
   and reverses `ridges` times. `-implode` is a radial scale, not a ridge
   displacement. No `-swirl` angle matches the profile (best mean 14.3).
 - **Ocean Ripple** (`-wave`). IM `-wave` displaces one axis with an unseeded
-  sine and pads the canvas; Pictura sums 8 seeded direction sinusoids (phase,
-  direction and wavelength all seeded) with clamp-to-edge, so it cannot be
-  reproduced by any single `-wave` invocation.
+  sine and pads the canvas; Pictura displaces along the slope of seeded 2-D
+  value noise with clamp-to-edge, so it cannot be reproduced by any single
+  `-wave` invocation.
 
 Contracts are guarded at the `Filter::apply` level by
 `m11_no_equivalent_filters_properties` (polar directions differ; a zero shear

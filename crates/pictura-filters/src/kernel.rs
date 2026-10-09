@@ -51,6 +51,39 @@ pub(crate) fn to_u8(v: f64) -> u8 {
     v.round().clamp(0.0, 255.0) as u8
 }
 
+/// Separable Gaussian blur of one `w`×`h` plane, clamp-to-edge.
+pub(crate) fn blur_plane(src: &[f32], w: usize, h: usize, sigma: f32) -> Vec<f32> {
+    let kernel: Vec<f32> = gaussian_kernel(f64::from(sigma))
+        .into_iter()
+        .map(|k| k as f32)
+        .collect();
+    let support = (kernel.len() / 2) as isize;
+    let mut across = vec![0f32; w * h];
+    across.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+        let line = &src[y * w..y * w + w];
+        for (x, out) in row.iter_mut().enumerate() {
+            *out = kernel
+                .iter()
+                .enumerate()
+                .map(|(k, &kw)| kw * line[clamp_index(x as isize + k as isize - support, w)])
+                .sum();
+        }
+    });
+    let mut out = vec![0f32; w * h];
+    out.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+        for (x, o) in row.iter_mut().enumerate() {
+            *o = kernel
+                .iter()
+                .enumerate()
+                .map(|(k, &kw)| {
+                    kw * across[clamp_index(y as isize + k as isize - support, h) * w + x]
+                })
+                .sum();
+        }
+    });
+    out
+}
+
 /// Separable Gaussian blur of the color planes of a 3/4-channel planar buffer
 /// (alpha untouched), clamp-to-edge. Shared by Gaussian Blur and Unsharp Mask.
 pub fn gaussian_blur_planes(buf: &mut PixelBuffer, sigma: f64) {

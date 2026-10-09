@@ -1,20 +1,22 @@
-//! Ripple warps (`FILT-040`): ZigZag, Ocean Ripple.
+//! Ocean Ripple (`FILT-040`): the picture seen through rippled glass.
 //!
-//! Inverse-mapping warps with bilinear color sampling; alpha is never touched.
-//! ZigZag is deterministic; Ocean Ripple takes a seed. The reference's generators are
-//! closed (`docs/dev/m11-distort2.md`), so the models below are approximations.
+//! An inverse-mapping warp with bilinear color sampling; alpha is never
+//! touched. The reference's generator is closed (`docs/dev/m11-distort2.md`),
+//! so the model below is an approximation.
 
 use pictura_core::PixelBuffer;
 use rand_chacha::{rand_core::SeedableRng, ChaCha8Rng};
+use rayon::prelude::*;
 
 use crate::kernel::{clamp_index, to_u8, unit_f64};
 use crate::{validate, FilterError};
 
-/// Seeded random ripple displacement.
+/// Seeded refraction through a bumpy surface.
 ///
-/// `size` in `1..=15` scales the ripple wavelength (larger = broader ripples);
-/// `magnitude` in `0..=20` is the amplitude (pixels); `0` is a no-op. Same seed
-/// and parameters are bit-identical.
+/// The surface is smooth value noise on a lattice whose cell grows with
+/// `size` (`1..=15`); each pixel samples the source displaced along the
+/// surface's slope, by an amount that grows faster than `magnitude`
+/// (`0..=20`; `0` is a no-op). Same seed and parameters are bit-identical.
 pub fn ocean_ripple(
     buf: &mut PixelBuffer,
     size: u32,
@@ -36,46 +38,54 @@ pub fn ocean_ripple(
         return Ok(());
     }
 
-    // ponytail: the reference's ripple placement is closed. This sums a few random
-    // direction sinusoids, an approximation of "randomly spaced ripples".
-    // Ceiling: no CS6 pixel parity. Upgrade by fitting reference renders (M11-B).
+    // ponytail: fitted by eye to CS6 Filter Gallery renders of one photograph
+    // at (size, magnitude) = (9, 9), (2, 12), (14, 2) and (15, 20). Small
+    // sizes give CS6's frosted-glass blobs and large magnitudes its scattered
+    // fragments; CS6's softer blob interiors at the extremes are not matched.
     let (w, h) = (buf.width as usize, buf.height as usize);
     let n = w * h;
-    let planes = (buf.channels as usize).min(3);
-    let src = buf.data.clone();
-    let tau = std::f64::consts::TAU;
-    let base = tau / (size as f64 * 4.0);
-    let components = 8;
+    let cell = 3.0 + 0.5 * size as f64;
+    let reach = 0.15 * (magnitude as f64).powf(1.5) * (cell / 4.0).sqrt();
+    let (gw, gh) = (
+        (w as f64 / cell) as usize + 2,
+        (h as f64 / cell) as usize + 2,
+    );
     let mut rng = ChaCha8Rng::seed_from_u64(seed);
-    let mut comps = Vec::with_capacity(components);
-    for _ in 0..components {
-        let ang = tau * unit_f64(&mut rng);
-        let k = base * (0.6 + 0.8 * unit_f64(&mut rng));
-        let phase = tau * unit_f64(&mut rng);
-        comps.push((k * ang.cos(), k * ang.sin(), phase));
-    }
-    let amp = magnitude as f64 * 0.4 / components as f64;
-    for y in 0..h {
-        for x in 0..w {
-            let mut hx = 0.0;
-            let mut hy = 0.0;
-            for &(kx, ky, phase) in &comps {
-                let t = kx * x as f64 + ky * y as f64 + phase;
-                hx += t.sin();
-                hy += t.cos();
-            }
-            let (sx, sy) = (x as f64 + amp * hx, y as f64 + amp * hy);
-            for c in 0..planes {
-                let plane = &src[c * n..c * n + n];
-                buf.data[c * n + y * w + x] = to_u8(sample(plane, w, h, sx, sy));
-            }
-        }
+    let lattice: Vec<f64> = (0..gw * gh)
+        .map(|_| 2.0 * unit_f64(&mut rng) - 1.0)
+        .collect();
+    let at = |i: usize, j: usize| lattice[j.min(gh - 1) * gw + i.min(gw - 1)];
+    // The slope of the smoothstep-interpolated surface, in lattice units.
+    let slope = |x: usize, y: usize| {
+        let (u, v) = (x as f64 / cell, y as f64 / cell);
+        let (i, j) = (u as usize, v as usize);
+        let (fu, fv) = (u - i as f64, v - j as f64);
+        let (su, sv) = (fu * fu * (3.0 - 2.0 * fu), fv * fv * (3.0 - 2.0 * fv));
+        let (du, dv) = (6.0 * fu * (1.0 - fu), 6.0 * fv * (1.0 - fv));
+        let (a, b, c, d) = (at(i, j), at(i + 1, j), at(i, j + 1), at(i + 1, j + 1));
+        (
+            ((b - a) * (1.0 - sv) + (d - c) * sv) * du,
+            ((c - a) * (1.0 - su) + (d - b) * su) * dv,
+        )
+    };
+    for c in 0..(buf.channels as usize).min(3) {
+        let src = buf.data[c * n..c * n + n].to_vec();
+        buf.data[c * n..c * n + n]
+            .par_chunks_mut(w)
+            .enumerate()
+            .for_each(|(y, row)| {
+                for (x, out) in row.iter_mut().enumerate() {
+                    let (gx, gy) = slope(x, y);
+                    let (sx, sy) = (x as f64 + reach * gx, y as f64 + reach * gy);
+                    *out = to_u8(sample(&src, w, h, sx, sy));
+                }
+            });
     }
     Ok(())
 }
 
 /// Bilinear sample at `(x, y)`, clamp-to-edge.
-fn sample(plane: &[u8], w: usize, h: usize, x: f64, y: f64) -> f64 {
+pub(super) fn sample(plane: &[u8], w: usize, h: usize, x: f64, y: f64) -> f64 {
     let (x0, y0) = (x.floor(), y.floor());
     let (fx, fy) = (x - x0, y - y0);
     let (xi, yi) = (clamp_index(x0 as isize, w), clamp_index(y0 as isize, h));
@@ -124,6 +134,35 @@ mod tests {
         assert_eq!(run(7), run(7));
         assert_ne!(run(7), run(8));
         assert_ne!(run(7), base.data);
+    }
+
+    /// Mean horizontal displacement, read off a ramp that rises 4 per pixel.
+    fn mean_shift(size: u32, magnitude: u32) -> f64 {
+        let (w, h) = (60u32, 60u32);
+        let px: Vec<[u8; 3]> = (0..(w * h)).map(|i| [(i % w * 4) as u8, 0, 0]).collect();
+        let base = buf3(w, h, &px);
+        let mut b = base.clone();
+        ocean_ripple(&mut b, size, magnitude, 1).unwrap();
+        let n = (w * h) as usize;
+        // Columns away from the clamped edges.
+        let inner = (0..n).filter(|i| (12..48).contains(&(*i as u32 % w)));
+        let total: f64 = inner
+            .clone()
+            .map(|i| (b.data[i] as f64 - base.data[i] as f64).abs() / 4.0)
+            .sum();
+        total / inner.count() as f64
+    }
+
+    #[test]
+    fn ocean_ripple_reach_follows_magnitude() {
+        // CS6's defaults visibly break edges up; Magnitude 2 barely wiggles.
+        let (faint, default, strong) = (mean_shift(14, 2), mean_shift(9, 9), mean_shift(2, 12));
+        assert!(faint < 1.0, "magnitude 2 shifts {faint:.2} px");
+        assert!(default > 2.0, "defaults shift {default:.2} px");
+        assert!(
+            strong > default,
+            "magnitude 12 {strong:.2} vs 9 {default:.2}"
+        );
     }
 
     #[test]
