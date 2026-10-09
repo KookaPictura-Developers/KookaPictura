@@ -7,6 +7,7 @@
 #include "filter_gallery_dialog.h"
 #include "filter_preview_dialog.h"
 #include "lens_flare_dialog.h"
+#include "lighting_effects_dialog.h"
 
 #include "pictura_app/src/cxxqt_object/filter_tools.cxxqt.h"
 
@@ -25,14 +26,18 @@ FilterPreviewView previewViewFor(ImageView* canvas)
     return view;
 }
 
-// Lens Flare's parameters are one struct edited on its own dialog; every other
-// filter edits independent slots on the shared one.
+// Lens Flare's parameters are one struct and Lighting Effects' a list of lights,
+// each edited on its own dialog; every other filter edits independent slots on
+// the shared one.
 bool runFilterDialog(PictureView* view, const FilterCommandSpec& spec,
                      const FilterPreviewView& previewView, const QList<double>& initial,
                      QList<double>* out, QWidget* parent)
 {
     if (spec.kind == QStringLiteral("lens-flare")) {
         return LensFlareDialog::get(view, spec, initial, out, parent);
+    }
+    if (spec.kind == QStringLiteral("lighting-effects")) {
+        return LightingEffectsDialog::get(view, spec, initial, out, parent);
     }
     return FilterPreviewDialog::get(view, spec, previewView, initial, out, parent);
 }

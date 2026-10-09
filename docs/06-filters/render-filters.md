@@ -90,7 +90,7 @@ Ranges marked **[AS]** come from the Photoshop CS6 AppleScript Scripting Referen
 | Difference Clouds | Fractal noise + Difference blend | Same noise generator as Clouds, then blend with the existing pixels using the Difference formula (per `05-layers/blend-modes.md`). Replaces the layer's pixels. *[Help]* |
 | Fibers | Directional/anisotropic noise | Value noise stretched down the picture in two layers: soft clumps tens of pixels wide and hard-edged hairs one or two pixels wide, contrast-stretched to blend background→foreground. Variance shortens the streaks and shifts the mix toward hairs; Strength lengthens them; seeded by Randomize. Replaces the layer's pixels. Kooka uses photorust's model, tuned by eye against CS6 at 500 %. *(inferred family)* |
 | Lens Flare | Optical flare model | Additive light: an inverse-square core in a soft glow, a halo ring, rays (6 / 8 / 4 for Zoom / 35mm / 105mm) or Movie Prime's horizontal blue streak, and tinted hexagonal ghosts and rings strung from the flare through the middle of the frame and out the far side. Every size is a fraction of the half-diagonal and the centre a fraction of the frame, so a proxy preview matches the full-size result. Kooka uses photorust's model, tuned by eye against CS6. Adobe's model is closed. *(inferred family)* |
-| Lighting Effects | 3D lighting over a bump map | Each light is Point/Infinite/Spot; the surface normal comes from a grayscale bump map (Height); Gloss/Metallic/Exposure/Ambience/Colorize combine diffuse/specular responses. GPU workspace. *(inferred family; CS6 gallery behavior sourced)* |
+| Lighting Effects | 3D lighting over a bump map | A rig of 1–16 Point/Infinite/Spot lights over a surface whose normal comes from a grayscale bump map (Height); Gloss/Metallic/Exposure/Ambience/Colorize combine diffuse/specular responses. A Spot is an ellipse with its hotspot toward the aimed end; a Point falls off to its radius; an Infinite light comes from an angle and elevation. Kooka uses photorust's shading over the rig, CPU-rendered and tuned by eye against CS6; see `lighting-effects.md`. *(inferred family; CS6 gallery behavior sourced)* |
 | Scripted Patterns | Pattern-tiling scripts (Deco engine) | Scripts place the chosen pattern repeatedly across the layer/selection using geometric rules (brick stagger, cross weave, random placement, spiral, symmetry). Adobe Research documents that these are the Deco scripts. *(inferred internals)* |
 | Flame / Tree / Picture Frame | Procedural per-path / L-system-ish / frame synthesis | **Post-CS6 only**; out of parity scope. |
 
@@ -102,7 +102,7 @@ Ranges marked **[AS]** come from the Photoshop CS6 AppleScript Scripting Referen
 - `pictura_filter::noise::FractalNoise` — seeded value/fractal noise; shared by Clouds and Difference Clouds; `Rng` seed stored in params.
 - `pictura_filter::render::fibers` — vertical clump + hair streaks (photorust's model) with `variance` 0–64 (0 = even blend), `strength` 1–64, `seed`.
 - `pictura_filter::render::lens_flare` — photorust's flare model; `LensType` enum, unit-coordinate centre, brightness 10–300 %; adds light onto the RGB planes, alpha untouched.
-- `pictura_filter::render::lighting_effects` — `Light { kind: Point|Infinite|Spot, color, intensity, ... }`, `LightingScene { lights: Vec<Light>, gloss, metallic, exposure, ambience, colorize, bump: Option<ChannelRef> }`; GPU path via `pictura_gpu` (`01-architecture/gpu-rendering-pipeline.md`).
+- `pictura_filter::render::lighting_effects` — `Light { kind: Point|Infinite|Spot, on, color, intensity, hotspot, center, angle, size, width, elevation }`, `Lighting { lights: Vec<Light> (1–16), gloss, metallic, exposure, ambience, colorize, texture: None|Red|Green|Blue, height }`; CPU today, GPU path via `pictura_gpu` later (`01-architecture/gpu-rendering-pipeline.md`).
 - `pictura_paint::fill::scripted` — `ScriptedPattern::{BrickFill, CrossWeave, RandomFill, Spiral, SymmetryFill}`; consumes a `PatternRef`.
 - `pictura_filter::registry` — filter id + CS6 four-char event ids (`'Clou'` unconfirmed), `'DrfC'`, `'Fbrs'`, `'LnsF'`, `'LghE'` → implementation + `supported(mode, depth)`.
 
@@ -115,8 +115,8 @@ Crossing types: `Tile`, `Rgb`, `ChannelRef` (bump map), `PatternRef`, `Seed`, `B
 | `RenderOptionsDialog` | `QDialog` | Fibers / Lens Flare forms in a `QStackedWidget` |
 | `FibersOptionsPanel` | `QWidget` | Variance/Strength sliders + Randomize button |
 | `LensFlareDialog` | `QDialog` | Whole-picture proxy preview with the flare and a click/drag crosshair; OK / Cancel / Preview beside it; Brightness field + slider and a Lens Type radio group below |
-| `LightingEffectsWorkspace` | `QWidget` | CS6 gallery: canvas with light gizmos, Presets menu, Lights panel, Properties panel, Texture channel + Height, Save/Delete preset |
-| `LightGizmo` | `QGraphicsObject` | Draggable Point/Spot/Infinite light handles and Intensity ring |
+| `LightingEffectsDialog` | `QDialog` | CS6 workspace: options bar (Presets, add Spot/Point/Infinite, Reset, Preview, Cancel, OK), the picture with light controls, Properties panel, Lights panel; Save/Delete preset not built |
+| `LightingCanvas` | `QWidget` | Proxy preview with draggable Point/Spot/Infinite light controls and Intensity rings |
 | `ScriptedPatternsCombo` | `QComboBox` | Sits in the Fill dialog; five scripts; disabled until a pattern is chosen |
 | `FillDialog` | `QDialog` | Extended with `Use: Pattern` + `Scripted Patterns` checkbox |
 | `FilterMenuBuilder` | helper | Greys RGB/GPU-only Lighting Effects and unsupported depths |

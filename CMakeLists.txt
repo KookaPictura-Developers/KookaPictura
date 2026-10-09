@@ -98,6 +98,12 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/filter_preview_dialog.h
     crates/pictura-app/cpp/lens_flare_dialog.cpp
     crates/pictura-app/cpp/lens_flare_dialog.h
+    crates/pictura-app/cpp/lighting_canvas.cpp
+    crates/pictura-app/cpp/lighting_canvas.h
+    crates/pictura-app/cpp/lighting_effects_dialog.cpp
+    crates/pictura-app/cpp/lighting_effects_dialog.h
+    crates/pictura-app/cpp/lighting_rig.cpp
+    crates/pictura-app/cpp/lighting_rig.h
     crates/pictura-app/cpp/blend_modes.h
     crates/pictura-app/cpp/layer_style_dialog.cpp
     crates/pictura-app/cpp/layer_style_dialog.h

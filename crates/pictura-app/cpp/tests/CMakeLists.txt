@@ -30,6 +30,7 @@ set(PICTURA_QT_TESTS
     tst_filter_menu
     tst_filter_gallery
     tst_lens_flare_dialog
+    tst_lighting_effects_dialog
     tst_layer_style
     tst_color_range
     tst_replace_color

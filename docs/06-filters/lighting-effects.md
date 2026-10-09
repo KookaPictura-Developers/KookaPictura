@@ -81,6 +81,23 @@ Intensity/Ambience semantics are sourced; other numeric bounds not tabulated in 
 
 The **preview is GPU-composited** in CS6 (the 64-bit gallery). For this project the shading pass should run in wgpu/QRhi over a tiled image with a CPU fallback. Rendering must be deterministic so preview and commit agree.
 
+## Kooka implementation
+
+Built: the workspace (`LightingEffectsDialog`) with its options bar, Presets
+(the 17 styles plus Custom), add Spot / Point / Infinite, Reset, and Preview;
+on-canvas controls for all three light types, including the Intensity ring and
+Alt-drag duplicate; the Properties panel; and the Lights panel with an eye per
+light and a trash button. Up to 16 lights. The engine
+(`pictura-filters` `render/lighting.rs`) shades the rig with photorust's
+ambient + `N·L` diffuse + Blinn model. It treats Intensity ≈ 50 as normal, uses
+an elliptical Spot whose hotspot ellipse lies toward the aimed end, and keeps
+every size a fraction of the half-diagonal so the workspace proxy matches the
+commit. The preset placements and the light geometry are tuned by eye against
+CS6. Only each style's colours, intensities, and focus are from the Help.
+
+Not built: saving and deleting custom presets, alpha channels as Texture, the
+RGB-only and GPU gates, and a GPU shading path.
+
 ## Rust module mapping
 
 - `pictura_lighting::Light` — enum `Point { pos, intensity, color }`, `Spot { pos, axis, ellipse, hotspot, intensity, color }`, `Infinite { direction, intensity, color }`; on-canvas transform operations.

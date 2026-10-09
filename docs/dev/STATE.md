@@ -199,8 +199,18 @@ Snapshot for resuming after a context break. Update after each milestone.
   `LensFlareDialog` (`lens_flare_dialog.{h,cpp}`, tested by
   `tst_lens_flare_dialog`): a 250 px proxy with the flare under a draggable
   crosshair, Brightness field + slider, and a Lens Type radio group. Lens Flare
-  previews against the whole layer (#168). Lighting Effects, the other half of
-  #225, is still on the generic slot dialog.
+  previews against the whole layer (#168).
+- **Lighting Effects workspace** (change `lighting-effects-workspace`, issue
+  #225): `render::lighting_effects` (now `render/lighting.rs`) shades a CS6 rig
+  of 1–16 Spot / Point / Infinite lights with photorust's model. A Spot is an
+  ellipse whose hotspot lies toward the aimed end, and Intensity ≈ 50 is
+  normal. `lighting-effects` takes 9 rig slots + 13 per light (arity table: one
+  light, 22). Filter ▸ Render ▸ Lighting Effects… opens `LightingEffectsDialog`
+  (`lighting_effects_dialog`, `lighting_canvas`, `lighting_rig`; tested by
+  `tst_lighting_effects_dialog`). It has the options bar (17 presets + Custom,
+  add-light buttons, Reset, Preview, Cancel, OK), on-canvas light controls,
+  and the Properties and Lights panels. Custom preset Save/Delete and alpha
+  textures are not built.
 - **Filter menu wiring and dialogs** (change `filter-menu-ui`, issue #82, ported
   from photorust): the CS6 `Filter` menu is live. `cxxqt_object/filter_map.rs`
   exposes `pub(super) filter_from_kind_params(kind, &[f64])` (empty slice = the

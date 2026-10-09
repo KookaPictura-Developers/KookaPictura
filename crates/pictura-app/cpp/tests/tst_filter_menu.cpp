@@ -154,7 +154,7 @@ void FilterMenuTest::dialogCollectsParameterSlots()
         {QStringLiteral("Distort"), QStringLiteral("Shear"), 7},
         {QStringLiteral("Render"), QStringLiteral("Clouds"), 8},
         {QStringLiteral("Render"), QStringLiteral("Lens Flare"), 4},
-        {QStringLiteral("Render"), QStringLiteral("Lighting Effects"), 19},
+        {QStringLiteral("Render"), QStringLiteral("Lighting Effects"), 22},
         {QStringLiteral("Noise"), QStringLiteral("Add Noise"), 4},
         {QStringLiteral("Stylize"), QStringLiteral("Diffuse"), 1},
         {QStringLiteral("Stylize"), QStringLiteral("Extrude"), 6},

@@ -513,7 +513,13 @@ mod tests {
         };
         for (kind, params) in [
             ("diffuse", vec![0.0f64]),
-            ("lighting-effects", Vec::new()),
+            (
+                "lighting-effects",
+                vec![
+                    255.0, 255.0, 255.0, 0.0, 0.0, 0.0, 0.0, 0.0, 50.0, // rig
+                    0.0, 1.0, 255.0, 255.0, 255.0, 35.0, 69.0, 0.85, 0.85, -35.0, 0.3, 0.2, 50.0,
+                ],
+            ),
             ("lens-flare", vec![100.0, 0.5, 0.5, 0.0]),
         ] {
             assert!(filter_preview_needs_whole_layer(kind), "{kind}");
