@@ -79,20 +79,38 @@ void SmartObjectActionsTest::rowMenuOffersSmartRows()
 {
     auto* panel = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
     QVERIFY(panel != nullptr);
+    // Presence is kind-based: a `pixel` row carrying the smart flag offers them.
     const QStringList smart = panel->smartRowMenuTextsForTest();
     QVERIFY2(smart.contains(QStringLiteral("Reset Transform")), "Reset Transform row");
     QVERIFY2(smart.contains(QStringLiteral("Convert to Layers")), "Convert to Layers row");
     QVERIFY2(smart.contains(QStringLiteral("New Smart Object via Copy")),
              "New Smart Object via Copy row");
-    QVERIFY(panel->smartRowMenuEnabledForTest(QStringLiteral("Reset Transform")));
-    QVERIFY(panel->smartRowMenuEnabledForTest(QStringLiteral("Convert to Layers")));
-    QVERIFY(panel->smartRowMenuEnabledForTest(QStringLiteral("New Smart Object via Copy")));
 
     const QStringList pixel = panel->rowMenuTextsForTest(QStringLiteral("pixel"));
     QVERIFY2(!pixel.contains(QStringLiteral("Reset Transform")), "plain pixel omits Reset");
     QVERIFY2(!pixel.contains(QStringLiteral("Convert to Layers")), "plain pixel omits Convert");
     QVERIFY2(!pixel.contains(QStringLiteral("New Smart Object via Copy")),
              "plain pixel omits via Copy");
+
+    // Enablement follows the target: disabled on a plain layer, enabled once the
+    // layer is a smart object.
+    QVERIFY(window_->newDocument(QStringLiteral("SmartRows"), 16, 16, QStringLiteral("rgb"), 8,
+                                 QStringLiteral("white")));
+    pictura::PictureView* view = window_->activeView();
+    QVERIFY(view != nullptr);
+    view->add_layer(-1);
+    panel->refresh();
+    const QString path = view->layer_row_path(0);
+    QVERIFY2(!panel->rowMenuEnabledForPathForTest(path, QStringLiteral("Reset Transform")),
+             "a plain layer disables Reset Transform");
+    QVERIFY2(view->convert_to_smart_object(path), "convert to smart object");
+    panel->refresh();
+    QVERIFY2(panel->rowMenuEnabledForPathForTest(path, QStringLiteral("Reset Transform")),
+             "a smart layer enables Reset Transform");
+    QVERIFY2(panel->rowMenuEnabledForPathForTest(path, QStringLiteral("Convert to Layers")),
+             "a smart layer enables Convert to Layers");
+    QVERIFY2(panel->rowMenuEnabledForPathForTest(path, QStringLiteral("New Smart Object via Copy")),
+             "a smart layer enables New Smart Object via Copy");
 }
 
 void SmartObjectActionsTest::commandsRequireASmartObject()

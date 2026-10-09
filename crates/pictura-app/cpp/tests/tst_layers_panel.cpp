@@ -130,6 +130,7 @@ private slots:
     void backgroundOnlyStaysActive();
     void activeLayerNotFirstRow();
     void maskRowIndicators();
+    void maskRowActionsTargetTheClickedRow();
     void vectorMaskRowIndicators();
     void fillAdjustmentMenu();
     void layerSurfaceCompleteness();
@@ -795,6 +796,54 @@ void LayersPanelTest::maskRowIndicators()
     QCoreApplication::processEvents();
     panel_->refresh();
     QVERIFY2(!panel_->rowMaskDisabledForTest(layer), "shift-click re-enabled the mask");
+
+    window_->closeDocument(doc, false);
+}
+
+// The row-click contract: a mask glyph click edits the clicked row, not the
+// active layer. A click on a non-active row must leave the active layer alone.
+void LayersPanelTest::maskRowActionsTargetTheClickedRow()
+{
+    const bool created = window_->newDocument(QStringLiteral("MaskTarget"), 16, 16,
+                                              QStringLiteral("rgb"), 8, QStringLiteral("white"));
+    view_ = window_->activeView();
+    panel_ = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    QVERIFY2(created && view_ && panel_, "mask target fixture");
+    const int doc = window_->activeDocumentIndex();
+    const QString active = view_->add_layer_in(QString());
+    const QString clicked = view_->add_layer_in(QString());
+    QVERIFY(!active.isEmpty() && !clicked.isEmpty());
+
+    view_->set_active_layer(active);
+    QVERIFY2(pictura::layer_mask_add(*view_, QStringLiteral("reveal-all")), "active mask");
+    view_->set_active_layer(clicked);
+    QVERIFY2(pictura::layer_mask_add(*view_, QStringLiteral("reveal-all")), "clicked mask");
+    QVERIFY(pictura::layer_mask_linked(*view_));
+    view_->set_active_layer(active);
+    QVERIFY(pictura::layer_mask_linked(*view_));
+
+    panel_->setView(view_);
+    panel_->selectPaths({active}, active);
+    panel_->refresh();
+    window_->show();
+    QTest::qWait(50);
+
+    QVERIFY2(panel_->clickLinkGlyphForTest(clicked), "clicked row has a link glyph");
+    QCoreApplication::processEvents();
+    panel_->refresh();
+
+    QCOMPARE(view_->active_layer_path(), active);
+    QVERIFY2(!panel_->rowMaskLinkedForTest(clicked), "the clicked row unlinked");
+    QVERIFY2(panel_->rowMaskLinkedForTest(active), "the active row is untouched");
+
+    // The row-menu mask actions are path-based too: deleting the clicked row's
+    // mask leaves the active row's mask alone.
+    QVERIFY2(panel_->performRowActionForTest(QStringLiteral("deleteLayerMask"), clicked),
+             "delete the clicked row's mask");
+    panel_->refresh();
+    QVERIFY2(!panel_->rowHasMaskForTest(clicked), "the row action hit the clicked row");
+    QVERIFY2(panel_->rowHasMaskForTest(active), "the active row keeps its mask");
+    QCOMPARE(view_->active_layer_path(), active);
 
     window_->closeDocument(doc, false);
 }

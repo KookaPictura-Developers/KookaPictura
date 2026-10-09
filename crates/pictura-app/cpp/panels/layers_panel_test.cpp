@@ -243,18 +243,6 @@ QStringList LayersPanel::smartRowMenuTextsForTest()
     return texts;
 }
 
-bool LayersPanel::smartRowMenuEnabledForTest(const QString& text)
-{
-    QMenu menu;
-    populateRowMenu(menu, QString(), 0, QStringLiteral("pixel"), false, true);
-    for (QAction* action : menu.actions()) {
-        if (!action->isSeparator() && action->text() == text) {
-            return action->isEnabled();
-        }
-    }
-    return false;
-}
-
 bool LayersPanel::lockToggleEnabledForTest(int flag) const
 {
     QToolButton* button = nullptr;

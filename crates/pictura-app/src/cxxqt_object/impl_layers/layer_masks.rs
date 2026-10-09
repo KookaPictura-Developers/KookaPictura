@@ -42,6 +42,29 @@ pub mod ffi {
         /// Set the active layer's mask linked to the layer; one "Link/Unlink Layer Mask" state. False without a mask or no change.
         fn layer_mask_set_linked(view: Pin<&mut PictureView>, linked: bool) -> bool;
 
+        /// Add a mask of `kind` to the layer at `path`; one "Add Layer Mask"
+        /// state. The row-click contract edits the clicked row, not the active
+        /// layer.
+        fn layer_mask_add_path(view: Pin<&mut PictureView>, path: &QString, kind: &QString)
+            -> bool;
+
+        /// Delete the mask on the layer at `path`; one "Delete Layer Mask" state.
+        fn layer_mask_delete_path(view: Pin<&mut PictureView>, path: &QString) -> bool;
+
+        /// Set the mask enabled on the layer at `path`; one undoable state.
+        fn layer_mask_set_enabled_path(
+            view: Pin<&mut PictureView>,
+            path: &QString,
+            enabled: bool,
+        ) -> bool;
+
+        /// Set the mask linked on the layer at `path`; one undoable state.
+        fn layer_mask_set_linked_path(
+            view: Pin<&mut PictureView>,
+            path: &QString,
+            linked: bool,
+        ) -> bool;
+
         /// Whether the active layer has a raster layer mask.
         fn layer_mask_present(view: &PictureView) -> bool;
 
@@ -78,12 +101,17 @@ fn one(path: &str) -> QStringList {
 }
 
 fn layer_mask_add(view: Pin<&mut PictureView>, kind: &QString) -> bool {
-    let Some(kind) = kind_from(&kind.to_string()) else {
-        return false;
-    };
     let Some(path) = active_path(&view) else {
         return false;
     };
+    layer_mask_add_path(view, &QString::from(path.as_str()), kind)
+}
+
+fn layer_mask_add_path(view: Pin<&mut PictureView>, path: &QString, kind: &QString) -> bool {
+    let Some(kind) = kind_from(&kind.to_string()) else {
+        return false;
+    };
+    let path = path.to_string();
     let selection = {
         let rust = view.rust();
         rust.doc
@@ -106,6 +134,11 @@ fn layer_mask_delete(view: Pin<&mut PictureView>) -> bool {
     let Some(path) = active_path(&view) else {
         return false;
     };
+    layer_mask_delete_path(view, &QString::from(path.as_str()))
+}
+
+fn layer_mask_delete_path(view: Pin<&mut PictureView>, path: &QString) -> bool {
+    let path = path.to_string();
     let changed = view.batch_changed(&one(&path), "Delete Layer Mask", |doc, paths| {
         let mut changed = 0;
         for &path in paths {
@@ -138,6 +171,11 @@ fn layer_mask_set_enabled(view: Pin<&mut PictureView>, enabled: bool) -> bool {
     let Some(path) = active_path(&view) else {
         return false;
     };
+    layer_mask_set_enabled_path(view, &QString::from(path.as_str()), enabled)
+}
+
+fn layer_mask_set_enabled_path(view: Pin<&mut PictureView>, path: &QString, enabled: bool) -> bool {
+    let path = path.to_string();
     let label = if enabled {
         "Enable Layer Mask"
     } else {
@@ -159,6 +197,11 @@ fn layer_mask_set_linked(view: Pin<&mut PictureView>, linked: bool) -> bool {
     let Some(path) = active_path(&view) else {
         return false;
     };
+    layer_mask_set_linked_path(view, &QString::from(path.as_str()), linked)
+}
+
+fn layer_mask_set_linked_path(view: Pin<&mut PictureView>, path: &QString, linked: bool) -> bool {
+    let path = path.to_string();
     let label = if linked {
         "Link Layer Mask"
     } else {

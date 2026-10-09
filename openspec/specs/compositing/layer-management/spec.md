@@ -359,7 +359,9 @@ shape layer (a solid fill cut to a `vmsk` vector mask) SHALL have its rendered
 appearance — the fill cut to the outline, plus its stroke — baked into ordinary
 pixels, and its shape/vector definition dropped (the solid-fill adjustment, the
 `vmsk` vector mask, the live-shape `vogk` block, and the stroke effect), while
-keeping its name, rect, opacity, fill, blend mode, and layer mask. `Rasterize
+keeping its name, opacity, fill, blend mode, and layer mask. Its rect SHALL grow
+when an effect (an outside or centered stroke) paints past it, so the baked
+pixels cover the whole rendered appearance. `Rasterize
 Layer` SHALL rasterize the active layer only when it is a fill-content layer,
 and SHALL otherwise refuse without changing the document. `Rasterize All
 Layers` SHALL rasterize every fill-content layer and every shape layer in the

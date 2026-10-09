@@ -65,7 +65,15 @@ struct RowSpec {
     bool implemented;
     // Row-state enablement the kind mask cannot express. `Always` (the default)
     // keeps the other implemented rows unconditional.
-    enum Enable { Always, StyleEdit, HasStyle, CanPasteStyle };
+    enum Enable {
+        Always,
+        StyleEdit,
+        HasStyle,
+        CanPasteStyle,
+        ResetTransformCan,
+        ConvertToLayersCan,
+        NewViaCopyCan,
+    };
     Enable enable = Always;
 };
 
@@ -97,9 +105,10 @@ const RowSpec kRowSpecs[] = {
     {"copyShapeAttributes", "Copy Shape Attributes", Shape, true},
     {"pasteShapeAttributes", "Paste Shape Attributes", Shape, true},
     {"rasterizeShape", "Rasterize Shape", Shape, true},
-    {"resetTransform", "Reset Transform", SmartObject, true},
-    {"convertToLayers", "Convert to Layers", SmartObject, true},
-    {"newSmartObjectViaCopy", "New Smart Object via Copy", SmartObject, true},
+    {"resetTransform", "Reset Transform", SmartObject, true, RowSpec::ResetTransformCan},
+    {"convertToLayers", "Convert to Layers", SmartObject, true, RowSpec::ConvertToLayersCan},
+    {"newSmartObjectViaCopy", "New Smart Object via Copy", SmartObject, true,
+     RowSpec::NewViaCopyCan},
     // Export writes the flattened composite; pixel and background only (smart
     // objects report the pixel kind), never groups or adjustment layers.
     {"exportAs", "Export As…", Pixel | Background, true},
@@ -168,7 +177,11 @@ void LayersPanel::populateRowMenu(QMenu& menu, const QString& path, int color,
     });
     menu.addSeparator();
 
-    const unsigned mask = (shape ? Shape : kindMaskFor(kind)) | (smart ? SmartObject : 0u);
+    // A shape layer reports the `adjustment` kind (its solid fill), but its menu
+    // is a pixel layer's common commands plus the shape rows — never the
+    // adjustment-only rows.
+    const unsigned mask = (shape ? Pixel : kindMaskFor(kind)) | (shape ? Shape : 0u)
+                          | (smart ? SmartObject : 0u);
     const RowSpec* const begin = kRowSpecs;
     const RowSpec* const end = kRowSpecs + kRowCount;
     const RowSpec* const commonEnd =
@@ -210,6 +223,15 @@ void LayersPanel::populateRowMenu(QMenu& menu, const QString& path, int color,
             case RowSpec::CanPasteStyle:
                 enabled = view_ && layer_style_can_paste();
                 break;
+            case RowSpec::ResetTransformCan:
+                enabled = view_ && layer_can_reset_smart_object_transform(*view_, path);
+                break;
+            case RowSpec::ConvertToLayersCan:
+                enabled = view_ && layer_can_convert_smart_object_to_layers(*view_, path);
+                break;
+            case RowSpec::NewViaCopyCan:
+                enabled = view_ && layer_can_new_smart_object_via_copy(*view_, path);
+                break;
             case RowSpec::Always:
                 break;
             }
@@ -250,20 +272,21 @@ bool LayersPanel::performRowAction(const QString& id, const QString& path)
         moveCurrent(-1);
     } else if (id == QLatin1String("addLayerMask")) {
         if (view_) {
-            layer_mask_add(*view_, view_->has_selection() ? QStringLiteral("reveal-selection")
-                                                          : QStringLiteral("reveal-all"));
+            layer_mask_add_path(*view_, path,
+                                view_->has_selection() ? QStringLiteral("reveal-selection")
+                                                       : QStringLiteral("reveal-all"));
         }
     } else if (id == QLatin1String("deleteLayerMask")) {
         if (view_) {
-            layer_mask_delete(*view_);
+            layer_mask_delete_path(*view_, path);
         }
     } else if (id == QLatin1String("enableLayerMask")) {
         if (view_) {
-            layer_mask_set_enabled(*view_, true);
+            layer_mask_set_enabled_path(*view_, path, true);
         }
     } else if (id == QLatin1String("disableLayerMask")) {
         if (view_) {
-            layer_mask_set_enabled(*view_, false);
+            layer_mask_set_enabled_path(*view_, path, false);
         }
     } else if (id == QLatin1String("copyShapeAttributes")) {
         if (view_) {

@@ -82,7 +82,6 @@ public:
     QStringList shapeRowMenuTextsForTest();
     bool shapeRowMenuEnabledForTest(const QString& text);
     QStringList smartRowMenuTextsForTest();
-    bool smartRowMenuEnabledForTest(const QString& text);
     // Lock-strip toggles by flag: 0 transparency, 1 pixels, 2 position, 3 all.
     bool lockToggleEnabledForTest(int flag) const;
     bool lockToggleCheckedForTest(int flag) const;

@@ -761,32 +761,35 @@ bool LayersPanel::eventFilter(QObject* watched, QEvent* event)
             // its enabled bit; a click on the link glyph toggles its linkage.
             // Both are consumed so they never rename, select, or start a drag.
             if (index.isValid() && view_) {
+                const QString rowPath = pathForProxyIndex(index);
                 const QRect vr = tree_->visualRect(index);
                 const QRect maskThumb = delegate_->maskThumbRect(vr, index);
                 if (!maskThumb.isEmpty() && maskThumb.contains(pos)) {
                     if (mouse->modifiers() & Qt::ShiftModifier) {
-                        layer_mask_set_enabled(*view_, index.data(MaskDisabledRole).toBool());
+                        layer_mask_set_enabled_path(*view_, rowPath,
+                                                    index.data(MaskDisabledRole).toBool());
                     }
                     return true;
                 }
                 const QRect linkGlyph = delegate_->linkGlyphRect(vr, index);
                 if (!linkGlyph.isEmpty() && linkGlyph.contains(pos)) {
-                    layer_mask_set_linked(*view_, !index.data(MaskLinkedRole).toBool());
+                    layer_mask_set_linked_path(*view_, rowPath,
+                                               !index.data(MaskLinkedRole).toBool());
                     return true;
                 }
                 // The vector mask's own controls, mirroring the layer mask.
                 const QRect vectorThumb = delegate_->vectorMaskThumbRect(vr, index);
                 if (!vectorThumb.isEmpty() && vectorThumb.contains(pos)) {
                     if (mouse->modifiers() & Qt::ShiftModifier) {
-                        vector_mask_set_enabled(*view_,
-                                                index.data(VectorMaskDisabledRole).toBool());
+                        vector_mask_set_enabled_path(
+                            *view_, rowPath, index.data(VectorMaskDisabledRole).toBool());
                     }
                     return true;
                 }
                 const QRect vectorLink = delegate_->vectorLinkGlyphRect(vr, index);
                 if (!vectorLink.isEmpty() && vectorLink.contains(pos)) {
-                    vector_mask_set_linked(*view_,
-                                           !index.data(VectorMaskLinkedRole).toBool());
+                    vector_mask_set_linked_path(*view_, rowPath,
+                                                !index.data(VectorMaskLinkedRole).toBool());
                     return true;
                 }
             }

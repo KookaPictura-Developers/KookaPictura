@@ -47,6 +47,22 @@ pub mod ffi {
         /// Mask" state. False without a mask or no change.
         fn vector_mask_set_linked(view: Pin<&mut PictureView>, linked: bool) -> bool;
 
+        /// Set the vector mask enabled on the layer at `path`; one undoable
+        /// state. The row-click contract edits the clicked row, not the active
+        /// layer.
+        fn vector_mask_set_enabled_path(
+            view: Pin<&mut PictureView>,
+            path: &QString,
+            enabled: bool,
+        ) -> bool;
+
+        /// Set the vector mask linked on the layer at `path`; one undoable state.
+        fn vector_mask_set_linked_path(
+            view: Pin<&mut PictureView>,
+            path: &QString,
+            linked: bool,
+        ) -> bool;
+
         /// Convert the active layer's vector mask to a layer mask; one
         /// "Rasterize Vector Mask" state. False without a vector mask.
         fn vector_mask_rasterize(view: Pin<&mut PictureView>) -> bool;
@@ -133,6 +149,15 @@ fn vector_mask_set_enabled(view: Pin<&mut PictureView>, enabled: bool) -> bool {
     let Some(path) = active_path(&view) else {
         return false;
     };
+    vector_mask_set_enabled_path(view, &QString::from(path.as_str()), enabled)
+}
+
+fn vector_mask_set_enabled_path(
+    view: Pin<&mut PictureView>,
+    path: &QString,
+    enabled: bool,
+) -> bool {
+    let path = path.to_string();
     let label = if enabled {
         "Enable Vector Mask"
     } else {
@@ -154,6 +179,11 @@ fn vector_mask_set_linked(view: Pin<&mut PictureView>, linked: bool) -> bool {
     let Some(path) = active_path(&view) else {
         return false;
     };
+    vector_mask_set_linked_path(view, &QString::from(path.as_str()), linked)
+}
+
+fn vector_mask_set_linked_path(view: Pin<&mut PictureView>, path: &QString, linked: bool) -> bool {
+    let path = path.to_string();
     let label = if linked {
         "Link Vector Mask"
     } else {

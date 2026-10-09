@@ -83,9 +83,13 @@ QWidget* makePage(QWidget* parent)
 }
 
 // "dropShadow" -> "Drop Shadow", so the combo shows the CS6 name while the
-// item data keeps the bridge key the proxy matches.
+// item data keeps the bridge key the proxy matches. `bevel` is the one key whose
+// CS6 name is not the split identifier ("Bevel & Emboss").
 QString effectLabel(const QString& key)
 {
+    if (key == QLatin1String("bevel")) {
+        return QStringLiteral("Bevel & Emboss");
+    }
     QString label;
     for (const QChar c : key) {
         if (c.isUpper() && !label.isEmpty()) {

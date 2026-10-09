@@ -10,7 +10,7 @@
 
 use pictura_adjust::{Adjustment, GradientFillParams, PatternFillParams};
 use pictura_codec::PatternPixels;
-use pictura_core::{Channel, Document, Layer, PixelBuffer};
+use pictura_core::{Channel, Document, Layer, PixelBuffer, PsdRect};
 
 use super::paths::{flatten_rows, resolve_path_mut};
 use super::shape_layer::is_shape_layer;
@@ -83,6 +83,10 @@ pub fn rasterize_shape(doc: &mut Document, path: &str) -> bool {
     if !is_shape_layer(layer) {
         return false;
     }
+    // The render rect grows to the effects' outward reach: an outside or
+    // centered stroke paints past the layer rect, so baking into the rect alone
+    // would clip it and change the recomposited appearance.
+    let render_rect = effects_bounds(layer);
     // Render the layer's intrinsic appearance through the real compositor.
     // Opacity, blend, and the layer mask stay live on the raster result, so the
     // scratch copy neutralizes them; a shape's fill is binary (`0` or `255`), so
@@ -98,6 +102,7 @@ pub fn rasterize_shape(doc: &mut Document, path: &str) -> bool {
     let Some(layer) = resolve_path_mut(doc, path) else {
         return false;
     };
+    layer.rect = render_rect;
     bake_from_composite(layer, &rendered);
     layer.adjustment = None;
     layer.vector_mask = None;
@@ -106,6 +111,20 @@ pub fn rasterize_shape(doc: &mut Document, path: &str) -> bool {
         key != b"vmsk" && key != b"vogk" && key != b"lfx2" && key != b"lrFX"
     });
     true
+}
+
+/// The union of `layer.rect` and the document-space box its effects can paint,
+/// so a bake covers an outside/centered stroke that reaches past the rect.
+fn effects_bounds(layer: &Layer) -> PsdRect {
+    match crate::layer_effects::effects_reach(layer) {
+        Some((l, t, r, b)) => PsdRect {
+            left: layer.rect.left.min(l),
+            top: layer.rect.top.min(t),
+            right: layer.rect.right.max(r),
+            bottom: layer.rect.bottom.max(b),
+        },
+        None => layer.rect,
+    }
 }
 
 /// Copy the four planes of a document-sized `out` within `layer.rect` into the

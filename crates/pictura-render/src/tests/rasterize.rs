@@ -364,6 +364,50 @@ fn rasterize_shape_bakes_fill_and_drops_the_shape() {
 }
 
 #[test]
+fn rasterize_shape_keeps_an_outside_stroke_past_a_tight_rect() {
+    use pictura_core::shape::{outline_in_box, ShapeKind, ShapeOptions};
+    let mut d = doc(20, 20, Vec::new());
+    let square = outline_in_box(
+        ShapeOptions::new(ShapeKind::Rectangle, 0.0, 3),
+        (5.0, 5.0, 10.0, 10.0),
+    )
+    .unwrap();
+    let path = add_shape_layer(&mut d, "", [0, 0, 255, 255], "Rectangle", &square, None);
+    {
+        let layer = crate::resolve_path_mut(&mut d, &path).unwrap();
+        // A loaded shape carries a tight rect, so its outside stroke reaches
+        // beyond the rect instead of stopping at the document edge.
+        layer.rect = pictura_core::PsdRect {
+            top: 5,
+            left: 5,
+            bottom: 15,
+            right: 15,
+        };
+        crate::set_shape_stroke(
+            layer,
+            Some(&crate::ShapeStroke {
+                color: [0, 160, 0],
+                width: 4,
+                position: crate::StrokePosition::Outside,
+            }),
+        );
+    }
+    let before = composite_rgba(&d);
+
+    assert!(rasterize_shape(&mut d, &path));
+    let after = composite_rgba(&d);
+    assert_eq!(
+        before.data, after.data,
+        "an outside stroke survives rasterizing a tight-rect shape"
+    );
+    let layer = resolve_path(&d, &path).unwrap();
+    assert!(
+        layer.rect.left < 5 || layer.rect.top < 5,
+        "the rect grows to cover the stroke"
+    );
+}
+
+#[test]
 fn rasterize_shape_refuses_a_plain_layer() {
     let mut d = doc(
         2,

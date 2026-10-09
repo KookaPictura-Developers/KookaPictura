@@ -238,11 +238,13 @@ pub fn reorder_smart_filters(layer: &mut Layer, from: usize, to: usize) -> Resul
     }
     if let Some(block_idx) = config_block_index(layer) {
         let mut desc = parse_config(layer, block_idx)?;
-        if let Some(list) = filter_list_mut(&mut desc) {
-            if from < list.len() && to < list.len() {
+        match filter_list_mut(&mut desc) {
+            Some(list) if from < list.len() && to < list.len() => {
                 let entry = list.remove(from);
                 list.insert(to, entry);
             }
+            Some(_) => return Err(malformed("filter index out of range")),
+            None => return Err(malformed("missing filterFXList")),
         }
         let data = serialize_config(&layer.extra_blocks[block_idx].data, &desc);
         store_config(layer, block_idx, data);
@@ -722,5 +724,54 @@ mod tests {
         assert!(delete_smart_filter(&mut layer, 3).is_err());
         assert!(reorder_smart_filters(&mut layer, 0, 2).is_err());
         assert_eq!(filter_ids(&layer), vec![2683], "refusals do not mutate");
+    }
+
+    /// A layer carrying a preserved `SoLd` block whose `filterFXList` holds
+    /// `list_len` entries (`None` omits the list entirely) and a typed view of
+    /// `typed_len` entries.
+    fn layer_with_preserved_filter_list(list_len: Option<usize>, typed_len: usize) -> Layer {
+        let mut filter_fx: Vec<(&[u8], DescValue)> = Vec::new();
+        if let Some(n) = list_len {
+            filter_fx.push((b"filterFXList", DescValue::List(vec![object(vec![]); n])));
+        }
+        let desc = object(vec![(b"filterFX", object(filter_fx))]);
+        let mut data = b"soLD".to_vec();
+        data.extend_from_slice(&0u32.to_be_bytes());
+        data.extend_from_slice(&descriptor::write_descriptor(&desc));
+        Layer {
+            extra_blocks: vec![LayerBlock {
+                key: *b"SoLd",
+                data,
+            }],
+            smart_object: Some(SmartObject {
+                smart_filters: (0..typed_len)
+                    .map(|_| SmartFilter {
+                        filter_id: 2683,
+                        name: "f".to_string(),
+                        enabled: true,
+                        options: Vec::new(),
+                    })
+                    .collect(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn reorder_refuses_a_preserved_list_that_cannot_follow() {
+        // The preserved list is shorter than the typed view.
+        let mut short = layer_with_preserved_filter_list(Some(1), 2);
+        assert!(reorder_smart_filters(&mut short, 0, 1).is_err());
+        assert_eq!(
+            filter_ids(&short),
+            vec![2683, 2683],
+            "the refusal leaves the typed order untouched"
+        );
+
+        // The preserved descriptor carries no filterFXList at all.
+        let mut missing = layer_with_preserved_filter_list(None, 2);
+        assert!(reorder_smart_filters(&mut missing, 0, 1).is_err());
+        assert_eq!(filter_ids(&missing), vec![2683, 2683]);
     }
 }

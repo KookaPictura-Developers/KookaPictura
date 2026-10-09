@@ -12,6 +12,31 @@ use pictura_core::{
 
 use super::paths::{container_mut, format_segments, parse_path, resolve_path, resolve_path_mut};
 
+/// Remove the document-level linked-source record for `uuid`, but only when no
+/// layer still references it. [`super::create::duplicate_layer`] copies a smart
+/// object's `uuid`, so a duplicated layer shares the record; dropping it on one
+/// instance's conversion would orphan the sibling on the next save.
+fn remove_link_if_unreferenced(doc: &mut Document, uuid: &str) {
+    if uuid.is_empty() || uuid_referenced(&doc.layers, uuid) {
+        return;
+    }
+    if let Some(cleaned) =
+        pictura_codec::remove_linked_source(&doc.layer_section_extra, uuid, doc.is_psb)
+    {
+        doc.layer_section_extra = cleaned;
+    }
+}
+
+fn uuid_referenced(layers: &[Layer], uuid: &str) -> bool {
+    layers.iter().any(|layer| {
+        layer
+            .smart_object
+            .as_ref()
+            .is_some_and(|so| so.uuid == uuid)
+            || uuid_referenced(&layer.children, uuid)
+    })
+}
+
 /// Whether `path` resolves to a single convertible raster pixel layer: not a
 /// group, no adjustment data, not the Background, no existing smart object, and
 /// a `rect` with positive width and height.
@@ -163,13 +188,7 @@ pub fn replace_smart_object_contents(
         so.creator = *b"8BIM";
         so.uuid.clear();
     }
-    if !old_uuid.is_empty() {
-        if let Some(cleaned) =
-            pictura_codec::remove_linked_source(&doc.layer_section_extra, &old_uuid, doc.is_psb)
-        {
-            doc.layer_section_extra = cleaned;
-        }
-    }
+    remove_link_if_unreferenced(doc, &old_uuid);
     true
 }
 
@@ -281,13 +300,7 @@ pub fn rasterize_smart_object(doc: &mut Document, path: &str) -> bool {
             .retain(|block| !matches!(&block.key, b"SoLd" | b"SoLE" | b"plLd" | b"PlLd"));
         layer.smart_object = None;
     }
-    if !uuid.is_empty() {
-        if let Some(cleaned) =
-            pictura_codec::remove_linked_source(&doc.layer_section_extra, &uuid, doc.is_psb)
-        {
-            doc.layer_section_extra = cleaned;
-        }
-    }
+    remove_link_if_unreferenced(doc, &uuid);
     true
 }
 
@@ -393,13 +406,7 @@ pub fn convert_smart_object_to_layers(doc: &mut Document, path: &str) -> bool {
     for (offset, layer) in replacement.into_iter().enumerate() {
         container.insert(index + offset, layer);
     }
-    if !uuid.is_empty() {
-        if let Some(cleaned) =
-            pictura_codec::remove_linked_source(&doc.layer_section_extra, &uuid, doc.is_psb)
-        {
-            doc.layer_section_extra = cleaned;
-        }
-    }
+    remove_link_if_unreferenced(doc, &uuid);
     true
 }
 

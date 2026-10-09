@@ -650,6 +650,48 @@ fn rasterize_drops_preserved_config_and_linked_record_round_trip() {
 }
 
 #[test]
+fn convert_keeps_a_linked_record_a_duplicate_still_references() {
+    let layer = solid("SO", full(4, 4), (10, 20, 30), 255, BlendMode::Normal, 255);
+    let mut d = doc(4, 4, vec![layer]);
+    assert!(convert_to_smart_object(&mut d, "0"));
+    let saved = write_psd(&d).expect("first write");
+    let mut back = read_psd(&saved).expect("first read");
+    let uuid = back.layers[0]
+        .smart_object
+        .as_ref()
+        .expect("resolved")
+        .uuid
+        .clone();
+    assert!(section_has_uuid(&back.layer_section_extra, &uuid));
+
+    // A duplicate shares the uuid, hence the one linked record.
+    assert_eq!(duplicate_layer(&mut back, 0), 1);
+    assert_eq!(back.layers[1].smart_object.as_ref().unwrap().uuid, uuid);
+
+    // Converting one instance must leave the record for the sibling.
+    assert!(convert_smart_object_to_layers(&mut back, "0"));
+    assert!(
+        section_has_uuid(&back.layer_section_extra, &uuid),
+        "the record survives while the duplicate references it"
+    );
+
+    // Converting the last reference drops it.
+    let remaining = back
+        .layers
+        .iter()
+        .position(|layer| layer.smart_object.is_some())
+        .expect("the duplicate is still a smart object");
+    assert!(convert_smart_object_to_layers(
+        &mut back,
+        &remaining.to_string()
+    ));
+    assert!(
+        !section_has_uuid(&back.layer_section_extra, &uuid),
+        "the record is gone once no layer references it"
+    );
+}
+
+#[test]
 fn place_appends_topmost_channel_less_embedded_object() {
     let payload = write_psd(&solid_doc(2, 2, [10, 20, 30])).expect("source writes");
     let base = solid("Base", full(4, 4), (0, 0, 0), 255, BlendMode::Normal, 255);
