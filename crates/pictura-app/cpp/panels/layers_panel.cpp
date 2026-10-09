@@ -496,6 +496,7 @@ void LayersPanel::refresh()
             row.shape = shape_row_is_shape(*view_, i);
             row.smartObject = layer_row_is_smart_object(*view_, i);
             row.hasStyle = layer_row_has_style(*view_, i);
+            row.hasBlendIf = layer_row_has_blend_if(*view_, i);
             if (row.hasStyle) {
                 for (const QString& name : styleEffectNames) {
                     if (layer_style_value(*view_, row.path,

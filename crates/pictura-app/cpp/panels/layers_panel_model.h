@@ -98,6 +98,7 @@ struct LayerRow {
     bool smartObject = false;
     bool hasStyle = false;
     QStringList styleEffects;
+    bool hasBlendIf = false;
     QImage thumbnail;
     QImage maskThumbnail;
     QImage vectorMaskThumbnail;
@@ -158,6 +159,7 @@ enum LayerRole {
     VectorMaskDisabledRole,
     HasLayerStyleRole,
     StyleEffectsRole,
+    HasBlendIfRole,
 };
 
 struct Node {
@@ -331,6 +333,8 @@ public:
             return row.hasStyle;
         case StyleEffectsRole:
             return row.styleEffects;
+        case HasBlendIfRole:
+            return row.hasBlendIf;
         default:
             return {};
         }

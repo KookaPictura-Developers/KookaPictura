@@ -2,6 +2,8 @@
 
 #include "layers_panel_model.h"
 
+#include <QtGui/QFontMetrics>
+
 namespace pictura {
 class LayerRowDelegate : public QStyledItemDelegate {
 public:
@@ -100,6 +102,46 @@ public:
                      badge);
     }
 
+    /// The `Blend If` chip's font: the app font, a step smaller and bold, so the
+    /// chip reads as a badge rather than a second name.
+    static QFont blendIfFont()
+    {
+        QFont font = QApplication::font();
+        font.setBold(true);
+        if (font.pixelSize() > 0) {
+            font.setPixelSize(qMax(1, font.pixelSize() - 3));
+        } else if (font.pointSize() > 0) {
+            font.setPointSize(qMax(1, font.pointSize() - 1));
+        }
+        return font;
+    }
+
+    /// The `Blend If` chip's width, from the font it draws with plus padding.
+    static int blendIfChipWidth()
+    {
+        return QFontMetrics(blendIfFont()).horizontalAdvance(QStringLiteral("Blend If")) + 10;
+    }
+
+    /// The horizontal space a row's Blend If chip consumes at the right edge.
+    int blendIfAdvance(const QModelIndex& index) const
+    {
+        return index.data(HasBlendIfRole).toBool() ? blendIfChipWidth() + 3 : 0;
+    }
+
+    /// The `Blend If` chip's rect at a row's right edge, immediately left of the
+    /// fx/lock badges; empty when the row's Blend If is default or absent.
+    QRect blendIfRect(const QRect& itemRect, const QModelIndex& index) const
+    {
+        if (!index.data(HasBlendIfRole).toBool()) {
+            return {};
+        }
+        const int width = blendIfChipWidth();
+        const int right = badgesRight(itemRect, index) + width + 3;
+        const int height = qBound(12, itemRect.height() - 8, 18);
+        return QRect(right - width, itemRect.top() + (itemRect.height() - height) / 2, width,
+                     height);
+    }
+
     /// The x where a row's content begins: the eye gutter plus the per-depth
     /// indent, plus the chevron slot only for expandable rows. Shared by
     /// thumbRect, nameRect, and paint() so the three never disagree.
@@ -181,6 +223,7 @@ public:
             && !pictura::icon(QStringLiteral("layers.fx")).pixmap(badge, badge).isNull()) {
             right -= badge + 3;
         }
+        right -= blendIfAdvance(index);
         return right;
     }
 
@@ -280,6 +323,7 @@ public:
             && !pictura::icon(QStringLiteral("layers.fx")).pixmap(badge, badge).isNull()) {
             right -= badge + 3;
         }
+        right -= blendIfAdvance(index);
         if (thumb > 0 && !index.data(MaskThumbnailRole).value<QImage>().isNull()) {
             right -= thumb + 3 + linkSide(thumb) + 2;
         }
@@ -521,6 +565,21 @@ public:
                     badgePix);
                 right -= badge + 3;
             }
+        }
+        // A customised Blend If shows a text chip, left of the fx/lock badges.
+        if (index.data(HasBlendIfRole).toBool()) {
+            const QRect chip = blendIfRect(rect, index);
+            painter->save();
+            painter->setRenderHint(QPainter::Antialiasing, true);
+            painter->setPen(QPen(palette.color(QPalette::Mid), 1));
+            painter->setBrush(Theme::shade(palette.color(QPalette::Window), 2));
+            painter->drawRoundedRect(chip.adjusted(0, 0, -1, -1), 3, 3);
+            painter->setFont(blendIfFont());
+            painter->setPen(selected ? palette.color(QPalette::HighlightedText)
+                                     : palette.color(QPalette::Text));
+            painter->drawText(chip, Qt::AlignCenter, QStringLiteral("Blend If"));
+            painter->restore();
+            right -= blendIfChipWidth() + 3;
         }
         const QImage mask = index.data(MaskThumbnailRole).value<QImage>();
         if (!mask.isNull() && thumb > 0) {

@@ -207,6 +207,8 @@ public:
     bool rowHasStyleForTest(const QString& path) const;
     QRect rowFxRectForTest(const QString& path) const;
     void altClickRowFxForTest(const QString& path);
+    bool rowHasBlendIfForTest(const QString& path) const;
+    QRect rowBlendIfRectForTest(const QString& path) const;
     QStringList rowMenuTextsForPathForTest(const QString& path);
     bool rowMenuEnabledForPathForTest(const QString& path, const QString& text);
     bool performRowActionForTest(const QString& id, const QString& path);

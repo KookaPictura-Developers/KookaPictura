@@ -137,6 +137,7 @@ private slots:
     void renameTabNavigation();
     void shapeRowActions();
     void layerStylePanelIntegration();
+    void blendIfBadge();
 
 private:
     bool setupNest();
@@ -1158,6 +1159,43 @@ void LayersPanelTest::layerStylePanelIntegration()
     QCOMPARE(view_->history_label(view_->history_index()), QStringLiteral("Clear Layer Style"));
     QVERIFY2(!panel_->rowHasStyleForTest(layer), "cleared row reports no style");
     QVERIFY2(panel_->rowFxRectForTest(layer).isEmpty(), "cleared row paints no fx badge");
+
+    window_->closeDocument(doc, false);
+}
+
+void LayersPanelTest::blendIfBadge()
+{
+    QVERIFY(window_->newDocument(QStringLiteral("BlendIf"), 20, 20, QStringLiteral("rgb"), 8,
+                                 QStringLiteral("white")));
+    view_ = window_->activeView();
+    panel_ = window_->findChild<pictura::LayersPanel*>(QStringLiteral("layersPanel"));
+    QVERIFY2(view_ && panel_, "blend if fixture");
+    const int doc = window_->activeDocumentIndex();
+    view_->select_rect(2, 2, 8, 8, QStringLiteral("new"), 0.0);
+    QVERIFY(!view_->layer_via_copy(QStringLiteral("0")).isEmpty());
+    view_->deselect();
+    QCoreApplication::processEvents();
+    panel_->setView(view_);
+    panel_->selectPaths({QStringLiteral("1")}, QStringLiteral("1"));
+    panel_->refresh();
+
+    const QString layer = QStringLiteral("1");
+    QVERIFY2(!panel_->rowHasBlendIfForTest(layer), "default row has no Blend If badge");
+    QVERIFY2(panel_->rowBlendIfRectForTest(layer).isEmpty(), "default row paints no chip");
+
+    // A narrowed composite-source range customises Blend If.
+    QVERIFY(pictura::layer_style_set_blend_if(*view_, layer, 0, 40000));
+    QCoreApplication::processEvents();
+    panel_->refresh();
+    QVERIFY2(panel_->rowHasBlendIfForTest(layer), "customised row reports a Blend If badge");
+    QVERIFY2(!panel_->rowBlendIfRectForTest(layer).isEmpty(), "customised row paints the chip");
+
+    // Restoring the full default range removes the badge.
+    QVERIFY(pictura::layer_style_set_blend_if(*view_, layer, 0, 65535));
+    QCoreApplication::processEvents();
+    panel_->refresh();
+    QVERIFY2(!panel_->rowHasBlendIfForTest(layer), "restored default has no badge");
+    QVERIFY2(panel_->rowBlendIfRectForTest(layer).isEmpty(), "restored default paints no chip");
 
     window_->closeDocument(doc, false);
 }

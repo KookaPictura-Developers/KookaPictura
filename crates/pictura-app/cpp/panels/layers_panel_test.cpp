@@ -466,6 +466,21 @@ void LayersPanel::altClickRowFxForTest(const QString& path)
     QApplication::sendEvent(tree_->viewport(), &press);
 }
 
+bool LayersPanel::rowHasBlendIfForTest(const QString& path) const
+{
+    return model_ && model_->indexForPath(path).data(HasBlendIfRole).toBool();
+}
+
+QRect LayersPanel::rowBlendIfRectForTest(const QString& path) const
+{
+    const QModelIndex index = proxyIndexForPath(path);
+    if (!index.isValid() || !delegate_ || !tree_) {
+        return {};
+    }
+    const QRect vr = tree_->visualRect(index);
+    return delegate_->blendIfRect(QRect(0, 0, vr.width(), vr.height()), index);
+}
+
 QStringList LayersPanel::rowMenuTextsForPathForTest(const QString& path)
 {
     const QModelIndex index = model_ ? model_->indexForPath(path) : QModelIndex();
