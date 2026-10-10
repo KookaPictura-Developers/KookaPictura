@@ -1,0 +1,75 @@
+name: linux-packages
+
+# Builds the x86_64 .deb and .rpm for a release tag and attaches them to that
+# release. Same shape as appimage.yml: release-please.yml calls it after cutting
+# a release, it runs by hand for an existing tag, and a PR touching the
+# packaging runs it as a dry run that keeps the packages as workflow artifacts.
+# Each package is smoke-checked by installing it into a clean distro container,
+# which also proves its dependency list resolves there.
+on:
+  pull_request:
+    paths:
+      - .github/workflows/linux-packages.yml
+      - .github/actions/linux-bundle/**
+      - packaging/**
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag, e.g. v0.1.0
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  packages:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TAG: ${{ inputs.tag }}
+      VERSION: ${{ inputs.tag || format('0.0.0~pr{0}', github.event.number) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
+
+      - uses: ./.github/actions/linux-bundle
+
+      - name: Build .deb and .rpm
+        run: |
+          sudo apt-get install -y dpkg-dev rpm
+          mkdir -p dist
+          bash packaging/build-packages.sh "$VERSION" AppDir dist
+
+      - name: Smoke-check the .deb on Ubuntu 24.04
+        run: |
+          docker run --rm -v "$PWD/dist:/dist:ro" ubuntu:24.04 bash -ec '
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq /dist/*.deb
+            pictura --headless --self-test'
+
+      - name: Smoke-check the .rpm on Fedora
+        run: |
+          docker run --rm -v "$PWD/dist:/dist:ro" fedora:latest bash -ec '
+            dnf install -y -q /dist/*.rpm
+            pictura --headless --self-test'
+
+      - name: Keep the dry-run packages
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-packages
+          path: dist/*
+          retention-days: 7
+
+      - name: Upload release assets
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" dist/* --clobber

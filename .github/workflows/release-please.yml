@@ -25,8 +25,8 @@ jobs:
         id: release
         with:
           # Falls back to the default token. Set a RELEASE_PLEASE_TOKEN PAT so CI
-          # runs on the Release PR (see DEVELOPING). The AppImage job below works
-          # with either token because it is called, not triggered by the release.
+          # runs on the Release PR (see DEVELOPING). The packaging jobs below work
+          # with either token because they are called, not triggered by the release.
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
@@ -35,5 +35,12 @@ jobs:
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true'
     uses: ./.github/workflows/appimage.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
+
+  linux-packages:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    uses: ./.github/workflows/linux-packages.yml
     with:
       tag: ${{ needs.release-please.outputs.tag_name }}
