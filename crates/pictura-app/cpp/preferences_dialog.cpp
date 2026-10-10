@@ -1,9 +1,11 @@
 #include "preferences_dialog.h"
 
 #include "panels/numeric_field.h"
+#include "session.h"
 #include "theme.h"
 
 #include <QtWidgets/QCheckBox>
+#include <QtWidgets/QComboBox>
 #include <QtWidgets/QFormLayout>
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QLabel>
@@ -15,6 +17,7 @@ namespace pictura {
 
 const QString PreferencesDialog::kGeneral = QStringLiteral("General");
 const QString PreferencesDialog::kInterface = QStringLiteral("Interface");
+const QString PreferencesDialog::kFileHandling = QStringLiteral("File Handling");
 const QString PreferencesDialog::kPerformance = QStringLiteral("Performance");
 
 namespace {
@@ -53,7 +56,7 @@ PreferencesDialog::PreferencesDialog(QWidget* parent)
     stack_->setObjectName(QStringLiteral("preferencesStack"));
     layout->addWidget(stack_, 1);
 
-    realPages_ = {kGeneral, kInterface, kPerformance};
+    realPages_ = {kGeneral, kInterface, kFileHandling, kPerformance};
 
     // General: the app's real theme brightness is the only General setting.
     auto* generalPage = new QWidget(this);
@@ -80,6 +83,33 @@ PreferencesDialog::PreferencesDialog(QWidget* parent)
                  interfacePage);
     interfaceLayout->addStretch(1);
     stack_->addWidget(interfacePage);
+
+    // File Handling: CS6's crash-recovery autosave, a checkbox and its interval
+    // on one row.
+    auto* fileHandlingPage = new QWidget(this);
+    fileHandlingPage->setObjectName(QStringLiteral("preferencesFileHandlingPage"));
+    auto* fileHandlingLayout = new QVBoxLayout(fileHandlingPage);
+    auto* autoSaveRow = new QWidget(fileHandlingPage);
+    auto* autoSaveLayout = new QHBoxLayout(autoSaveRow);
+    autoSaveLayout->setContentsMargins(0, 0, 0, 0);
+    makeCheckbox(QStringLiteral("autoSaveRecovery"),
+                 tr("Automatically Save Recovery Information Every:"), autoSaveRow);
+    autoSaveMinutes_ = new QComboBox(autoSaveRow);
+    autoSaveMinutes_->setObjectName(QStringLiteral("preferencesAutoSaveMinutes"));
+    for (int minutes : kAutoSaveMinuteChoices) {
+        autoSaveMinutes_->addItem(minutes == 60 ? tr("1 Hour") : tr("%1 Minutes").arg(minutes),
+                                  minutes);
+    }
+    autoSaveLayout->addWidget(autoSaveMinutes_);
+    autoSaveLayout->addStretch(1);
+    fileHandlingLayout->addWidget(autoSaveRow);
+    fileHandlingLayout->addStretch(1);
+    stack_->addWidget(fileHandlingPage);
+    setAutoSaveRecovery(true, 10);
+    connect(autoSaveMinutes_, &QComboBox::currentIndexChanged, this, [this] {
+        emit autoSaveRecoveryChanged(checkbox(QStringLiteral("autoSaveRecovery"))->isChecked(),
+                                     autoSaveMinutes_->currentData().toInt());
+    });
 
     auto* performancePage = new QWidget(this);
     performancePage->setObjectName(QStringLiteral("preferencesPerformancePage"));
@@ -129,6 +159,9 @@ QCheckBox* PreferencesDialog::makeCheckbox(const QString& key, const QString& la
             emit autoShowHiddenChanged(on);
         } else if (key == QStringLiteral("useGpuCompute")) {
             emit gpuComputeChanged(on);
+        } else if (key == QStringLiteral("autoSaveRecovery")) {
+            autoSaveMinutes_->setEnabled(on);
+            emit autoSaveRecoveryChanged(on, autoSaveMinutes_->currentData().toInt());
         }
     });
     return box;
@@ -177,6 +210,17 @@ void PreferencesDialog::setGpuComputeEnabled(bool on)
     if (QCheckBox* box = checkbox(QStringLiteral("useGpuCompute"))) {
         box->setEnabled(on);
     }
+}
+
+void PreferencesDialog::setAutoSaveRecovery(bool on, int minutes)
+{
+    QCheckBox* box = checkbox(QStringLiteral("autoSaveRecovery"));
+    const QSignalBlocker blockBox(box);
+    const QSignalBlocker blockMinutes(autoSaveMinutes_);
+    box->setChecked(on);
+    autoSaveMinutes_->setEnabled(on);
+    const int index = autoSaveMinutes_->findData(minutes);
+    autoSaveMinutes_->setCurrentIndex(index >= 0 ? index : autoSaveMinutes_->findData(10));
 }
 
 void PreferencesDialog::showPage(const QString& page)

@@ -3448,6 +3448,7 @@ int runSelfTest(QApplication& app, bool headless, const QString& psdPath,
         prefsPages = prefs
             && prefs->pagesForTest()
                    == QStringList({QStringLiteral("General"), QStringLiteral("Interface"),
+                                   QStringLiteral("File Handling"),
                                    QStringLiteral("Performance")});
         prefsOpen = openedGeneral && openedInterface;
         if (prefs) {

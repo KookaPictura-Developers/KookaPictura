@@ -951,7 +951,7 @@ void CommandTreeTest::preferencesPages()
     prefs->openOn(QStringLiteral("Interface"));
     QCOMPARE(prefs->currentPageForTest(), QStringLiteral("Interface"));
     // A disabled pane never becomes the shown page.
-    prefs->openOn(QStringLiteral("File Handling"));
+    prefs->openOn(QStringLiteral("Cursors"));
     QCOMPARE(prefs->currentPageForTest(), QStringLiteral("Interface"));
 
     QSignalSpy gpuSpy(prefs, &pictura::PreferencesDialog::gpuComputeChanged);

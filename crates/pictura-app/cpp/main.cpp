@@ -173,6 +173,13 @@ int main(int argc, char* argv[])
     }
 
     pictura::PicturaMainWindow frame;
+    // Crash recovery runs only for an interactive launch: the self-test, a
+    // headless run, and control mode must neither write snapshots nor raise the
+    // recovery prompt.
+    const bool recovery = !selfTest && !headless && !control;
+    if (recovery) {
+        frame.enableRecovery();
+    }
     // `File > Exit` / Ctrl+Q call `qApp->quit()`, which leaves the event loop
     // without running `closeEvent`; save on the application's quit signal so
     // every quit path persists the session. The `closeEvent` save is unchanged
@@ -204,6 +211,9 @@ int main(int argc, char* argv[])
     // The frame applies the default size (or the stored geometry) in its
     // constructor; resizing here would clobber the restored window geometry.
     frame.show();
+    if (recovery) {
+        QTimer::singleShot(0, &frame, &pictura::PicturaMainWindow::offerRecovery);
+    }
 
     if (selfTest) {
         const int rc = runSelfTest(app, headless, psdPath, frame, view, image,

@@ -80,6 +80,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/command_tree.cpp
     crates/pictura-app/cpp/theme.cpp
     crates/pictura-app/cpp/fonts.cpp
+    crates/pictura-app/cpp/recovery_store.cpp
     crates/pictura-app/cpp/session.cpp
     crates/pictura-app/cpp/workspace_store.cpp
     crates/pictura-app/cpp/preferences_dialog.cpp
@@ -163,6 +164,7 @@ add_library(pictura_shell STATIC
     crates/pictura-app/cpp/frame_menus_image.cpp
     crates/pictura-app/cpp/frame_menus_image_mode.cpp
     crates/pictura-app/cpp/frame_recent.cpp
+    crates/pictura-app/cpp/frame_recovery.cpp
     crates/pictura-app/cpp/frame_test.cpp
     crates/pictura-app/cpp/frame_build.cpp
     crates/pictura-app/cpp/frame_workspaces.cpp

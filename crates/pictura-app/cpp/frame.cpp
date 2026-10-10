@@ -129,6 +129,8 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
     gpuCompute_ = state.gpuCompute;
     colorPolicy_ = state.colorPolicy;
     useShiftKeyForToolSwitch_ = state.useShiftKeyForToolSwitch;
+    autoSaveRecovery_ = state.autoSaveRecovery;
+    autoSaveMinutes_ = state.autoSaveMinutes;
     // Probe the adapter once so the toggle can be offered without a document.
     {
         PictureView probe;
@@ -236,6 +238,7 @@ PicturaMainWindow::PicturaMainWindow(QWidget* parent)
 
 PicturaMainWindow::~PicturaMainWindow()
 {
+    shutdownRecovery();
     for (const SmartObjectEditSession& session : editSessions_) {
         delete session.temp;
     }
@@ -410,6 +413,7 @@ int PicturaMainWindow::addDocument(PictureView* view, const QString& path)
     wireCanvasLevelProvider(view, entry.canvas);
 
     connect(view, &PictureView::changed, this, &PicturaMainWindow::refresh);
+    trackRecovery(view);
     connect(view, &PictureView::regionBlitted, this,
             [this, canvas = entry.canvas, view](const QImage& region, int x, int y) {
                 pictura::ScopedTimer blitSlotTimer("cxx_regionBlitted_slot");
@@ -628,6 +632,7 @@ bool PicturaMainWindow::saveActiveAs(const QString& path)
         return false;
     }
     docs_[index].path = path;
+    dropRecoverySnapshot(view);
     updateTabTitle(index);
     rememberRecent(path);
     updateWindowTitle();
@@ -701,6 +706,7 @@ void PicturaMainWindow::removeDocument(int index)
         }
     }
     tabs_->removeTab(index);
+    forgetRecovery(entry.view);
     entry.view->cancel_transform();
     entry.canvas->clearTransformPreview();
     if (entry.canvasHost) {
@@ -983,6 +989,7 @@ void PicturaMainWindow::showPreferences(const QString& page)
         preferencesDialog_->setBrightnessLevel(brightnessLevel_);
         preferencesDialog_->setGpuCompute(gpuCompute_);
         preferencesDialog_->setGpuComputeEnabled(gpuAvailable_);
+        connectRecoveryPreferences(preferencesDialog_);
         connect(preferencesDialog_, &PreferencesDialog::useShiftKeyForToolSwitchChanged,
                 this, [this](bool on) {
                     useShiftKeyForToolSwitch_ = on;

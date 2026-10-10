@@ -24,6 +24,12 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document, PsdError> {
 /// the layer tree (bottom-first, matching PSD on-disk z-order), applying an
 /// incoming-profile `policy` to an RGB document's embedded non-sRGB profile.
 pub fn read_psd_with(bytes: &[u8], policy: Policy) -> Result<Document, PsdError> {
+    let mut doc = read_container(bytes, policy)?;
+    crate::path_resources::resolve_paths(&mut doc);
+    Ok(doc)
+}
+
+fn read_container(bytes: &[u8], policy: Policy) -> Result<Document, PsdError> {
     let mut r = Reader::new(bytes);
     let sig = r.u32()?;
     if sig != SIGNATURE {

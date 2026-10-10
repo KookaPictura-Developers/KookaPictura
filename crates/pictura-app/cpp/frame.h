@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QtCore/QByteArray>
+#include <QtCore/QHash>
 #include <QtCore/QList>
 #include <QtCore/QPointer>
 #include <QtCore/QPoint>
@@ -11,6 +12,7 @@
 #include <QtWidgets/QMainWindow>
 
 #include "panels/panel_column.h"
+#include "recovery_store.h"
 #include "tools.h"
 #include "workspace_store.h"
 
@@ -210,6 +212,26 @@ public:
     void saveSession();
     // Apply a GPU-compute preference change to every open document and persist.
     void applyGpuComputePreference(bool on);
+
+    // Crash recovery (frame_recovery.cpp). Off until main enables it for an
+    // interactive launch, so tests and the self-test never touch the store
+    // unless they ask.
+    void enableRecovery();
+    // Ask what to do with the documents crashed sessions left behind: recover
+    // them, discard them, or keep them for the next launch.
+    void offerRecovery();
+    // Reopen every orphaned document as an unsaved "-Recovered" tab and discard
+    // the orphaned sessions; returns how many reopened.
+    int recoverOrphans();
+    // The autosave tick: snapshot each document with unsaved changes made since
+    // its last snapshot, and drop the snapshot of each document now saved.
+    void autosaveRecovery();
+    // Clean shutdown: finish snapshot writes and delete this session's store.
+    void shutdownRecovery();
+    void setAutoSaveRecovery(bool on, int minutes);
+    bool autoSaveRecovery() const { return autoSaveRecovery_; }
+    int autoSaveMinutes() const { return autoSaveMinutes_; }
+    QString recoverySessionDirForTest() const;
 
     // Mirror the active document's selection outline onto its canvas (or clear
     // it). Called from refresh() and on toolbar selection commits; view-only.
@@ -536,6 +558,21 @@ private:
     bool clipboardMirrored_ = false;
     bool clipboardExported_ = false;
     bool clipboardSetting_ = false;
+
+    // Crash recovery (frame_recovery.cpp): each document's snapshot id, the
+    // documents changed since their last snapshot, and those with one on disk.
+    void connectRecoveryPreferences(PreferencesDialog* dialog);
+    void trackRecovery(PictureView* view);
+    void dropRecoverySnapshot(PictureView* view);
+    void forgetRecovery(PictureView* view);
+    std::unique_ptr<RecoveryStore> recovery_;
+    QTimer* autosaveTimer_ = nullptr;
+    QHash<PictureView*, int> recoveryIds_;
+    QSet<PictureView*> recoveryStale_;
+    QSet<PictureView*> recoverySnapshots_;
+    int recoveryCounter_ = 0;
+    bool autoSaveRecovery_ = true;
+    int autoSaveMinutes_ = 10;
 };
 
 } // namespace pictura

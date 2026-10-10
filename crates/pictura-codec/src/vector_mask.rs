@@ -42,6 +42,13 @@ pub fn decode_vector_mask_paths(data: &[u8], width: u32, height: u32) -> Option<
         return None;
     }
     r.u32().ok()?;
+    decode_path_records(data.get(8..)?, width, height)
+}
+
+/// Decode bare path records (a `vmsk` body, or a path image resource's data)
+/// as editable subpaths in document pixels; `None` when malformed.
+pub(crate) fn decode_path_records(data: &[u8], width: u32, height: u32) -> Option<Vec<Subpath>> {
+    let mut r = Reader::new(data);
     let px = |raw: i32, extent: u32| raw as f64 / FIXED_ONE * extent as f64;
     let mut subpaths = Vec::new();
     while r.remaining() >= RECORD {
@@ -94,6 +101,18 @@ pub fn encode_vector_mask(subpaths: &[Subpath], width: u32, height: u32) -> Vec<
     let mut out = Vec::with_capacity(8 + RECORD * (1 + subpaths.len() * 5));
     out.extend_from_slice(&3u32.to_be_bytes());
     out.extend_from_slice(&0u32.to_be_bytes());
+    encode_path_records(subpaths, width, height, &mut out);
+    out
+}
+
+/// Append the bare path records `encode_vector_mask` frames: the fill-rule
+/// record, then each subpath's length record and knots.
+pub(crate) fn encode_path_records(
+    subpaths: &[Subpath],
+    width: u32,
+    height: u32,
+    out: &mut Vec<u8>,
+) {
     out.extend_from_slice(&6u16.to_be_bytes());
     out.extend_from_slice(&[0u8; 24]);
     let fixed = |v: f64, extent: u32| ((v / extent.max(1) as f64) * FIXED_ONE).round() as i32;
@@ -117,7 +136,6 @@ pub fn encode_vector_mask(subpaths: &[Subpath], width: u32, height: u32) -> Vec<
             }
         }
     }
-    out
 }
 
 /// One knot in 1/256-pixel document coordinates.

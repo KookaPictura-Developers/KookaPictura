@@ -119,6 +119,8 @@ void PicturaMainWindow::saveSession()
     state.colorPolicy = colorPolicy_;
     state.toolsColumns = toolbox_ ? toolbox_->columns() : 1;
     state.useShiftKeyForToolSwitch = useShiftKeyForToolSwitch_;
+    state.autoSaveRecovery = autoSaveRecovery_;
+    state.autoSaveMinutes = autoSaveMinutes_;
     if (panelColumn_) {
         const bool iconic = panelColumn_->railMode();
         state.panelRailMode = iconic ? QStringLiteral("iconic") : QStringLiteral("normal");
