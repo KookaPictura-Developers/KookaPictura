@@ -47,6 +47,8 @@ signals:
     // The Move tool's Align / Distribute buttons; `edge` is 0 Top ... 5 Right.
     void alignRequested(int edge);
     void distributeRequested(int edge);
+    // A selection tool's `Select and Mask…` button (opens Refine Edge).
+    void refineEdgeRequested();
 
 public:
     // Self-test hook: the controller the size field is wired to.
@@ -65,6 +67,8 @@ private:
     QWidget* buildCombinePage(ToolId id, bool withTolerance);
     QWidget* buildSelectionPage(ToolId id);
     QWidget* buildWandPage(ToolId id);
+    // The `Select and Mask…` button the selection tools share.
+    void addRefineEdgeButton(QHBoxLayout* layout, QWidget* page);
     QWidget* buildCropPage(ToolId id);
     QWidget* buildAnnotationPage(ToolId id);
     QWidget* buildPaintPage(ToolId id);

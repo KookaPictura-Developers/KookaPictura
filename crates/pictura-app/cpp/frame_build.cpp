@@ -414,6 +414,10 @@ void PicturaMainWindow::buildTools(int toolsColumns, bool useShiftKeyForToolSwit
             &PicturaMainWindow::distributeSelectedLayers);
     connect(tools_, &ToolController::moveOptionsChanged, this,
             &PicturaMainWindow::updateAlignControls);
+    connect(optionsBar_, &OptionsBar::refineEdgeRequested, this, [this]() {
+        registry_->dispatch(
+            commandIdForPath({QStringLiteral("Select"), QStringLiteral("Refine Edge…")}));
+    });
     brushPanel_->setController(tools_);
     cloneSourcePanel_->setController(tools_);
     glyphsPanel_->setController(tools_);
