@@ -121,6 +121,13 @@ void PicturaMainWindow::saveSession()
     state.useShiftKeyForToolSwitch = useShiftKeyForToolSwitch_;
     state.autoSaveRecovery = autoSaveRecovery_;
     state.autoSaveMinutes = autoSaveMinutes_;
+    state.rulersVisible = rulersVisible_;
+    state.rulerUnit = int(rulerUnit_);
+    state.traditionalPoints = traditionalPoints_;
+    state.guidesVisible = guidesVisible_;
+    state.guidesLocked = guidesLocked_;
+    state.guideColor = guideColor_.name();
+    state.guideDashed = guideDashed_;
     if (panelColumn_) {
         const bool iconic = panelColumn_->railMode();
         state.panelRailMode = iconic ? QStringLiteral("iconic") : QStringLiteral("normal");

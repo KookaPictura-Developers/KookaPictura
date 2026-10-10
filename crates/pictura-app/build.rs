@@ -54,6 +54,7 @@ fn main() {
                 "src/cxxqt_object/crop_group.rs",
                 "src/cxxqt_object/export.rs",
                 "src/cxxqt_object/filter_tools.rs",
+                "src/cxxqt_object/guides.rs",
                 "src/cxxqt_object/healing.rs",
                 "src/cxxqt_object/image_adjust.rs",
                 "src/cxxqt_object/image_adjust/gradient_map.rs",

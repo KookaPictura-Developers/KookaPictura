@@ -45,6 +45,7 @@ set(PICTURA_QT_TESTS
     tst_zoom_tool
     tst_large_document
     tst_recovery
+    tst_rulers_guides
 )
 
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/qt-test-results)

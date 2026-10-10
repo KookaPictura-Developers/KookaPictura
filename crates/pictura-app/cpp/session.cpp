@@ -84,6 +84,13 @@ SessionState loadSession()
     state.autoSaveRecovery = obj.value(QStringLiteral("autoSaveRecovery")).toBool(true);
     const int autoSaveMinutes = obj.value(QStringLiteral("autoSaveMinutes")).toInt(10);
     state.autoSaveMinutes = kAutoSaveMinuteChoices.contains(autoSaveMinutes) ? autoSaveMinutes : 10;
+    state.rulersVisible = obj.value(QStringLiteral("rulersVisible")).toBool(false);
+    state.rulerUnit = obj.value(QStringLiteral("rulerUnit")).toInt(1);
+    state.traditionalPoints = obj.value(QStringLiteral("traditionalPoints")).toBool(false);
+    state.guidesVisible = obj.value(QStringLiteral("guidesVisible")).toBool(true);
+    state.guidesLocked = obj.value(QStringLiteral("guidesLocked")).toBool(false);
+    state.guideColor = obj.value(QStringLiteral("guideColor")).toString(state.guideColor);
+    state.guideDashed = obj.value(QStringLiteral("guideDashed")).toBool(false);
     state.panelRailMode = obj.value(QStringLiteral("panelRailMode")).toString(
         QStringLiteral("normal"));
     if (state.panelRailMode != QStringLiteral("iconic")) {
@@ -143,6 +150,13 @@ bool saveSession(const SessionState& state)
     obj.insert(QStringLiteral("confirmLiveShapeToPath"), state.confirmLiveShapeToPath);
     obj.insert(QStringLiteral("autoSaveRecovery"), state.autoSaveRecovery);
     obj.insert(QStringLiteral("autoSaveMinutes"), state.autoSaveMinutes);
+    obj.insert(QStringLiteral("rulersVisible"), state.rulersVisible);
+    obj.insert(QStringLiteral("rulerUnit"), state.rulerUnit);
+    obj.insert(QStringLiteral("traditionalPoints"), state.traditionalPoints);
+    obj.insert(QStringLiteral("guidesVisible"), state.guidesVisible);
+    obj.insert(QStringLiteral("guidesLocked"), state.guidesLocked);
+    obj.insert(QStringLiteral("guideColor"), state.guideColor);
+    obj.insert(QStringLiteral("guideDashed"), state.guideDashed);
     obj.insert(QStringLiteral("panelRailMode"), state.panelRailMode);
     obj.insert(QStringLiteral("railWidth"), state.railWidth);
     obj.insert(QStringLiteral("autoCollapseIconic"), state.autoCollapseIconic);

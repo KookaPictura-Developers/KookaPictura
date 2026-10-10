@@ -642,6 +642,7 @@ void ToolController::refreshAnnotations()
         }
     }
     canvas_->setCountOverlay(counts);
+    refreshGuides();
 }
 
 void ToolController::setCurrentNote(int index)
@@ -683,6 +684,8 @@ void ToolController::unbindCanvas()
     }
     transformDragging_ = false;
     transformHandle_ = -1;
+    guideDrag_ = -1;
+    guideHover_ = false;
     canvas_->clearOverlay();
     canvas_->clearSelectionPreview();
     canvas_->clearBrushOutline();
@@ -746,6 +749,9 @@ void ToolController::handlePressed(const QPointF& imagePos, int button, int modi
         }
         return;
     }
+    if (beginGuideDrag(imagePos, mods)) {
+        return;
+    }
     ToolHandler* handler = registry_.forTool(active_);
     if (isSelectionTool(active_) && !(handler && handler->lassoInProgress())) {
         // A press inside a live selection moves the mask or its content instead
@@ -786,6 +792,11 @@ void ToolController::handleMoved(const QPointF& imagePos)
         setTransformCursor(imagePos);
         return;
     }
+    if (guideDrag_ >= 0) {
+        dragGuide(imagePos);
+        return;
+    }
+    updateGuideHover(imagePos);
     updateSelectionHover(imagePos);
     updateBrushOutline(imagePos);
     // The selection/content move is cross-cutting: route it before the active
@@ -815,6 +826,10 @@ void ToolController::handleReleased(const QPointF& imagePos)
                 v->transform_release();
             }
         }
+        return;
+    }
+    if (guideDrag_ >= 0) {
+        releaseGuide(imagePos);
         return;
     }
     if (movingSelection_) {
