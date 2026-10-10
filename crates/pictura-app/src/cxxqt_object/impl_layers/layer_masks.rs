@@ -68,6 +68,17 @@ pub mod ffi {
         /// Whether the active layer has a raster layer mask.
         fn layer_mask_present(view: &PictureView) -> bool;
 
+        /// Make the raster mask on the layer at `path` the view's mask edit
+        /// target, so the brush, fill, and filters write its coverage; an empty
+        /// path clears the target. False without a mask on that layer. Records
+        /// no history.
+        fn mask_edit_target_set(view: Pin<&mut PictureView>, path: &QString) -> bool;
+
+        /// The path of the layer whose raster mask is the edit target, empty
+        /// when none. Clears a target whose layer, mask, or active-layer status
+        /// no longer holds.
+        fn mask_edit_target_get(view: Pin<&mut PictureView>) -> QString;
+
         /// Whether the active layer's mask is linked to the layer.
         fn layer_mask_linked(view: &PictureView) -> bool;
 
@@ -226,6 +237,40 @@ fn layer_mask_present(view: &PictureView) -> bool {
             .as_ref()
             .is_some_and(|doc| pictura_render::has_layer_mask(doc, &path))
     })
+}
+
+fn mask_edit_target_set(mut view: Pin<&mut PictureView>, path: &QString) -> bool {
+    let path = path.to_string();
+    if path.is_empty() {
+        view.as_mut().rust_mut().mask_edit_target = None;
+        return true;
+    }
+    let resolves = view
+        .rust()
+        .doc
+        .as_ref()
+        .is_some_and(|doc| pictura_render::has_layer_mask(doc, &path));
+    if !resolves {
+        return false;
+    }
+    view.as_mut().rust_mut().mask_edit_target = Some(path);
+    true
+}
+
+fn mask_edit_target_get(mut view: Pin<&mut PictureView>) -> QString {
+    let Some(path) = view.rust().mask_edit_target.clone() else {
+        return QString::default();
+    };
+    let resolves = view
+        .rust()
+        .doc
+        .as_ref()
+        .is_some_and(|doc| pictura_render::has_layer_mask(doc, &path));
+    if !resolves {
+        view.as_mut().rust_mut().mask_edit_target = None;
+        return QString::default();
+    }
+    QString::from(path)
 }
 
 fn layer_mask_linked(view: &PictureView) -> bool {

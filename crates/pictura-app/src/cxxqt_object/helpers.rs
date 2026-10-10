@@ -227,6 +227,20 @@ pub(super) fn paint_mode_from(mode: &str) -> PaintMode {
         _ => PaintMode::Normal,
     }
 }
+/// The active layer's path when its raster mask is the mask edit target, so the
+/// brush, fill, and filters write coverage instead of the layer's pixels.
+pub(super) fn active_mask_target(rust: &super::state::PictureViewRust) -> Option<String> {
+    rust.mask_edit_target
+        .clone()
+        .filter(|path| rust.active_layer.as_deref() == Some(path.as_str()))
+}
+/// The Rec.601 luma a mask paints for a colour; Adobe's mask conversion is
+/// closed, so this is the approximation `pictura-adjust` uses.
+pub(super) fn luma_u8(color: Rgba) -> u8 {
+    (0.299 * color.r as f32 + 0.587 * color.g as f32 + 0.114 * color.b as f32)
+        .round()
+        .clamp(0.0, 255.0) as u8
+}
 /// Index of the topmost pixel layer: the last layer (bottom-first order) that is
 /// neither a group nor an adjustment.
 pub(super) fn topmost_pixel_layer_index(doc: &Document) -> Option<usize> {

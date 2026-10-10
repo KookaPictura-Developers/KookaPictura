@@ -163,6 +163,42 @@ pub(super) fn selection_to_mask(selection: &Selection, doc: &Document) -> LayerM
         ..Default::default()
     }
 }
+/// A document-sized selection plane cropped to `rect` in mask-local coordinates
+/// (row-major over the rectangle); pixels outside the document are unselected.
+pub(super) fn crop_selection(data: &[u8], doc_w: u32, doc_h: u32, rect: PsdRect) -> Vec<u8> {
+    let (w, h) = (rect.width().max(0) as usize, rect.height().max(0) as usize);
+    let mut out = vec![0u8; w * h];
+    for y in 0..h {
+        let dy = rect.top + y as i32;
+        if dy < 0 || dy >= doc_h as i32 {
+            continue;
+        }
+        for x in 0..w {
+            let dx = rect.left + x as i32;
+            if dx < 0 || dx >= doc_w as i32 {
+                continue;
+            }
+            out[y * w + x] = data[dy as usize * doc_w as usize + dx as usize];
+        }
+    }
+    out
+}
+/// The selection cropped to `rect` as a full-rect coverage mask, for an edit
+/// that runs on a mask-sized document.
+pub(super) fn selection_mask_for(selection: &Selection, rect: PsdRect) -> LayerMask {
+    let (w, h) = (rect.width().max(0), rect.height().max(0));
+    LayerMask {
+        rect: PsdRect {
+            top: 0,
+            left: 0,
+            bottom: h,
+            right: w,
+        },
+        default_color: 0,
+        data: Some(crop_selection(&selection.data, selection.width, selection.height, rect).into()),
+        ..Default::default()
+    }
+}
 /// The buffer a wand samples: the composited layer stack when present,
 /// otherwise the embedded PSD composite.
 pub(super) fn current_buffer(doc: &Document, gpu_compute: bool) -> PixelBuffer {

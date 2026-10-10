@@ -3,6 +3,7 @@ set(PICTURA_QT_TESTS
     tst_smoke
     tst_fonts
     tst_edit_clipboard
+    tst_mask_edit
     tst_image_ops
     tst_new_document
     tst_image_mode

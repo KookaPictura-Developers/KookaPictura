@@ -39,8 +39,8 @@ pub use layer_ops::{
     is_fill_content_layer, is_shape_layer, is_visible_in_panel, layer_from_background,
     layer_live_shape, layer_mask_disabled, layer_mask_linked, layer_shape_paths,
     layer_style_effect_names, layer_style_pattern_names, layer_style_value, layer_via_copy,
-    layer_via_cut, lift_selection, lock_group_layers, merge_lifted, merge_scope, move_path,
-    move_path_to, move_selection_content, neutral_color, new_smart_object_via_copy,
+    layer_via_cut, lift_selection, lock_group_layers, mask_document, merge_lifted, merge_scope,
+    move_path, move_path_to, move_selection_content, neutral_color, new_smart_object_via_copy,
     next_layer_name, open_as_smart_object, parent_path, paste_clip, paste_layer_style,
     paste_shape_attributes, perspective_crop, perspective_crop_refusal, perspective_crop_size,
     place_smart_object, rasterize_all_layers, rasterize_fill_content, rasterize_shape,
@@ -54,10 +54,10 @@ pub use layer_ops::{
     shape_coverage, shape_fill, shape_fill_color, shape_stroke, smart_object_source_bytes,
     stamp_scope, style_mesh, transform_layer, transform_layer_quad, transform_layer_warp,
     trim_to_content, ungroup_layer, ungroup_paths, vector_mask_disabled, vector_mask_linked,
-    AlignEdge, Arrange, Clip, LayerMaskKind, LayerStyle, LayerTransform, MergeError, MergeOutcome,
-    MergeScope, NewLayerSpec, PasteMode, ShapeAttributes, ShapeStroke, StampScope, VectorMaskKind,
-    WarpMesh, WarpParams, WarpStyle, MASK_FLAG_LINKED, VECTOR_MASK_FLAG_DISABLED,
-    VECTOR_MASK_FLAG_INVERT, VECTOR_MASK_FLAG_NOT_LINKED,
+    write_mask_back, AlignEdge, Arrange, Clip, LayerMaskKind, LayerStyle, LayerTransform,
+    MaskDocument, MergeError, MergeOutcome, MergeScope, NewLayerSpec, PasteMode, ShapeAttributes,
+    ShapeStroke, StampScope, VectorMaskKind, WarpMesh, WarpParams, WarpStyle, MASK_FLAG_LINKED,
+    VECTOR_MASK_FLAG_DISABLED, VECTOR_MASK_FLAG_INVERT, VECTOR_MASK_FLAG_NOT_LINKED,
 };
 pub use matting::{defringe, remove_matte, MatteBackground, MattingError};
 pub use mode::{

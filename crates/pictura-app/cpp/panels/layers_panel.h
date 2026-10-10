@@ -156,6 +156,11 @@ public:
     // user would; false when the row shows no mask.
     bool clickLinkGlyphForTest(const QString& path);
     bool shiftClickMaskThumbnailForTest(const QString& path);
+    // Whether the row's mask is the view's mask edit target, and plain-clicking
+    // its mask or layer thumbnail as a user would (test seam).
+    bool rowMaskTargetForTest(const QString& path) const;
+    bool clickMaskThumbnailForTest(const QString& path);
+    bool clickLayerThumbnailForTest(const QString& path);
     bool rowHasVectorMaskForTest(const QString& path) const;
     bool rowVectorMaskLinkedForTest(const QString& path) const;
     bool rowVectorMaskDisabledForTest(const QString& path) const;

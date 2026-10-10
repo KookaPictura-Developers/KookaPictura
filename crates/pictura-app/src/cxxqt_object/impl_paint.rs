@@ -1,7 +1,7 @@
 use super::helpers::*;
 use super::helpers_composite::{patch_composite_region, planes_of, rgba_image};
 use super::qobject;
-use super::state::{PictureViewRust, PreviewStroke};
+use super::state::{MaskStroke, PictureViewRust, PreviewStroke};
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::QString;
@@ -60,7 +60,7 @@ impl PictureViewRust {
         &mut self,
         rect: PsdRect,
     ) -> Option<(i32, i32, PsdRect, PixelBuffer)> {
-        let painting = self.stroke.is_some();
+        let painting = self.stroke.is_some() || self.mask_stroke.is_some();
         let source: &Document = self.doc.as_ref()?;
         let (x0, y0, w, h) = clamp_region(rect, source.width, source.height)?;
         let gpu_compute = self.gpu_compute;
@@ -93,6 +93,19 @@ impl PictureViewRust {
     /// whole pre-stroke document when the stroke changed its structure), and
     /// return the document rectangle it had painted.
     pub(super) fn cancel_stroke(&mut self) -> Option<PsdRect> {
+        if let Some(mut ctx) = self.mask_stroke.take() {
+            let dirty = ctx.stroke.dirty();
+            ctx.stroke.cancel(&mut ctx.document);
+            if let Some(doc) = self.doc.as_mut() {
+                pictura_render::write_mask_back(doc, &ctx.path, &ctx.document, None);
+            }
+            return dirty.map(|rect| PsdRect {
+                top: rect.top + ctx.rect.top,
+                left: rect.left + ctx.rect.left,
+                bottom: rect.bottom + ctx.rect.top,
+                right: rect.right + ctx.rect.left,
+            });
+        }
         let stroke = self.stroke.take()?;
         let dirty = stroke.dirty();
         match (self.stroke_base.take(), self.doc.as_mut()) {
@@ -335,7 +348,7 @@ impl qobject::PictureView {
         let _begin = paint_timing::Scope::new("begin_total");
         {
             let rust = self.rust();
-            if rust.doc.is_none() || rust.stroke.is_some() {
+            if rust.doc.is_none() || rust.stroke.is_some() || rust.mask_stroke.is_some() {
                 return false;
             }
         }
@@ -357,6 +370,23 @@ impl qobject::PictureView {
         // The exact stroke sanitizes internally; the preview and the level policy
         // must use the same clamped config so they rasterize the committed tip.
         .sanitized();
+        // A mask target paints the mask's coverage instead of the layer: the
+        // foreground's Rec.601 luma is the painted value, so black hides and
+        // white reveals. The stroke runs on a mask-sized grayscale document.
+        let mask_target = active_mask_target(self.rust());
+        if let Some(path) = mask_target {
+            let gray = luma_u8(cfg.color);
+            let mask_cfg = StrokeConfig {
+                color: pictura_paint::Rgba {
+                    r: gray,
+                    g: gray,
+                    b: gray,
+                    a: cfg.color.a,
+                },
+                ..cfg
+            };
+            return self.as_mut().begin_mask_paint(&path, mask_cfg);
+        }
         let begun = {
             let rust = self.rust();
             let Some(doc) = rust.doc.as_ref() else {
@@ -457,8 +487,90 @@ impl qobject::PictureView {
         }
     }
 
+    /// Begin a stroke on the raster mask of the layer at `path`: the mask is
+    /// exposed as a mask-sized grayscale document and an ordinary [`Stroke`]
+    /// runs on it, so the mask gains the exact brush behaviour. False without a
+    /// mask, on a zero-sized mask rectangle, or when the stroke is refused.
+    fn begin_mask_paint(mut self: Pin<&mut Self>, path: &str, cfg: StrokeConfig) -> bool {
+        let built = {
+            let rust = self.rust();
+            let Some(doc) = rust.doc.as_ref() else {
+                return false;
+            };
+            let Some(mask) = pictura_render::mask_document(doc, path) else {
+                return false;
+            };
+            Stroke::begin_at(&mask.document, "0", cfg)
+                .ok()
+                .map(|stroke| MaskStroke {
+                    path: path.to_string(),
+                    rect: mask.rect,
+                    document: mask.document,
+                    stroke,
+                })
+        };
+        let Some(mask_stroke) = built else {
+            return false;
+        };
+        let mut rust = self.as_mut().rust_mut();
+        rust.mask_stroke = Some(mask_stroke);
+        rust.stroke_label = if cfg.aliased { "Pencil" } else { "Brush" }.to_string();
+        rust.clear_pending_present();
+        let dims = rust.doc.as_ref().map(|doc| (doc.width, doc.height));
+        if let Some((width, height)) = dims {
+            rust.stroke_tiles.reset(width, height);
+        }
+        true
+    }
+
+    /// One dab of a mask stroke: sample the mask-local point on the mask
+    /// document, copy the changed region back into the real mask, and present
+    /// it. Returns whether a pixel changed.
+    fn mask_dab(mut self: Pin<&mut Self>, x: f64, y: f64, pressure: f64) -> bool {
+        let (dirty, rect) = {
+            let mut rust = self.as_mut().rust_mut();
+            let rust = &mut *rust;
+            let Some(ctx) = rust.mask_stroke.as_mut() else {
+                return false;
+            };
+            let sample = StrokeSample {
+                x: (x - ctx.rect.left as f64) as f32,
+                y: (y - ctx.rect.top as f64) as f32,
+                pressure: pressure as f32,
+            };
+            if !ctx.stroke.sample(&mut ctx.document, sample) {
+                return false;
+            }
+            (ctx.stroke.take_dirty(), ctx.rect)
+        };
+        let Some(dirty) = dirty else {
+            return false;
+        };
+        {
+            let mut rust = self.as_mut().rust_mut();
+            let rust = &mut *rust;
+            let (Some(doc), Some(ctx)) = (rust.doc.as_mut(), rust.mask_stroke.as_ref()) else {
+                return false;
+            };
+            pictura_render::write_mask_back(doc, &ctx.path, &ctx.document, Some(dirty));
+        }
+        let present = PsdRect {
+            top: dirty.top + rect.top,
+            left: dirty.left + rect.left,
+            bottom: dirty.bottom + rect.top,
+            right: dirty.right + rect.left,
+        };
+        if let Some(region) = self.as_mut().rust_mut().queue_present(present) {
+            self.as_mut().refresh_region(region);
+        }
+        true
+    }
+
     pub fn paint_dab(mut self: Pin<&mut Self>, x: f64, y: f64, pressure: f64) -> bool {
         let _dab = paint_timing::Scope::new("dab_total");
+        if self.rust().mask_stroke.is_some() {
+            return self.as_mut().mask_dab(x, y, pressure);
+        }
         if self.rust().gpu_stroke.is_some() {
             return self.as_mut().gpu_dab(x, y, pressure);
         }
@@ -690,7 +802,7 @@ impl qobject::PictureView {
 
     pub fn end_paint(mut self: Pin<&mut Self>) -> bool {
         let t0 = Instant::now();
-        let (stroke, label, preview, base) = {
+        let (stroke, mask_stroke, label, preview, base) = {
             let mut rust = self.as_mut().rust_mut();
             // The commit refresh covers the stroke's whole extent, so it
             // supersedes any region still pending; it runs before `record`.
@@ -699,11 +811,38 @@ impl qobject::PictureView {
             rust.gpu_placer = None;
             (
                 rust.stroke.take(),
+                rust.mask_stroke.take(),
                 rust.stroke_label.clone(),
                 rust.preview.take(),
                 rust.stroke_base.take(),
             )
         };
+        if let Some(ctx) = mask_stroke {
+            // The dabs already wrote the mask; finishing only reports the
+            // extent, whose document-space regions drive the commit refresh.
+            let finished = ctx.stroke.finish();
+            let ok = match finished {
+                None => {
+                    self.as_mut().recomposite();
+                    false
+                }
+                Some(rect) => {
+                    let rect = PsdRect {
+                        top: rect.top + ctx.rect.top,
+                        left: rect.left + ctx.rect.left,
+                        bottom: rect.bottom + ctx.rect.top,
+                        right: rect.right + ctx.rect.left,
+                    };
+                    let regions = self.as_mut().rust_mut().take_stroke_regions(rect);
+                    self.as_mut().refresh_regions(&regions);
+                    self.as_mut().record(&label);
+                    true
+                }
+            };
+            paint_timing::record("end_paint_total", t0.elapsed());
+            paint_timing::report();
+            return ok;
+        }
         let ok = match stroke {
             None => false,
             Some(mut stroke) => {

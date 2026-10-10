@@ -50,6 +50,11 @@ impl qobject::PictureView {
         let Some(filter) = filter_from_kind(&kind.to_string()) else {
             return false;
         };
+        if let Some(path) = active_mask_target(self.rust()) {
+            return self
+                .as_mut()
+                .apply_mask_filter_command(&path, &kind.to_string(), filter);
+        }
         let mask = {
             let rust = self.rust();
             let Some(doc) = rust.doc.as_ref() else {
@@ -90,6 +95,30 @@ impl qobject::PictureView {
             return true;
         }
         false
+    }
+
+    /// The `Filter` command with the active mask as the target: filter the
+    /// mask's coverage over its rectangle and record one "Filter" state.
+    fn apply_mask_filter_command(
+        mut self: Pin<&mut Self>,
+        path: &str,
+        kind: &str,
+        filter: pictura_filters::Filter,
+    ) -> bool {
+        let region = {
+            let mut rust = self.as_mut().rust_mut();
+            apply_mask_op(&mut rust, path, &ActiveOp::Filter(filter), true, None)
+        };
+        let Some(region) = region else {
+            return false;
+        };
+        match region {
+            Some(rect) => self.as_mut().refresh_region(rect),
+            None => self.as_mut().recomposite(),
+        }
+        self.as_mut().rust_mut().last_filter = Some((kind.to_string(), Vec::new()));
+        self.as_mut().record("Filter");
+        true
     }
 }
 
@@ -166,6 +195,9 @@ pub(super) fn apply_op_active_region(
     preview_region: Option<pictura_core::PsdRect>,
 ) -> Option<Option<pictura_core::PsdRect>> {
     rust.filter_error = None;
+    if let Some(path) = active_mask_target(rust) {
+        return apply_mask_op(rust, &path, op, commit, preview_region);
+    }
     let (index, gpu_compute) = {
         let Some(doc) = rust.doc.as_ref() else {
             rust.filter_error = Some("there is no document".to_string());
@@ -204,6 +236,10 @@ pub(super) fn apply_op_active_region(
         .is_some_and(|p| p.layer_index != index)
     {
         rust.filter_error = Some("another layer has an open preview; cancel it first".to_string());
+        return None;
+    }
+    if rust.mask_filter_preview.is_some() {
+        rust.filter_error = Some("a mask preview is open; cancel it first".to_string());
         return None;
     }
     let existing = rust
@@ -306,11 +342,119 @@ fn finish_op(
     Some(region)
 }
 
+/// Apply `op` to the active layer's mask coverage instead of its pixels: the
+/// mask is exposed as a mask-sized grayscale document, filtered whole (the
+/// document selection confines it), and written back. A preview snapshots the
+/// pre-preview coverage and re-filters from it; a commit drops the snapshot;
+/// cancel restores it. Returns the mask rectangle to refresh.
+fn apply_mask_op(
+    rust: &mut PictureViewRust,
+    path: &str,
+    op: &ActiveOp,
+    commit: bool,
+    _preview_region: Option<pictura_core::PsdRect>,
+) -> Option<Option<pictura_core::PsdRect>> {
+    // A preview for another target must not be silently abandoned.
+    if rust.filter_preview.is_some()
+        || rust
+            .mask_filter_preview
+            .as_ref()
+            .is_some_and(|(p, _)| p != path)
+    {
+        rust.filter_error = Some("another layer has an open preview; cancel it first".to_string());
+        return None;
+    }
+    let baseline = rust
+        .mask_filter_preview
+        .as_ref()
+        .filter(|(p, _)| p == path)
+        .map(|(_, coverage)| coverage.clone());
+    let (mut mask, selection) = {
+        let doc = rust.doc.as_ref()?;
+        let Some(mut mask) = pictura_render::mask_document(doc, path) else {
+            rust.filter_error = Some("the active layer has no mask to filter".to_string());
+            return None;
+        };
+        // Re-filter from the pre-preview coverage, never from the last preview.
+        if let Some(original) = &baseline {
+            if let Some(channel) = mask.document.layers[0]
+                .channels
+                .iter_mut()
+                .find(|c| c.id == 0)
+            {
+                if channel.data.len() == original.len() {
+                    channel.data = original.clone().into();
+                }
+            }
+        }
+        let selection = rust
+            .selection
+            .as_ref()
+            .map(|s| selection_mask_for(s, mask.rect));
+        (mask, selection)
+    };
+    let snapshot = if !commit && baseline.is_none() {
+        mask.document.layers[0]
+            .channels
+            .iter()
+            .find(|c| c.id == 0)
+            .map(|c| c.data.to_vec())
+    } else {
+        None
+    };
+    let result = {
+        let layer = mask.document.layers.first_mut()?;
+        let rect = layer.rect;
+        match op {
+            ActiveOp::Filter(filter) => {
+                pictura_render::apply_filter(layer, filter, selection.as_ref(), false)
+            }
+            ActiveOp::Filters(filters) => filters.iter().try_for_each(|filter| {
+                pictura_render::apply_filter(layer, filter, selection.as_ref(), false)
+            }),
+            ActiveOp::Adjustment(adjustment) => {
+                pictura_render::apply_adjustment_region(layer, adjustment, selection.as_ref(), rect)
+            }
+        }
+    };
+    if let Err(error) = result {
+        rust.filter_error = Some(error.to_string());
+        return None;
+    }
+    let doc = rust.doc.as_mut()?;
+    if !pictura_render::write_mask_back(doc, path, &mask.document, None) {
+        rust.filter_error = Some("the mask disappeared during the filter".to_string());
+        return None;
+    }
+    if commit {
+        rust.mask_filter_preview = None;
+    } else {
+        let original = baseline.or(snapshot).expect("a preview has a baseline");
+        rust.mask_filter_preview = Some((path.to_string(), original));
+    }
+    Some(Some(mask.rect))
+}
+
 /// Discard an open preview, restoring the pre-preview pixels bit-identically.
 /// Returns the region to refresh, or `None` when no preview is open.
 pub(super) fn cancel_filter_preview(
     rust: &mut PictureViewRust,
 ) -> Option<Option<pictura_core::PsdRect>> {
+    if let Some((path, original)) = rust.mask_filter_preview.take() {
+        let doc = rust.doc.as_mut()?;
+        let mut mask = pictura_render::mask_document(doc, &path)?;
+        if let Some(channel) = mask.document.layers[0]
+            .channels
+            .iter_mut()
+            .find(|c| c.id == 0)
+        {
+            if channel.data.len() == original.len() {
+                channel.data = original.into();
+            }
+        }
+        pictura_render::write_mask_back(doc, &path, &mask.document, None);
+        return Some(Some(mask.rect));
+    }
     let preview = rust.filter_preview.take()?;
     let doc = rust.doc.as_mut()?;
     let layer = doc.layers.get_mut(preview.layer_index)?;
@@ -572,5 +716,85 @@ mod tests {
                 "{kind}: a cropped preview unexpectedly matched the commit"
             );
         }
+    }
+
+    fn mask_coverage(rust: &PictureViewRust) -> Vec<u8> {
+        rust.doc.as_ref().unwrap().layers[0]
+            .mask
+            .as_ref()
+            .unwrap()
+            .data
+            .as_ref()
+            .unwrap()
+            .to_vec()
+    }
+
+    fn step_mask_state() -> PictureViewRust {
+        let mut rust = state();
+        let layer = &mut rust.doc.as_mut().unwrap().layers[0];
+        layer.mask = Some(pictura_core::LayerMask {
+            rect: pictura_core::PsdRect {
+                top: 0,
+                left: 0,
+                bottom: 16,
+                right: 16,
+            },
+            default_color: 0,
+            disabled: false,
+            flags: 0,
+            data: Some(
+                (0..16 * 16)
+                    .map(|i| if i % 16 < 8 { 0u8 } else { 255 })
+                    .collect::<Vec<_>>()
+                    .into(),
+            ),
+            extra: Vec::new(),
+        });
+        rust.mask_edit_target = Some("0".to_string());
+        rust
+    }
+
+    #[test]
+    fn a_filter_previews_and_commits_on_the_mask() {
+        let mut rust = step_mask_state();
+        let original = mask_coverage(&rust);
+        let layer_red = red(&rust);
+
+        let preview =
+            apply_filter_active(&mut rust, "gaussian-blur", &[2.0], false).expect("mask preview");
+        assert!(
+            preview.is_some(),
+            "the mask rectangle is the refresh region"
+        );
+        assert!(rust.mask_filter_preview.is_some(), "a baseline is kept");
+        let softened = mask_coverage(&rust);
+        assert_ne!(softened, original, "the blur changed the edge");
+        assert!(
+            softened[7] > 0 && softened[7] < 255,
+            "the black/white edge is softened"
+        );
+        assert_eq!(red(&rust), layer_red, "the layer's pixels are untouched");
+
+        cancel_filter_preview(&mut rust).expect("cancel");
+        assert_eq!(
+            mask_coverage(&rust),
+            original,
+            "cancel restores bit-identically"
+        );
+        assert!(rust.mask_filter_preview.is_none());
+
+        apply_filter_active(&mut rust, "gaussian-blur", &[2.0], true).expect("mask commit");
+        assert!(rust.mask_filter_preview.is_none());
+        assert_ne!(mask_coverage(&rust), original, "the commit keeps the blur");
+        assert_eq!(red(&rust), layer_red, "the layer's pixels are untouched");
+    }
+
+    #[test]
+    fn a_mask_filter_needs_the_target() {
+        let mut rust = step_mask_state();
+        rust.mask_edit_target = None;
+        let original = mask_coverage(&rust);
+        apply_filter_active(&mut rust, "gaussian-blur", &[2.0], true).expect("layer filter");
+        assert_eq!(mask_coverage(&rust), original, "the mask is untouched");
     }
 }

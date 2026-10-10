@@ -1285,6 +1285,23 @@ Snapshot for resuming after a context break. Update after each milestone.
   vector) mask, a Background clears to white (no background swatch), no Export
   Clipboard preference, and a platform that reports our own clipboard write
   asynchronously loses the Paste in Place origin.
+- **Mask editing** (change `paint-on-layer-mask`, issue #108, archived
+  2026-10-09): a plain click on a mask thumbnail makes that raster mask the
+  view's edit target (a focus border on the thumbnail; a layer-thumbnail click
+  or another row's selection clears it), and the Brush/Pencil, `Edit ▸ Fill`,
+  and destructive filters then write the mask's coverage instead of the layer's
+  pixels. `pictura_render::{mask_document, write_mask_back}` expose a mask as a
+  mask-sized grayscale document (coverage in the colour channels, opacity
+  locked) so the existing stroke/fill/filter engines run unchanged; the
+  foreground/fill colour becomes its Rec.601 luma (black hides, white reveals).
+  Every operation keeps its normal one-step label ("Brush"/"Pencil", "Fill",
+  "Filter"); a filter preview snapshots and restores the coverage. Verified by
+  `mask_edit` engine tests, the filter-preview bridge tests, `tst_mask_edit`,
+  and `tst_layers_panel::maskEditTargetActivation`. Ceilings (`ponytail:`): the
+  adapter makes a mask-sized four-plane copy per operation (a dedicated
+  single-plane mask stroke is the follow-up), filter previews filter the whole
+  mask rather than the viewport section, Dissolve/Behind mask paints are
+  approximations, and vector masks are not paint targets.
 - PSB **write** (roadmap P5/G9, archived `2026-09-19-psb-write`): `write_psd`
   now emits a version-2 PSB when `Document.is_psb` is set or either dimension
   exceeds 30 000, and a new `write_psb` always forces a PSB; both share one
