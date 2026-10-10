@@ -901,6 +901,7 @@ void ImageView::paintEvent(QPaintEvent*)
     }
     painter.restore();
 
+    paintGuides(painter);
     paintCropGroupOverlays(painter);
     paintAnnotations(painter);
     paintPathOverlay(painter);
