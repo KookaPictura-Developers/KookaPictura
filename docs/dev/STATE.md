@@ -34,6 +34,17 @@ Snapshot for resuming after a context break. Update after each milestone.
   (GPU on). A software Vulkan adapter (lavapipe) counts as no GPU. Follow-up
   ceilings: history capture still compares written planes whole (~82 ms on the
   map) — photocraft-style tiled storage is the next step.
+- **Autosave & crash recovery** (#184, branch `feat/184-autosave-recovery`,
+  OpenSpec change `autosave-crash-recovery`, `XC-012`): each interactive launch
+  owns a `QLockFile`-held session dir under
+  `$XDG_STATE_HOME/kooka-pictura/recovery/`; a timer (File Handling pref,
+  default 10 min) writes a PSD snapshot of each dirty, changed document on a
+  worker thread; save/close drops it, a clean exit deletes the session. A
+  launch that finds a dead owner's session offers Recover / Discard / Later and
+  reopens documents as unsaved `<name>-Recovered`. The PSD codec now writes and
+  reads the Work Path (1025) and saved paths (2000-2997), so paths survive both
+  save and recovery (psd-tools oracle `path_resource_oracle`). Ceilings: no
+  journal, crash handler, or Background Save; History is not recovered.
 - **In flight:** the large-image PR above. Open PRs are docs-only — #191 (README AI
   disclosure, real screenshot, `CLAUDE.md`, developer guide) and #135 (Fedora 43
   build instructions). The Paragraph Styles panel + Edit/Image menu commands

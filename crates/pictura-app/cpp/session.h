@@ -2,10 +2,14 @@
 
 #include <QtCore/QByteArray>
 #include <QtCore/QJsonArray>
+#include <QtCore/QList>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
 
 namespace pictura {
+
+// The CS6 autosave interval choices, in minutes.
+inline const QList<int> kAutoSaveMinuteChoices = {5, 10, 15, 30, 60};
 
 // Opaque UI session state persisted across restarts. Not document data.
 struct SessionState {
@@ -23,6 +27,10 @@ struct SessionState {
     int toolsColumns = 1;            // 1 or 2; out-of-range loads the default
     bool useShiftKeyForToolSwitch = true;
     bool confirmLiveShapeToPath = true;  // off after "Don't show again"
+    // Edit > Preferences > File Handling: Automatically Save Recovery
+    // Information Every <n> minutes (CS6 choices 5/10/15/30/60, default 10).
+    bool autoSaveRecovery = true;
+    int autoSaveMinutes = 10;
     // v5-v8 panel-column state. `panelGroups` is the legacy flat JSON array of
     // {name, order, visible, minimized, collapsed} for the primary column;
     // `panelColumns` is the ordered array of

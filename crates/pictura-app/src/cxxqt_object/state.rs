@@ -203,6 +203,9 @@ pub struct PictureViewRust {
     /// The Copy Shape Attributes clipboard: the last shape layer's fill and
     /// stroke, pasted onto another shape layer. Session state, never saved.
     pub(super) shape_attributes: Option<pictura_render::ShapeAttributes>,
+    /// The background crash-recovery snapshot write in flight, if any
+    /// (`impl_core/recovery.rs`); its result is whether the file landed.
+    pub(super) recovery_write: Option<std::thread::JoinHandle<bool>>,
 }
 
 /// The pre-filter layer clone backing a live filter preview.
@@ -305,6 +308,7 @@ impl Default for PictureViewRust {
             add_copy: true,
             use_default_masks: true,
             shape_attributes: None,
+            recovery_write: None,
         }
     }
 }

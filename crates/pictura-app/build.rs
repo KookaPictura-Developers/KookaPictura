@@ -61,6 +61,7 @@ fn main() {
                 "src/cxxqt_object/image_adjust/image_ops.rs",
                 "src/cxxqt_object/image_adjust/image_size.rs",
                 "src/cxxqt_object/image_hdr_toning.rs",
+                "src/cxxqt_object/impl_core/recovery.rs",
                 "src/cxxqt_object/image_replace_color.rs",
                 "src/cxxqt_object/layer_style.rs",
                 "src/cxxqt_object/layers_smart_filters.rs",

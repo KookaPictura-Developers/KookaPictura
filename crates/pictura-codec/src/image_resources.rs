@@ -111,7 +111,12 @@ pub fn decode_image_resources(document: &Document) -> Vec<ImageResource> {
 /// truncated block) and must be preserved byte-for-byte when the section is
 /// rewritten.
 pub fn decode_image_resources_with_len(document: &Document) -> (Vec<ImageResource>, usize) {
-    let mut reader = Reader::new(&document.image_resources);
+    decode_section(&document.image_resources)
+}
+
+/// [`decode_image_resources_with_len`] over a bare image-resource section.
+pub(crate) fn decode_section(section: &[u8]) -> (Vec<ImageResource>, usize) {
+    let mut reader = Reader::new(section);
     let mut out = Vec::new();
     let mut consumed = 0;
     while reader.remaining() >= 4 {

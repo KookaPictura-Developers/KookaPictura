@@ -34,6 +34,7 @@ mod image_resources;
 mod iptc;
 mod live_shape;
 mod metadata;
+mod path_resources;
 mod patterns;
 mod patterns_write;
 mod pictura_raw;

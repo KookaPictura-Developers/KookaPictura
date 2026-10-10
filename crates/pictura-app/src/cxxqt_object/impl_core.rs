@@ -11,6 +11,8 @@ use pictura_core::{
 };
 use std::time::Instant;
 
+mod recovery;
+
 /// Finish an imported raster document. When every decoded pixel is opaque the
 /// single `from_rgba` layer becomes the locked `Background` and its redundant
 /// alpha channel is dropped; otherwise the regular alpha layer named from the
