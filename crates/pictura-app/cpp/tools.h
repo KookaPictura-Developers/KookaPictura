@@ -530,6 +530,7 @@ private:
     void releaseSelectionMove(const QPointF& imagePos);
     void handlePressed(const QPointF& imagePos, int button, int modifiers);
     void handleMoved(const QPointF& imagePos);
+    void handleModifiers(int modifiers);
     void handleReleased(const QPointF& imagePos);
     void updateBrushOutline(const QPointF& imagePos);
     void updateSamplingRing(const QPointF& imagePos);

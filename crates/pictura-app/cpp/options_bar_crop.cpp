@@ -115,7 +115,7 @@ QWidget* OptionsBar::buildCropPage(ToolId id)
     // (a ratio like 2.5:1) but format as integers unless a decimal is typed.
     auto* width = new NumericField(QString(),
                                    numericConfig(1.0, 100000.0, 1.0, 0, QStringLiteral(" px"),
-                                                 false, QStringLiteral("optionsCropWidth")),
+                                                 false, QStringLiteral("optionsCropWidth"), true),
                                    page);
     layout->addWidget(width);
     auto* swap = new QToolButton(page);
@@ -126,7 +126,7 @@ QWidget* OptionsBar::buildCropPage(ToolId id)
     layout->addWidget(swap);
     auto* height = new NumericField(QString(),
                                     numericConfig(1.0, 100000.0, 1.0, 0, QStringLiteral(" px"),
-                                                  false, QStringLiteral("optionsCropHeight")),
+                                                  false, QStringLiteral("optionsCropHeight"), true),
                                     page);
     layout->addWidget(height);
     cropWidthField_ = width;

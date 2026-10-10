@@ -27,6 +27,16 @@ namespace {
 constexpr double kMinZoom = 0.01;
 constexpr double kMaxZoom = 32.0;
 
+// The modifier flag for a modifier key, or 0 for any other key.
+int modifierFlag(int key)
+{
+    return key == Qt::Key_Alt     ? int(Qt::AltModifier)
+        : key == Qt::Key_Shift    ? int(Qt::ShiftModifier)
+        : key == Qt::Key_Control  ? int(Qt::ControlModifier)
+        : key == Qt::Key_Meta     ? int(Qt::MetaModifier)
+                                  : 0;
+}
+
 // 2x2-cell tile reused for every transparency fill. Built lazily on the GUI
 // thread the first time a document is painted.
 const QPixmap& transparencyTile()
@@ -1121,6 +1131,9 @@ void ImageView::showEvent(QShowEvent* event)
 
 void ImageView::keyPressEvent(QKeyEvent* event)
 {
+    if (modifierFlag(event->key())) {
+        emit modifierKeyChanged(int(event->modifiers()));
+    }
     if (transformActive_) {
         if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
             emit transformCommitRequested();
@@ -1134,6 +1147,14 @@ void ImageView::keyPressEvent(QKeyEvent* event)
         }
     }
     QWidget::keyPressEvent(event);
+}
+
+void ImageView::keyReleaseEvent(QKeyEvent* event)
+{
+    if (const int flag = modifierFlag(event->key())) {
+        emit modifierKeyChanged(int(event->modifiers()) & ~flag);
+    }
+    QWidget::keyReleaseEvent(event);
 }
 
 void ImageView::hideEvent(QHideEvent* event)

@@ -81,6 +81,16 @@ public:
         updateOverlay(ctx, imagePos);
     }
 
+    // A modifier edge with no pointer movement still arms subtract or mirror.
+    void onModifiers(ToolContext& ctx, Qt::KeyboardModifiers mods) override
+    {
+        if (!ctx.dragging()) {
+            return;
+        }
+        trackAltEdge(ctx, mods);
+        updateOverlay(ctx, last_);
+    }
+
     void onRelease(ToolContext& ctx, const QPointF& imagePos, Qt::KeyboardModifiers) override
     {
         if (!ctx.dragging()) {

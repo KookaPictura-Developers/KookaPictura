@@ -332,7 +332,13 @@ void ToolController::setCropClassicMode(bool on)
 
 void ToolController::setCropGridOverlay(int index)
 {
+    if (cropGridOverlay_ == index) {
+        return;
+    }
     cropGridOverlay_ = index;
+    if (ToolHandler* h = registry_.forTool(ToolId::Crop)) {
+        h->onOptionsChanged(*this);
+    }
     emit cropOptionsChanged();
 }
 
@@ -751,6 +757,7 @@ void ToolController::bindCanvas(ImageView* canvas)
     }
     connect(canvas_, &ImageView::mousePressed, this, &ToolController::handlePressed);
     connect(canvas_, &ImageView::mouseMoved, this, &ToolController::handleMoved);
+    connect(canvas_, &ImageView::modifierKeyChanged, this, &ToolController::handleModifiers);
     connect(canvas_, &ImageView::mouseReleased, this, &ToolController::handleReleased);
     connect(canvas_, &ImageView::transformCommitRequested, this,
             &ToolController::commitFreeTransform);
@@ -974,6 +981,16 @@ void ToolController::handleMoved(const QPointF& imagePos)
         if (h->pointerCursor() || h->cursorVariant() != cursorVariant_) {
             refreshCursor();
         }
+    }
+}
+
+void ToolController::handleModifiers(int modifiers)
+{
+    if (canvasSampler_ || transformSessionActive() || movingSelection_) {
+        return;
+    }
+    if (ToolHandler* h = registry_.forTool(active_)) {
+        h->onModifiers(*this, Qt::KeyboardModifiers(modifiers));
     }
 }
 

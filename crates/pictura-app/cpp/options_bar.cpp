@@ -59,7 +59,7 @@ QFrame* toolSeparator(QWidget* parent)
 
 NumericFieldConfig OptionsBar::numericConfig(double lo, double hi, double step, int decimals,
                                              const QString& suffix, bool popup,
-                                             const QString& name)
+                                             const QString& name, bool allowFractional)
 {
     NumericFieldConfig config;
     config.minimum = lo;
@@ -69,6 +69,7 @@ NumericFieldConfig OptionsBar::numericConfig(double lo, double hi, double step, 
     config.suffix = suffix;
     config.popup = popup;
     config.objectName = name;
+    config.allowFractional = allowFractional;
     return config;
 }
 

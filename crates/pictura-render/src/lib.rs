@@ -123,7 +123,8 @@ pub use gpu_filter::{apply_filter_active, filter_gpu_available};
 pub mod document_ops;
 pub use document_ops::{
     add_gradient_fill, add_group, add_group_full, add_group_in, add_layer, add_layer_full,
-    add_layer_in, add_layer_mask, add_raster_layer_from_rgba, add_shape_layer, add_slice,
+    add_layer_in, add_layer_mask, add_layer_mask_converting_background, add_raster_layer_from_rgba,
+    add_shape_layer, add_slice,
     add_smart_filter, add_solid_fill, add_vector_mask, align_layers, any_effects_visible,
     apply_layer_mask, apply_pictura_raw, apply_visibility, arrange_path, background_from_layer,
     can_add_smart_filter, can_align, can_arrange_path, can_convert_depth, can_convert_mode,

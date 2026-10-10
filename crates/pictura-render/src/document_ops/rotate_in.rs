@@ -10,7 +10,7 @@
 
 use pictura_core::{Document, PsdRect, Sample, Samples, SourceChannels, SourcePlanes};
 
-use super::{for_each_layer, recompute};
+use super::{for_each_layer, recompute, sync_vector_mask_block};
 
 /// The largest accepted magnitude, matching `pictura_ops::rotate_in`.
 const MAX_ANGLE: f64 = 359.99;
@@ -348,6 +348,9 @@ pub fn rotate_document_in(doc: &mut Document, angle_deg: f64, pivot: (f64, f64))
         if let Some(vector) = &mut layer.vector_mask {
             rotate_vector_mask(vector, &rot);
         }
+        // Keep the authoritative `vmsk` block in sync with the rotated view so
+        // a save does not re-emit the pre-rotation outline.
+        sync_vector_mask_block(layer, new_w, new_h);
     });
 
     for channel in &mut doc.channels {
@@ -597,5 +600,11 @@ mod tests {
         assert!(rotate_document_in(&mut d, 180.0, (5.0, 5.0)));
         let pts = &d.layers[0].vector_mask.as_ref().unwrap().subpaths[0].points;
         assert_eq!(pts[0], [2560, 2560]);
+
+        // The authoritative `vmsk` block is re-encoded, so a reload does not
+        // resurrect the pre-rotation outline.
+        let block = d.layers[0].extra_block(b"vmsk").expect("vmsk synced");
+        let decoded = pictura_codec::decode_vector_mask(&block.data, 10, 10).expect("decodes");
+        assert_eq!(decoded.subpaths[0].points[0], [2560, 2560]);
     }
 }

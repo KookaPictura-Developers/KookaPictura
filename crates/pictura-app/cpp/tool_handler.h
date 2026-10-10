@@ -22,6 +22,13 @@ public:
         return false;
     }
     virtual void onMove(ToolContext& ctx, const QPointF& imagePos, Qt::KeyboardModifiers mods) {}
+    // A modifier key changed during a drag without pointer movement, so an
+    // Alt/Shift edge is observed even when the pointer is still.
+    virtual void onModifiers(ToolContext& ctx, Qt::KeyboardModifiers mods)
+    {
+        (void)ctx;
+        (void)mods;
+    }
     virtual void onRelease(ToolContext& ctx, const QPointF& imagePos,
                            Qt::KeyboardModifiers mods)
     {

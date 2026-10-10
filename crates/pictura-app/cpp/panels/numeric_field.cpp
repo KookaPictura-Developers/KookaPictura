@@ -60,12 +60,15 @@ NumericField::NumericField(const QString& label, const NumericFieldConfig& confi
     edit_ = new QLineEdit(this);
     edit_->setObjectName(config_.namePrefix + QStringLiteral("Edit"));
     edit_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    // Always accept decimals (an integer field just formats them away unless a
-    // decimal was typed), so the crop W/H fields can take 1.5 in ratio mode.
+    // A fractional-capable integer field (the crop W/H ratio) takes up to six
+    // decimals and keeps a typed fraction; a plain integer field rejects one.
     // The C locale keeps '.' the decimal separator regardless of the user's
     // locale, matching QString::toDouble and the values the fields emit.
-    auto* validator = new QDoubleValidator(config_.minimum, config_.maximum,
-                                           config_.decimals == 0 ? 6 : config_.decimals, edit_);
+    const int validatorDecimals = config_.allowFractional && config_.decimals == 0
+        ? 6
+        : config_.decimals;
+    auto* validator = new QDoubleValidator(config_.minimum, config_.maximum, validatorDecimals,
+                                           edit_);
     validator->setLocale(QLocale::c());
     validator->setNotation(QDoubleValidator::StandardNotation);
     edit_->setValidator(validator);

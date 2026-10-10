@@ -18,6 +18,7 @@
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QToolButton>
+#include <QtGui/QValidator>
 
 class CropOptionsTest : public QObject {
     Q_OBJECT
@@ -31,6 +32,8 @@ private slots:
     void straightenToggleArmsLineMode();
     void contentAwareIsADisabledPlaceholder();
     void cropOptionsPersist();
+    void overlayModesRenderDifferently();
+    void integerFieldsRejectFractions();
 
 private:
     pictura::test::ScopedStateHome stateHome_;
@@ -236,6 +239,54 @@ void CropOptionsTest::cropOptionsPersist()
     tools->setCropGridOverlay(0);
     tools->setCropDeletePixels(true);
     tools->setCropRatio(0.0);
+}
+
+void CropOptionsTest::overlayModesRenderDifferently()
+{
+    pictura::PicturaMainWindow& frame = *window_;
+    QVERIFY(frame.newDocument(QStringLiteral("Overlay"), 200, 200, QStringLiteral("rgb"), 8,
+                              QStringLiteral("white")));
+    pictura::ImageView* canvas = frame.imageView();
+    QVERIFY(canvas);
+    canvas->fitOnScreen();
+    canvas->setCropBox(QRectF(40, 40, 120, 120));
+    canvas->setCropPreview(false);
+    QCoreApplication::processEvents();
+
+    // The selected overlay mode changes the guide geometry that is painted.
+    canvas->setCropOverlay(0);
+    QCoreApplication::processEvents();
+    const QImage thirds = canvas->grab().toImage();
+    canvas->setCropOverlay(2);
+    QCoreApplication::processEvents();
+    const QImage diagonal = canvas->grab().toImage();
+    canvas->setCropOverlay(1);
+    QCoreApplication::processEvents();
+    const QImage grid = canvas->grab().toImage();
+
+    QCOMPARE(canvas->cropOverlayForTest(), 1);
+    QVERIFY2(thirds != diagonal, "diagonal overlay differs from rule of thirds");
+    QVERIFY2(thirds != grid, "grid overlay differs from rule of thirds");
+    canvas->clearCropBox();
+}
+
+void CropOptionsTest::integerFieldsRejectFractions()
+{
+    pictura::NumericFieldConfig plain;
+    pictura::NumericField integer(QString(), plain);
+    auto* iedit = integer.findChild<QLineEdit*>();
+    QVERIFY(iedit);
+    int pos = 0;
+    QString fraction = QStringLiteral("2.5");
+    QCOMPARE(iedit->validator()->validate(fraction, pos), QValidator::Invalid);
+
+    pictura::NumericFieldConfig cfg;
+    cfg.allowFractional = true;
+    pictura::NumericField fractional(QString(), cfg);
+    auto* fedit = fractional.findChild<QLineEdit*>();
+    QVERIFY(fedit);
+    QString fraction2 = QStringLiteral("2.5");
+    QCOMPARE(fedit->validator()->validate(fraction2, pos), QValidator::Acceptable);
 }
 
 QTEST_MAIN(CropOptionsTest)

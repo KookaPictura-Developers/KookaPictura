@@ -721,6 +721,7 @@ private:
                 canvas->setCropContentOffset(contentOffset_);
                 canvas->setCropBox(box_);
                 canvas->setCropPreview(state_ == State::Preview);
+                canvas->setCropOverlay(ctx.cropGridOverlay());
             }
         }
     }

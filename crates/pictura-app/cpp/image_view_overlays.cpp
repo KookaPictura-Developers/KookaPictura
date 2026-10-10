@@ -13,6 +13,79 @@
 
 namespace pictura {
 
+namespace {
+
+// The active crop guide overlay: 0 Rule of Thirds, 1 Grid, 2 Diagonal,
+// 3 Triangle, 4 Golden Ratio, 5 Golden Spiral.
+void drawCropGuides(QPainter& p, const QRectF& box, int mode)
+{
+    const QPointF tl = box.topLeft();
+    const QPointF tr = box.topRight();
+    const QPointF bl = box.bottomLeft();
+    const auto vline = [&](double fx) { p.drawLine(QPointF(fx, box.top()), QPointF(fx, box.bottom())); };
+    const auto hline = [&](double fy) { p.drawLine(QPointF(box.left(), fy), QPointF(box.right(), fy)); };
+    switch (mode) {
+    case 1: // Grid: eighths.
+        for (int i = 1; i < 8; ++i) {
+            hline(box.top() + box.height() * i / 8.0);
+            vline(box.left() + box.width() * i / 8.0);
+        }
+        break;
+    case 2: // Diagonal.
+        p.drawLine(tl, box.bottomRight());
+        p.drawLine(tr, bl);
+        break;
+    case 3: { // Triangle: diagonals plus top-corner fans to the bottom centre.
+        const QPointF bc(box.center().x(), box.bottom());
+        p.drawLine(tl, box.bottomRight());
+        p.drawLine(tr, bl);
+        p.drawLine(tl, bc);
+        p.drawLine(tr, bc);
+        break;
+    }
+    case 4: // Golden Ratio lines.
+        for (double f : {0.382, 0.618}) {
+            hline(box.top() + box.height() * f);
+            vline(box.left() + box.width() * f);
+        }
+        break;
+    case 5: { // Golden Spiral about the box centre (an approximation of CS6's).
+        p.save();
+        p.setClipRect(box);
+        constexpr double kPi = 3.14159265358979323846;
+        const double k = std::log(1.6180339887498949) / (kPi / 2.0);
+        const double span = 4.0 * kPi;
+        const double rMin = std::exp(-k * span);
+        const double scale = (std::min(box.width(), box.height()) * 0.5) / (1.0 - rMin);
+        QPainterPath path;
+        const int n = 320;
+        for (int i = 0; i <= n; ++i) {
+            const double theta = span * i / double(n);
+            const double r = std::exp(-k * (span - theta)) * scale;
+            const QPointF pt(box.center().x() + r * std::cos(theta),
+                             box.center().y() + r * std::sin(theta));
+            if (i == 0) {
+                path.moveTo(pt);
+            } else {
+                path.lineTo(pt);
+            }
+        }
+        p.setBrush(Qt::NoBrush);
+        p.drawPath(path);
+        p.restore();
+        break;
+    }
+    default: // 0 Rule of Thirds.
+        for (int i = 1; i <= 2; ++i) {
+            hline(box.top() + box.height() * i / 3.0);
+            vline(box.left() + box.width() * i / 3.0);
+        }
+        break;
+    }
+}
+
+} // namespace
+
 void ImageView::setCropBox(const QRectF& box)
 {
     cropBox_ = box.normalized();
@@ -25,6 +98,15 @@ void ImageView::setCropPreview(bool preview)
         return;
     }
     cropPreview_ = preview;
+    update();
+}
+
+void ImageView::setCropOverlay(int overlay)
+{
+    if (cropOverlay_ == overlay) {
+        return;
+    }
+    cropOverlay_ = overlay;
     update();
 }
 
@@ -257,14 +339,9 @@ void ImageView::paintCropGroupOverlays(QPainter& painter)
             painter.setPen(QPen(QColor(255, 255, 255, 220), 1, Qt::DashLine));
             painter.drawRect(box);
         } else {
-            // Rule-of-thirds guides, CS6's default overlay.
+            // The active guide overlay, chosen from the options-bar menu.
             painter.setPen(QPen(QColor(255, 255, 255, 90), 1));
-            for (int i = 1; i <= 2; ++i) {
-                const double fx = box.left() + box.width() * i / 3.0;
-                const double fy = box.top() + box.height() * i / 3.0;
-                painter.drawLine(QPointF(fx, box.top()), QPointF(fx, box.bottom()));
-                painter.drawLine(QPointF(box.left(), fy), QPointF(box.right(), fy));
-            }
+            drawCropGuides(painter, box, cropOverlay_);
             painter.setPen(QPen(QColor(255, 255, 255, 220), 1));
             painter.drawRect(box);
             painter.setPen(QPen(QColor(40, 40, 40), 1));

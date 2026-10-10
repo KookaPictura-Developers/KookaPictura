@@ -18,6 +18,7 @@ private slots:
     void initTestCase();
     void firstAltSubtractsAndDoesNotMirror();
     void secondAltMirrorsAboutTheAnchor();
+    void altRepressWithoutMovementMirrors();
 
 private:
     pictura::test::ScopedStateHome stateHome_;
@@ -92,6 +93,32 @@ void SelectionAltTest::secondAltMirrorsAboutTheAnchor()
     // the ordinary (30,30)-(40,40) drag would have left it untouched.
     QCOMPARE(f.view->selection_coverage(25, 25), 0);
     QCOMPARE(f.view->selection_coverage(45, 45), 255);
+}
+
+void SelectionAltTest::altRepressWithoutMovementMirrors()
+{
+    pictura::PicturaMainWindow& frame = *window_;
+    QImage seed(64, 64, QImage::Format_RGB32);
+    seed.fill(Qt::white);
+    Fixture f(frame, seed, QStringLiteral("pictura_sel_alt_repress"));
+    QVERIFY2(f.ok(), "selection fixture");
+    frame.setActiveTool(pictura::ToolId::Marquee);
+    f.tools->setCombineMode(pictura::SelectionMode::New);
+    f.tools->setMarqueeStyle(pictura::MarqueeStyle::Normal);
+    QVERIFY(f.view->select_rect(10, 10, 40, 40, QStringLiteral("new"), 0.0));
+
+    // Alt is already held at press, so the drag subtracts.
+    f.canvas->mousePressed(QPointF(30, 30), Qt::LeftButton, int(Qt::AltModifier));
+    QCOMPARE(f.tools->dragModeForTest(), int(pictura::SelectionMode::Subtract));
+    QVERIFY(!f.tools->dragMirrorForTest());
+
+    // Release and press Alt again with no pointer movement: the key transition
+    // alone arms the mirror.
+    QTest::keyRelease(f.canvas, Qt::Key_Alt, Qt::NoModifier);
+    QTest::keyPress(f.canvas, Qt::Key_Alt, Qt::AltModifier);
+    QVERIFY2(f.tools->dragMirrorForTest(), "a second Alt press without movement mirrors");
+
+    f.canvas->mouseReleased(QPointF(30, 30));
 }
 
 QTEST_MAIN(SelectionAltTest)

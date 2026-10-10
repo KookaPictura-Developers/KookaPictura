@@ -25,6 +25,10 @@ struct NumericFieldConfig {
     // Child object names are `<namePrefix>{Label,Edit,Suffix,Arrow,Popup}`.
     QString namePrefix = QStringLiteral("numeric");
     QString objectName;
+    // An integer field (decimals == 0) normally rejects a typed fraction; set
+    // this to accept one and render it as an integer unless a decimal is typed.
+    // Kept last so positional aggregate initializers stay valid.
+    bool allowFractional = false;
 };
 
 // A leading label, a left-aligned text editor, and an optional slider popup.

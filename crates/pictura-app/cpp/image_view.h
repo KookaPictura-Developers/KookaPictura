@@ -234,6 +234,10 @@ public:
     // resize handles. Stays set until the next setCropPreview.
     void setCropPreview(bool preview);
     bool cropPreviewForTest() const { return cropPreview_; }
+    // The active crop guide overlay: 0 Rule of Thirds, 1 Grid, 2 Diagonal,
+    // 3 Triangle, 4 Golden Ratio, 5 Golden Spiral. Drawn only on an active box.
+    void setCropOverlay(int overlay);
+    int cropOverlayForTest() const { return cropOverlay_; }
     // The Modern crop content offset (image space): the composite is drawn
     // shifted by this while the crop box overlay stays fixed, so an inside drag
     // pans the content under the box. Commit maps the box by `box - offset`.
@@ -391,6 +395,9 @@ signals:
     void mousePressed(const QPointF& imagePos, int button, int modifiers);
     void mouseMoved(const QPointF& imagePos);
     void mouseReleased(const QPointF& imagePos);
+    // A modifier key (Alt/Shift/Ctrl/Meta) was pressed or released, so a tool
+    // observes the edge even without pointer movement.
+    void modifierKeyChanged(int modifiers);
     // A right-click on the canvas; the frame shows the active tool's context
     // menu at the global position (the Zoom tool's preset menu).
     void contextMenuRequested(const QPoint& globalPos);
@@ -406,6 +413,7 @@ protected:
     void mouseReleaseEvent(QMouseEvent* event) override;
     void contextMenuEvent(QContextMenuEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
+    void keyReleaseEvent(QKeyEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void showEvent(QShowEvent* event) override;
     void hideEvent(QHideEvent* event) override;
@@ -427,6 +435,7 @@ private:
     QPolygonF perspectiveQuad_;
     QRectF cropBox_;
     bool cropPreview_ = false;
+    int cropOverlay_ = 0;
     QPointF cropContentOffset_;
     double cropStraighten_ = 0.0;
     QPointF cropStraightenPivot_;

@@ -120,7 +120,7 @@ private:
                                   void (ToolController::*setter)(int));
     static NumericFieldConfig numericConfig(double lo, double hi, double step, int decimals,
                                             const QString& suffix, bool popup,
-                                            const QString& name);
+                                            const QString& name, bool allowFractional = false);
     void addModeButtons(QHBoxLayout* layout, QWidget* page, bool withIntersect);
     void addMagneticFields(QHBoxLayout* layout, QWidget* page);
     QToolButton* toolButton(ToolId id, QWidget* parent);
