@@ -198,7 +198,7 @@ pub(super) fn apply_op_active_region(
     if let Some(path) = active_mask_target(rust) {
         return apply_mask_op(rust, &path, op, commit, preview_region);
     }
-    let (index, gpu_compute) = {
+    let (path, gpu_compute) = {
         let Some(doc) = rust.doc.as_ref() else {
             rust.filter_error = Some("there is no document".to_string());
             return None;
@@ -216,11 +216,11 @@ pub(super) fn apply_op_active_region(
             rust.filter_error = Some("the active layer is pixel-locked".to_string());
             return None;
         }
-        let Some(index) = active.and_then(|p| p.parse::<usize>().ok()) else {
+        let Some(path) = active.map(str::to_string) else {
             rust.filter_error = Some("the active layer has no filterable target".to_string());
             return None;
         };
-        (index, rust.gpu_compute)
+        (path, rust.gpu_compute)
     };
     let mask = {
         let doc = rust.doc.as_ref()?;
@@ -233,7 +233,7 @@ pub(super) fn apply_op_active_region(
     if rust
         .filter_preview
         .as_ref()
-        .is_some_and(|p| p.layer_index != index)
+        .is_some_and(|p| p.layer_path != path)
     {
         rust.filter_error = Some("another layer has an open preview; cancel it first".to_string());
         return None;
@@ -245,13 +245,13 @@ pub(super) fn apply_op_active_region(
     let existing = rust
         .filter_preview
         .as_ref()
-        .filter(|p| p.layer_index == index)
+        .filter(|p| p.layer_path == path)
         .map(|p| p.original.clone());
     let Some(doc) = rust.doc.as_mut() else {
         rust.filter_error = Some("there is no document".to_string());
         return None;
     };
-    let Some(layer) = doc.layers.get_mut(index) else {
+    let Some(layer) = pictura_render::resolve_path_mut(doc, &path) else {
         rust.filter_error = Some("the active layer no longer exists".to_string());
         return None;
     };
@@ -280,7 +280,7 @@ pub(super) fn apply_op_active_region(
             };
             let applied =
                 pictura_render::apply_adjustment_region(layer, adjustment, mask.as_ref(), region);
-            return finish_op(rust, applied, commit, index, existing, snapshot, region_out);
+            return finish_op(rust, applied, commit, path, existing, snapshot, region_out);
         }
     };
     // Expand the visible rect by the support of every filter still to run, so
@@ -312,7 +312,7 @@ pub(super) fn apply_op_active_region(
         }
         apron -= pictura_render::preview_apron(filter);
     }
-    finish_op(rust, applied, commit, index, existing, snapshot, region_out)
+    finish_op(rust, applied, commit, path, existing, snapshot, region_out)
 }
 
 /// Record the outcome of [`apply_op_active_region`]: the error, or the open
@@ -321,7 +321,7 @@ fn finish_op(
     rust: &mut PictureViewRust,
     applied: Result<(), pictura_filters::FilterError>,
     commit: bool,
-    index: usize,
+    path: String,
     existing: Option<pictura_core::Layer>,
     snapshot: Option<pictura_core::Layer>,
     region: Option<pictura_core::PsdRect>,
@@ -335,7 +335,7 @@ fn finish_op(
     } else {
         let original = existing.or(snapshot).expect("preview baseline");
         rust.filter_preview = Some(FilterPreview {
-            layer_index: index,
+            layer_path: path,
             original,
         });
     }
@@ -457,7 +457,7 @@ pub(super) fn cancel_filter_preview(
     }
     let preview = rust.filter_preview.take()?;
     let doc = rust.doc.as_mut()?;
-    let layer = doc.layers.get_mut(preview.layer_index)?;
+    let layer = pictura_render::resolve_path_mut(doc, &preview.layer_path)?;
     *layer = preview.original;
     Some((!layer_has_effects(layer)).then_some(layer.rect))
 }
@@ -590,14 +590,14 @@ mod tests {
         assert!(rust
             .filter_preview
             .as_ref()
-            .is_some_and(|p| p.layer_index == 0));
+            .is_some_and(|p| p.layer_path == "0"));
         // Switching the active layer must not steal layer 0's baseline.
         rust.active_layer = Some("1".to_string());
         assert!(apply_filter_active(&mut rust, "gaussian-blur", &[4.0], false).is_none());
         assert!(rust
             .filter_preview
             .as_ref()
-            .is_some_and(|p| p.layer_index == 0));
+            .is_some_and(|p| p.layer_path == "0"));
         assert!(cancel_filter_preview(&mut rust).is_some());
         assert_eq!(red(&rust), original, "layer 0 baseline restored");
     }

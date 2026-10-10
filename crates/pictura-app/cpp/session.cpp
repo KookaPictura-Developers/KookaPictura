@@ -84,6 +84,10 @@ SessionState loadSession()
     state.autoSaveRecovery = obj.value(QStringLiteral("autoSaveRecovery")).toBool(true);
     const int autoSaveMinutes = obj.value(QStringLiteral("autoSaveMinutes")).toInt(10);
     state.autoSaveMinutes = kAutoSaveMinuteChoices.contains(autoSaveMinutes) ? autoSaveMinutes : 10;
+    state.cropClassicMode = obj.value(QStringLiteral("cropClassicMode")).toBool(true);
+    state.cropDeletePixels = obj.value(QStringLiteral("cropDeletePixels")).toBool(true);
+    state.cropRatio = obj.value(QStringLiteral("cropRatio")).toDouble(0.0);
+    state.cropGridOverlay = obj.value(QStringLiteral("cropGridOverlay")).toInt(0);
     state.panelRailMode = obj.value(QStringLiteral("panelRailMode")).toString(
         QStringLiteral("normal"));
     if (state.panelRailMode != QStringLiteral("iconic")) {
@@ -143,6 +147,10 @@ bool saveSession(const SessionState& state)
     obj.insert(QStringLiteral("confirmLiveShapeToPath"), state.confirmLiveShapeToPath);
     obj.insert(QStringLiteral("autoSaveRecovery"), state.autoSaveRecovery);
     obj.insert(QStringLiteral("autoSaveMinutes"), state.autoSaveMinutes);
+    obj.insert(QStringLiteral("cropClassicMode"), state.cropClassicMode);
+    obj.insert(QStringLiteral("cropDeletePixels"), state.cropDeletePixels);
+    obj.insert(QStringLiteral("cropRatio"), state.cropRatio);
+    obj.insert(QStringLiteral("cropGridOverlay"), state.cropGridOverlay);
     obj.insert(QStringLiteral("panelRailMode"), state.panelRailMode);
     obj.insert(QStringLiteral("railWidth"), state.railWidth);
     obj.insert(QStringLiteral("autoCollapseIconic"), state.autoCollapseIconic);

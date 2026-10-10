@@ -486,12 +486,11 @@ fn rgba_to_buffer(rgba: &[u8], width: u32, height: u32) -> Option<PixelBuffer> {
     Some(buffer)
 }
 
-/// The single top-level pixel layer a whole-layer proxy can draw, or `None`
-/// for no active layer, a group, or an adjustment layer.
-fn active_proxy_layer(doc: &Document, active: Option<&str>) -> Option<usize> {
-    let index: usize = active?.parse().ok()?;
-    let layer = doc.layers.get(index)?;
-    (!layer.is_group && layer.adjustment.is_none()).then_some(index)
+/// The active path resolved to a proxyable raster layer (not a group or an
+/// adjustment), or `None` for an absent, malformed, or ineligible path.
+fn active_proxy_layer<'a>(doc: &'a Document, active: Option<&str>) -> Option<&'a Layer> {
+    let layer = pictura_render::resolve_path(doc, active?)?;
+    (!layer.is_group && layer.adjustment.is_none()).then_some(layer)
 }
 
 /// Proxy frame dimensions: the document scaled to `max_edge` on the long side,
@@ -502,28 +501,32 @@ fn proxy_dims(width: u32, height: u32, max_edge: u32) -> (u32, u32) {
     (scaled(width), scaled(height))
 }
 
-/// The document's composite with layer `index` hidden, patched over the cached
-/// `doc.composite` so opening a dialog does not pay for a full recomposite.
-fn hidden_layer_buffer(doc: &mut Document, index: usize, gpu_compute: bool) -> PixelBuffer {
-    let rect = doc.layers[index].rect;
-    let was_visible = doc.layers[index].visible;
+/// The document's composite with the layer at `path` hidden, patched over the
+/// cached `doc.composite` so opening a dialog does not pay for a full
+/// recomposite. `None` when the path does not resolve.
+fn hidden_layer_buffer(doc: &mut Document, path: &str, gpu_compute: bool) -> Option<PixelBuffer> {
+    let (rect, was_visible) = {
+        let layer = pictura_render::resolve_path(doc, path)?;
+        (layer.rect, layer.visible)
+    };
     let cached_ok = doc.composite.width == doc.width
         && doc.composite.height == doc.height
         && !doc.composite.data.is_empty()
         && rect.width() > 0
         && rect.height() > 0;
-    doc.layers[index].visible = false;
-    if cached_ok {
+    pictura_render::resolve_path_mut(doc, path)?.visible = false;
+    let base = if cached_ok {
         let (region, _) = pictura_render::composite_region_active(doc, rect, gpu_compute);
-        doc.layers[index].visible = was_visible;
         let mut base = doc.composite.clone();
         patch_buffer_region(&mut base, &region, rect.left, rect.top);
         base
     } else {
-        let base = pictura_render::composite_rgba(doc);
-        doc.layers[index].visible = was_visible;
-        base
+        pictura_render::composite_rgba(doc)
+    };
+    if let Some(layer) = pictura_render::resolve_path_mut(doc, path) {
+        layer.visible = was_visible;
     }
+    Some(base)
 }
 
 /// The raster mask value at document pixel `(x, y)`: `255` when there is no
@@ -682,10 +685,15 @@ fn filter_proxy_base(mut view: Pin<&mut PictureView>, max_edge: i32) -> QImage {
     let Some(doc) = rust.doc.as_mut() else {
         return QImage::default();
     };
-    let Some(index) = active_proxy_layer(doc, active.as_deref()) else {
+    let Some(active_path) = active.as_deref() else {
         return QImage::default();
     };
-    let base = hidden_layer_buffer(doc, index, gpu_compute);
+    if active_proxy_layer(doc, Some(active_path)).is_none() {
+        return QImage::default();
+    }
+    let Some(base) = hidden_layer_buffer(doc, active_path, gpu_compute) else {
+        return QImage::default();
+    };
     let (width, height) = proxy_dims(doc.width, doc.height, max_edge);
     match pictura_ops::resize(&base, width, height, pictura_ops::Resample::Bilinear) {
         Ok(scaled) => buffer_to_image(&pictura_codec::buffer_to_srgb(doc, &scaled)),
@@ -709,7 +717,10 @@ fn filter_proxy_layer(
     let Some(doc) = rust.doc.as_ref() else {
         return QImage::default();
     };
-    let Some(index) = active_proxy_layer(doc, rust.active_layer.as_deref()) else {
+    let Some(active) = rust.active_layer.as_deref() else {
+        return QImage::default();
+    };
+    let Some(resolved) = active_proxy_layer(doc, Some(active)) else {
         return QImage::default();
     };
     // An open preview has already re-filtered the live layer; the proxy must
@@ -717,8 +728,8 @@ fn filter_proxy_layer(
     let layer = rust
         .filter_preview
         .as_ref()
-        .filter(|p| p.layer_index == index)
-        .map_or(&doc.layers[index], |p| &p.original);
+        .filter(|p| p.layer_path.as_str() == active)
+        .map_or(resolved, |p| &p.original);
     let params: Vec<f64> = params.into_iter().copied().collect();
     proxy_layer_frame(
         layer,
@@ -784,7 +795,7 @@ mod tests {
         ];
         doc.composite = pictura_render::composite_rgba(&doc);
 
-        let base = hidden_layer_buffer(&mut doc, 1, false);
+        let base = hidden_layer_buffer(&mut doc, "1", false).expect("base");
         assert!(doc.layers[1].visible, "hiding must be undone");
         let plane = 16;
         assert_eq!(base.data[0], 255, "the red bottom layer");
@@ -830,5 +841,32 @@ mod tests {
         layer.opacity = 128;
         let buffer = proxy_layer_buffer(&layer, 1.0).expect("layer buffer");
         assert_eq!(buffer.data[3 * 4], 128, "opacity baked into the alpha");
+    }
+
+    #[test]
+    fn a_nested_active_layer_resolves_for_the_proxy() {
+        use crate::cxxqt_object::tests::pixel_layer;
+        use pictura_core::{BitDepth, ColorMode};
+
+        let mut doc = Document::new(4, 4, ColorMode::Rgb, BitDepth::Eight);
+        let mut group = pixel_layer("group", 4, 4, (0, 0, 0));
+        group.is_group = true;
+        group.channels.clear();
+        group.children = vec![
+            pixel_layer("nested-red", 4, 4, (255, 0, 0)),
+            pixel_layer("nested-blue", 4, 4, (0, 0, 255)),
+        ];
+        doc.layers = vec![group];
+        doc.composite = pictura_render::composite_rgba(&doc);
+
+        // The group itself is not a proxy target; the nested leaf is.
+        assert!(active_proxy_layer(&doc, Some("0")).is_none());
+        assert!(active_proxy_layer(&doc, Some("0/1")).is_some());
+
+        let base = hidden_layer_buffer(&mut doc, "0/1", false).expect("nested base");
+        let plane = 16;
+        assert_eq!(base.data[0], 255, "the red nested layer survives");
+        assert_eq!(base.data[2 * plane], 0, "the blue nested layer is hidden");
+        assert!(doc.layers[0].children[1].visible, "visibility restored");
     }
 }

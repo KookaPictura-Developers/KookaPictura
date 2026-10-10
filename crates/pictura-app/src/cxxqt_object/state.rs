@@ -127,7 +127,9 @@ pub struct PictureViewRust {
     pub(super) move_y: i32,
     pub(super) move_opacity: i32,
     pub(super) move_prepared_revision: u64,
-    pub(super) move_prepared_layer: i32,
+    /// The panel path of the layer the move-preview base was built from; empty
+    /// when no whole-layer preview is prepared.
+    pub(super) move_prepared_layer: String,
     pub(super) move_preview_cache_hit: bool,
     pub(super) transform_session: Option<TransformSession>,
     pub(super) opacity_preview_changed: bool,
@@ -210,8 +212,8 @@ pub struct PictureViewRust {
 
 /// The pre-filter layer clone backing a live filter preview.
 pub(super) struct FilterPreview {
-    /// Index into `Document::layers` of the layer being previewed.
-    pub(super) layer_index: usize,
+    /// Panel path of the layer being previewed.
+    pub(super) layer_path: String,
     /// The layer's pixels before the first preview parameter change.
     pub(super) original: Layer,
 }
@@ -280,7 +282,7 @@ impl Default for PictureViewRust {
             move_y: 0,
             move_opacity: 0,
             move_prepared_revision: 0,
-            move_prepared_layer: -1,
+            move_prepared_layer: String::new(),
             move_preview_cache_hit: false,
             transform_session: None,
             opacity_preview_changed: false,
