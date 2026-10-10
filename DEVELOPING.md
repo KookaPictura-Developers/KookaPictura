@@ -353,24 +353,42 @@ the release/tag event, not `master`.
    the open `chore(master): release X.Y.Z` PR current after every push.
 2. Review that PR's `CHANGELOG.md` and version bumps, then squash-merge it.
 3. The `release-please` run on that merge tags `vX.Y.Z`, publishes the GitHub
-   release, and calls `.github/workflows/appimage.yml` for the tag.
+   release, and calls `appimage.yml` and `linux-packages.yml` for the tag; they
+   attach the AppImage, `.deb`, and `.rpm` to the release.
 
-### AppImage
+### Linux packages
 
-`appimage.yml` builds on `ubuntu-24.04` (so the AppImage needs glibc 2.39+),
-stages `cmake --install` into an AppDir, bundles Qt with linuxdeploy and its Qt
-plugin, runs `--headless --self-test` against the packaged AppImage, and uploads
-`KookaPictura-X.Y.Z-x86_64.AppImage` to the release. The install rules, the
-desktop file (`packaging/pictura.desktop`), and the icon all use the binary's
-name, `pictura`.
+Both packaging workflows start from the same bundle: the composite action
+`.github/actions/linux-bundle` builds on `ubuntu-24.04` (so every package needs
+glibc 2.39+), stages `cmake --install` into an AppDir, and deploys Qt 6.11 and
+its library dependencies into it with linuxdeploy and its Qt plugin. Qt is
+bundled because no distro Qt is new enough everywhere (Ubuntu 24.04 ships 6.4).
+The install rules, the desktop file (`packaging/pictura.desktop`), and the icon
+all use the binary's name, `pictura`.
+
+- **AppImage** (`appimage.yml`): packs the AppDir, runs `--headless --self-test`
+  against the AppImage, uploads `KookaPictura-X.Y.Z-x86_64.AppImage`.
+- **deb / rpm** (`linux-packages.yml`): `packaging/build-packages.sh` moves the
+  AppDir to `/opt/kooka-pictura` (the `$ORIGIN` rpath and `qt.conf` keep working),
+  links `/usr/bin/pictura`, and installs the desktop entry and icon under
+  `/usr/share`. Dependencies are the host libraries the bundle does not carry:
+  `dpkg-shlibdeps` computes the deb's `Depends`, and the rpm's ELF scan runs with
+  the bundled sonames excluded from `Requires`/`Provides`. Each package is
+  installed into a clean `ubuntu:24.04` / `fedora:latest` container and
+  self-tested before `KookaPictura_X.Y.Z_amd64.deb` and
+  `KookaPictura-X.Y.Z-1.x86_64.rpm` are uploaded.
 
 - **Re-run for an existing tag** (failed upload, packaging fix):
-  `gh workflow run appimage.yml -f tag=vX.Y.Z`; `--clobber` replaces the asset.
-- **Dry run** — a PR touching `appimage.yml` or `packaging/` runs the same build
-  and keeps the AppImage as a workflow artifact instead of uploading it.
+  `gh workflow run appimage.yml -f tag=vX.Y.Z` or
+  `gh workflow run linux-packages.yml -f tag=vX.Y.Z`, also available from
+  *Actions → Run workflow*; `--clobber` replaces existing assets.
+- **Dry run** — a PR touching either workflow, the shared action, or
+  `packaging/` runs the matching build and keeps its output as a workflow
+  artifact instead of uploading it.
 - **Local bundling against a distro Qt is not representative.** linuxdeploy's
   bundled `strip`/`patchelf` mishandle RELR-packed libraries (Fedora's Qt), and
   the result segfaults on plugin load; CI bundles the official Qt binaries.
+  `build-packages.sh` itself runs anywhere with `dpkg-dev` / `rpmbuild`.
 
 ## Where to go next
 
