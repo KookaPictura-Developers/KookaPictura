@@ -127,6 +127,13 @@ public:
         return brushOutlineDiameter_ * zoom_;
     }
 
+    // Eyedropper sampling ring drawn in image space like the brush outline; the
+    // diameter is the Sample Size in image pixels.
+    void setSamplingRing(double diameter, const QPointF& imagePos);
+    void clearSamplingRing();
+    bool hasSamplingRingForTest() const { return samplingRingActive_; }
+    double samplingRingDiameterForTest() const { return samplingRingDiameter_; }
+
     void setCanvasColor(const QColor& color);
     QColor canvasColor() const { return canvasColor_; }
 
@@ -223,7 +230,34 @@ public:
     // guides, its frame, and eight handles.
     void setCropBox(const QRectF& box);
     void clearCropBox();
+    // A preview crop box: a dashed outline with no rule-of-thirds guides and no
+    // resize handles. Stays set until the next setCropPreview.
+    void setCropPreview(bool preview);
+    bool cropPreviewForTest() const { return cropPreview_; }
+    // The Modern crop content offset (image space): the composite is drawn
+    // shifted by this while the crop box overlay stays fixed, so an inside drag
+    // pans the content under the box. Commit maps the box by `box - offset`.
+    void setCropContentOffset(const QPointF& offset);
+    QPointF cropContentOffset() const { return cropContentOffset_; }
+    // The crop straighten angle: the content is previewed rotated about `pivot`
+    // (image space, fixed for the session so moving the box does not move the
+    // content) while the box stays axis-aligned. The canvas grows to the rotated
+    // content's bounding box.
+    void setCropStraighten(double degrees, const QPointF& pivot);
+    // The straighten line tool's live horizon line (image space); drawn until
+    // the gesture ends.
+    void setCropStraightenLine(const QLineF& line);
+    void clearCropStraightenLine();
+    // The canvas backdrop: when `opaque` (a Background layer exists) the area
+    // beyond the content shows `color` instead of the transparency checkerboard.
+    void setCanvasBackdrop(const QColor& color, bool opaque);
+    // The axis-aligned canvas rect (image space) the preview shows: the image
+    // rect when straight, else the bounding box of the rotated canvas.
+    QRectF cropCanvasImageRect() const;
     bool hasCropBoxForTest() const { return !cropBox_.isNull(); }
+    // The crop box's four corners in widget space, as the overlay draws them
+    // (independent of the content-rotation preview).
+    QPolygonF cropBoxWidgetForTest() const;
 
     // Perspective Crop quad (TL, TR, BR, BL, image space): shades outside it and
     // draws its edges, a perspective-following 3x3 grid, and corner handles.
@@ -392,6 +426,11 @@ private:
     bool rulerShown_ = false;
     QPolygonF perspectiveQuad_;
     QRectF cropBox_;
+    bool cropPreview_ = false;
+    QPointF cropContentOffset_;
+    double cropStraighten_ = 0.0;
+    QPointF cropStraightenPivot_;
+    QLineF cropStraightenLine_;
     QList<SliceOverlay> sliceOverlay_;
     QRectF sliceDrag_;
     void centreImage();
@@ -427,6 +466,8 @@ private:
     // `source` with only the visible channel, as greyscale, cached by `key`.
     const QImage& channelImage(const QImage& source, qint64 key);
     QColor canvasColor_{Theme::workspaceColor()};
+    QColor canvasBackdrop_{Qt::white};
+    bool canvasBackdropOpaque_ = false;
     double zoom_ = 1.0;
     QPointF offset_;
     double rotation_ = 0.0;
@@ -436,6 +477,9 @@ private:
     bool panEnabled_ = true;
     bool panning_ = false;
     bool spacePan_ = false;
+    // False after a load/fit so the first resize settles the canvas, then any
+    // pan/zoom (and the initial fit itself) sets it true so a later tool-switch
+    // resize keeps the view instead of snapping the zoom.
     bool userAdjusted_ = false;
     QPolygonF overlayPolygon_;
 
@@ -479,6 +523,10 @@ private:
     bool brushOutlineActive_ = false;
     double brushOutlineDiameter_ = 0.0;
     QPointF brushOutlineImagePos_;
+
+    bool samplingRingActive_ = false;
+    double samplingRingDiameter_ = 0.0;
+    QPointF samplingRingImagePos_;
 
     // Drag-start latency probe: reports the press -> handler -> first move ->
     // paint gaps to stderr when a drag start exceeds one frame, or always when

@@ -709,7 +709,10 @@ fn filter_proxy_layer(
     let Some(doc) = rust.doc.as_ref() else {
         return QImage::default();
     };
-    let Some(index) = active_proxy_layer(doc, rust.active_layer.as_deref()) else {
+    let Some(active) = rust.active_layer.as_deref() else {
+        return QImage::default();
+    };
+    let Some(index) = active_proxy_layer(doc, Some(active)) else {
         return QImage::default();
     };
     // An open preview has already re-filtered the live layer; the proxy must
@@ -717,7 +720,7 @@ fn filter_proxy_layer(
     let layer = rust
         .filter_preview
         .as_ref()
-        .filter(|p| p.layer_index == index)
+        .filter(|p| p.layer_path.as_str() == active)
         .map_or(&doc.layers[index], |p| &p.original);
     let params: Vec<f64> = params.into_iter().copied().collect();
     proxy_layer_frame(

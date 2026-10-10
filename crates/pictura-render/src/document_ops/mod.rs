@@ -11,13 +11,14 @@ mod native_store;
 mod orient;
 mod pictura_raw;
 mod resize;
+mod rotate_in;
 mod slices;
 mod smart_filters;
 
 pub use canvas::{extend_background, resize_canvas_document};
 pub use crop::{
-    crop_document, delete_cropped_pixels, translate_layer, translate_layer_active,
-    translate_layer_index, translate_layer_rect,
+    crop_document, crop_document_grow, delete_cropped_pixels, translate_layer,
+    translate_layer_active, translate_layer_index, translate_layer_path, translate_layer_rect,
 };
 pub use depth::convert_depth_exposure_gamma;
 pub(crate) use layer_ops::insert_node;
@@ -68,6 +69,7 @@ pub use mode::{
 pub use orient::{flip_document, rotate_document};
 pub use pictura_raw::apply_pictura_raw;
 pub use resize::resize_document;
+pub use rotate_in::{rotate_document_in, rotate_document_in_offset};
 pub use slices::{add_slice, remove_slice, resolve_slices, set_slice, Slice};
 pub use smart_filters::{
     add_smart_filter, can_add_smart_filter, clear_smart_filters, delete_smart_filter,

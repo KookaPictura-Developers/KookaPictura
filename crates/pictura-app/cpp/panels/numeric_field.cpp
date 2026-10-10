@@ -3,6 +3,7 @@
 #include "jump_slider.h"
 
 #include <QtCore/QEvent>
+#include <QtCore/QLocale>
 #include <QtGui/QDoubleValidator>
 #include <QtGui/QIntValidator>
 #include <QtGui/QKeyEvent>
@@ -59,12 +60,15 @@ NumericField::NumericField(const QString& label, const NumericFieldConfig& confi
     edit_ = new QLineEdit(this);
     edit_->setObjectName(config_.namePrefix + QStringLiteral("Edit"));
     edit_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    if (config_.decimals == 0) {
-        edit_->setValidator(new QIntValidator(int(config_.minimum), int(config_.maximum), edit_));
-    } else {
-        edit_->setValidator(
-            new QDoubleValidator(config_.minimum, config_.maximum, config_.decimals, edit_));
-    }
+    // Always accept decimals (an integer field just formats them away unless a
+    // decimal was typed), so the crop W/H fields can take 1.5 in ratio mode.
+    // The C locale keeps '.' the decimal separator regardless of the user's
+    // locale, matching QString::toDouble and the values the fields emit.
+    auto* validator = new QDoubleValidator(config_.minimum, config_.maximum,
+                                           config_.decimals == 0 ? 6 : config_.decimals, edit_);
+    validator->setLocale(QLocale::c());
+    validator->setNotation(QDoubleValidator::StandardNotation);
+    edit_->setValidator(validator);
     edit_->setText(formatValue(value_));
     edit_->installEventFilter(this);
     layout->addWidget(edit_);
@@ -123,14 +127,32 @@ QString NumericField::labelText() const
 
 QString NumericField::formatValue(double value) const
 {
+    if (config_.decimals == 0) {
+        // An integer field shows an integer unless it holds a real fraction
+        // (a typed decimal), which is kept.
+        if (std::isfinite(value) && value == std::floor(value)) {
+            return QString::number(qint64(std::llround(value)));
+        }
+        return QString::number(value, 'g', 6);
+    }
     return QString::number(value, 'f', config_.decimals);
 }
 
 void NumericField::setValue(double value)
 {
+    decimalTyped_ = false;
     value_ = std::clamp(value, config_.minimum, config_.maximum);
     edit_->setText(formatValue(value_));
     syncSlider();
+}
+
+void NumericField::setSuffixVisible(bool visible)
+{
+    if (!suffix_) {
+        return;
+    }
+    suffix_->setVisible(visible);
+    layoutSuffix();
 }
 
 void NumericField::syncSlider()
@@ -151,6 +173,7 @@ void NumericField::commitEdit()
         edit_->setText(formatValue(value_));
         return;
     }
+    decimalTyped_ = edit_->text().contains(QLatin1Char('.'));
     applyUserValue(entered);
     commitPending();
 }
@@ -158,7 +181,7 @@ void NumericField::commitEdit()
 void NumericField::applyUserValue(double value)
 {
     value = std::clamp(value, config_.minimum, config_.maximum);
-    if (config_.decimals == 0) {
+    if (config_.decimals == 0 && !decimalTyped_) {
         value = std::round(value);
     }
     if (value == value_) {

@@ -121,6 +121,12 @@ void PicturaMainWindow::saveSession()
     state.useShiftKeyForToolSwitch = useShiftKeyForToolSwitch_;
     state.autoSaveRecovery = autoSaveRecovery_;
     state.autoSaveMinutes = autoSaveMinutes_;
+    if (tools_) {
+        state.cropClassicMode = tools_->cropClassicMode();
+        state.cropDeletePixels = tools_->cropDeletePixels();
+        state.cropRatio = tools_->cropRatio();
+        state.cropGridOverlay = tools_->cropGridOverlay();
+    }
     if (panelColumn_) {
         const bool iconic = panelColumn_->railMode();
         state.panelRailMode = iconic ? QStringLiteral("iconic") : QStringLiteral("normal");

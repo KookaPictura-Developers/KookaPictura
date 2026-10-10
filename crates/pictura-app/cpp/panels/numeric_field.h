@@ -42,6 +42,8 @@ public:
     double value() const { return value_; }
     void setValue(double value);
     QString labelText() const;
+    // Show or hide the in-box suffix (e.g. " px"); the row reflows.
+    void setSuffixVisible(bool visible);
 
 signals:
     void valueChanged(double value);
@@ -70,6 +72,9 @@ private:
     bool syncing_ = false;
     bool scrubbing_ = false;
     bool pending_ = false;
+    // True when the last typed edit contained a decimal point; an integer field
+    // (decimals == 0) then keeps the fraction instead of rounding.
+    bool decimalTyped_ = false;
     QPoint scrubOrigin_;
     double scrubStart_ = 0.0;
 };
