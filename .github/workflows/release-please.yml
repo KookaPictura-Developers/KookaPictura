@@ -17,11 +17,23 @@ jobs:
   release-please:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
       - uses: googleapis/release-please-action@v4
+        id: release
         with:
-          # Falls back to the default token. Set a RELEASE_PLEASE_TOKEN PAT to
-          # let packaging workflows run off the release event (see DEVELOPING).
+          # Falls back to the default token. Set a RELEASE_PLEASE_TOKEN PAT so CI
+          # runs on the Release PR (see DEVELOPING). The AppImage job below works
+          # with either token because it is called, not triggered by the release.
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  appimage:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    uses: ./.github/workflows/appimage.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Kooka Pictura
+GenericName=Image Editor
+Comment=Raster image editor modeled on Photoshop CS6
+Exec=pictura %F
+Icon=pictura
+Terminal=false
+Categories=Graphics;RasterGraphics;2DGraphics;
+MimeType=image/vnd.adobe.photoshop;image/png;image/jpeg;image/tiff;

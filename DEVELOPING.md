@@ -347,6 +347,31 @@ real token and CI runs on it. The workflow prefers that secret automatically.
 The tag points at the Release PR's merge commit, so packaging workflows key off
 the release/tag event, not `master`.
 
+### Cutting a release
+
+1. Land work on `master` with Conventional Commit PR titles; release-please keeps
+   the open `chore(master): release X.Y.Z` PR current after every push.
+2. Review that PR's `CHANGELOG.md` and version bumps, then squash-merge it.
+3. The `release-please` run on that merge tags `vX.Y.Z`, publishes the GitHub
+   release, and calls `.github/workflows/appimage.yml` for the tag.
+
+### AppImage
+
+`appimage.yml` builds on `ubuntu-24.04` (so the AppImage needs glibc 2.39+),
+stages `cmake --install` into an AppDir, bundles Qt with linuxdeploy and its Qt
+plugin, runs `--headless --self-test` against the packaged AppImage, and uploads
+`KookaPictura-X.Y.Z-x86_64.AppImage` to the release. The install rules, the
+desktop file (`packaging/pictura.desktop`), and the icon all use the binary's
+name, `pictura`.
+
+- **Re-run for an existing tag** (failed upload, packaging fix):
+  `gh workflow run appimage.yml -f tag=vX.Y.Z`; `--clobber` replaces the asset.
+- **Dry run** — a PR touching `appimage.yml` or `packaging/` runs the same build
+  and keeps the AppImage as a workflow artifact instead of uploading it.
+- **Local bundling against a distro Qt is not representative.** linuxdeploy's
+  bundled `strip`/`patchelf` mishandle RELR-packed libraries (Fedora's Qt), and
+  the result segfaults on plugin load; CI bundles the official Qt binaries.
+
 ## Where to go next
 
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — provenance, asset, and dependency rules.

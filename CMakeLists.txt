@@ -464,3 +464,13 @@ if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS Test)
     add_subdirectory(crates/pictura-app/cpp/tests)
 endif()
+
+# The AppImage job (.github/workflows/appimage.yml) stages this tree into an
+# AppDir. The desktop file and icon share the binary's name so Wayland's default
+# app_id ("pictura") resolves to them.
+include(GNUInstallDirs)
+install(TARGETS pictura RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES packaging/pictura.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+install(FILES assets/icons/app.png
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/512x512/apps
+    RENAME pictura.png)
