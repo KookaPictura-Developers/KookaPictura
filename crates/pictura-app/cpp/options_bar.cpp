@@ -330,6 +330,7 @@ QWidget* OptionsBar::buildWandPage(ToolId id)
     sample->setToolTip(QStringLiteral("Not modelled: the wand samples the visible composite."));
         layout->addWidget(sample);
 
+    addRefineEdgeButton(layout, page);
     layout->addStretch(1);
     return page;
 }
@@ -478,8 +479,22 @@ QWidget* OptionsBar::buildSelectionPage(ToolId id)
         layout->addWidget(antiAlias);
     }
 
+    addRefineEdgeButton(layout, page);
     layout->addStretch(1);
     return page;
+}
+
+void OptionsBar::addRefineEdgeButton(QHBoxLayout* layout, QWidget* page)
+{
+    auto* button = new QToolButton(page);
+    button->setObjectName(QStringLiteral("optionsRefineEdge"));
+    button->setText(QStringLiteral("Select and Mask…"));
+    button->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    button->setAutoRaise(true);
+    button->setFocusPolicy(Qt::NoFocus);
+    button->setToolTip(QStringLiteral("Refine Edge (Ctrl+Alt+R)"));
+    connect(button, &QToolButton::clicked, this, &OptionsBar::refineEdgeRequested);
+    layout->addWidget(button);
 }
 
 void OptionsBar::addMagneticFields(QHBoxLayout* layout, QWidget* page)

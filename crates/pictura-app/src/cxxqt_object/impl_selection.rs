@@ -7,6 +7,8 @@ use cxx_qt_lib::{QImage, QString, QStringList};
 use pictura_core::Channel;
 use pictura_select::{CombineMode, Selection};
 
+mod refine;
+
 impl qobject::PictureView {
     pub fn select_all(mut self: Pin<&mut Self>) {
         let dims = self.rust().doc.as_ref().map(|d| (d.width, d.height));

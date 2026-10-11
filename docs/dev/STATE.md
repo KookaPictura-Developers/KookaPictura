@@ -2235,6 +2235,31 @@ Snapshot for resuming after a context break. Update after each milestone.
   fixture/golden changed. Ceilings (all `ponytail:`): no true 16-bit sample model
   (depth is not preserved), the 32-bit path is display-referred so HDR clips at
   1.0 with no tone map, and there is no write-side re-encode to the source depth.
+- **Refine Edge / Select and Mask** (change `refine-edge`, issue #297, from the
+  #252 UX pass; new capability `tools/refine-edge`, and `tools/select-menu`
+  MODIFIED): `pictura-select::refine` refines a selection's coverage against the
+  composite. `refine(mask, image, settings)` runs CS6's documented order —
+  edge-band re-estimation (a Chamfer boundary band, `smart_radius` narrowing
+  where the image edge is hard), then Smooth (reused majority filter), Feather
+  (reused Gaussian), Contrast (a mid-toned S-curve that pushes partial coverage
+  toward 0/255), and Shift Edge (a signed-distance re-threshold, negative
+  inward) — with a bit-identical identity at defaults and `InvalidParams` /
+  `SizeMismatch` guards. `decontaminate(image, alpha, amount)` returns a new
+  buffer, lerping soft-edge colour toward nearby fully-opaque foreground by
+  `(1 − α)·amount`, leaving α 0/255 pixels untouched. The app bridge
+  (`cxxqt_object/impl_selection/refine.rs`) exposes available / preview / apply;
+  `RefineEdgeDialog` (`refine_edge_dialog.{h,cpp}`) is the CS6 layout (View Mode,
+  Show Radius / Original, Smart Radius + Radius, Smooth / Feather / Contrast /
+  Shift Edge, Decontaminate + Amount, Output To) with a live proxy preview.
+  `Select ▸ Refine Edge…` (`Ctrl+Alt+R`) and the selection tools' `Select and
+  Mask…` options-bar button both open it; OK records one "Refine Edge" state,
+  Output To maps to the selection, the active layer's mask, or `layer_via_copy`
+  (New Layer / New Layer with Layer Mask), and Decontaminate forces a colour
+  output (the in-place targets are disabled). Tested by `tst_refine_edge` (7
+  cases) and the engine's property tests. Ceilings (`ponytail:`): no interactive
+  Refine Radius / Erase Refinements brush strokes or their local band override,
+  no view-mode keyboard shortcuts (F/X/P/J), no Properties-panel mask entry, and
+  the surface/edge model is a behavioural approximation of a closed algorithm.
 
 ## Commands
 
